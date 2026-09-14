@@ -1,0 +1,15 @@
+# Build output
+dist/
+.vite/
+
+# Dependencies
+node_modules/
+
+# Local environment overrides — .env.example is the committed template.
+.env
+.env.*
+!.env.example
+
+# Editor / OS noise
+*.log
+.DS_Store

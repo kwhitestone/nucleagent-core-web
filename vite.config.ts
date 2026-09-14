@@ -1,0 +1,50 @@
+import { defineConfig, loadEnv } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { resolve } from "node:path";
+
+// 端口、后端地址、跨域目标全部可通过环境变量配置（.env 或 shell）：
+//   CORE_WEB_PORT (默认 26688)        — dev server 端口
+//   CORE_WEB_HOST (默认 0.0.0.0)      — WSL/容器外的 shell 可访问
+//   CORE_BACKEND_URL (默认 http://localhost:26680) — /api 代理目标（core 后端）
+// 支持微前端：作为 micro-app 子应用运行时，端口由壳应用编排注入。
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const port = Number(env.CORE_WEB_PORT ?? env.PORT ?? 26688);
+  const host = env.CORE_WEB_HOST ?? "0.0.0.0";
+  const backendUrl = env.CORE_BACKEND_URL ?? "http://localhost:26680";
+
+  return {
+    plugins: [vue()],
+    resolve: {
+      dedupe: ["vue", "vue-router"],
+      preserveSymlinks: true,
+      alias: {
+        "@prism-fusion/plugin-runtime/remote": resolve(
+          process.cwd(),
+          "src/vendor/prism-fusion-plugin-runtime/remote.ts",
+        ),
+        "@prism-fusion/plugin-runtime/types": resolve(
+          process.cwd(),
+          "src/vendor/prism-fusion-plugin-runtime/types.ts",
+        ),
+        "@prism-fusion/plugin-runtime": resolve(
+          process.cwd(),
+          "src/vendor/prism-fusion-plugin-runtime/headless.ts",
+        ),
+        "@": resolve(process.cwd(), "src"),
+      },
+    },
+    server: {
+      host,
+      port,
+      // micro-app 子应用需要被壳应用 fetch 跨域加载，允许跨域。
+      cors: true,
+      proxy: {
+        "/api": {
+          target: backendUrl,
+          changeOrigin: true,
+        },
+      },
+    },
+  };
+});

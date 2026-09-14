@@ -1,0 +1,32 @@
+{
+  "name": "nucleagent-core-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "test:unit": "node --test --experimental-test-coverage --test-coverage-include=src/addons/platform-api/api/authFailurePolicy.ts --test-coverage-include=src/addons/conversation/api/downloadUrlPolicy.ts --test-coverage-include=src/addons/conversation/api/uploadPayload.ts --test-coverage-include=src/addons/conversation/components/attachmentPresentation.ts --test-coverage-include=src/addons/conversation/composables/conversationNavigationCache.ts --test-coverage-include=src/addons/conversation/composables/conversationModelRestore.ts --test-coverage-include=src/addons/platform-api/session/embeddedAuthorization.ts --test-coverage-include=src/addons/platform-api/session/embeddedSessionPolicy.ts --test-coverage-include=src/addons/conversation/composables/executionBackendCompatibility.ts --test-coverage-include=src/addons/conversation/composables/latestRequestGate.ts --test-coverage-include=src/addons/conversation/composables/shellMessagePolicy.ts --test-coverage-include=src/addons/conversation/composables/conversationStreamPolicy.ts --test-coverage-include=src/addons/administration/provider/providerConfig.ts --test-coverage-include=src/addons/conversation/task-conversation/toolDetails.ts --test-coverage-include=src/addons/conversation/task-conversation/vue/processPresentation.ts --test-coverage-include=src/addons/conversation/task-conversation/vue/executionTiming.ts --test-coverage-include=src/addons/conversation/task-conversation/vue/executionPhasePresentation.ts --test-coverage-include=src/addons/conversation/composables/conversationTiming.ts --test-coverage-include=src/addons/conversation/task-conversation/vue/retryPolicy.ts --test-coverage-include=src/addons/administration/executors/executorManagement.ts --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/*.test.ts",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "dompurify": "^3.4.13",
+    "element-plus": "^2.8.0",
+    "markdown-it": "^14.3.0",
+    "marked": "^18.0.9",
+    "pinia": "^2.2.0",
+    "vue": "^3.5.0",
+    "vue-i18n": "^9.14.0",
+    "vue-router": "^4.6.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
+    "@types/node": "^20.14.0",
+    "@vitejs/plugin-vue": "5.2.4",
+    "typescript": "^5.5.0",
+    "vite": "6.4.3",
+    "vue-tsc": "^2.1.0"
+  }
+}
