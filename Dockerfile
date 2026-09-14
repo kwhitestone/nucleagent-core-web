@@ -17,7 +17,7 @@ WORKDIR /build
 # these cannot be changed at container start and must be passed to the build.
 ARG VITE_SHELL_URL=http://localhost:26600
 ARG VITE_CORE_BACKEND_URL=
-ARG VITE_STORAGE_URL=
+ARG VITE_STORAGE_URL=http://localhost:26610
 
 # Dependency layer first so source edits do not invalidate the npm install.
 COPY package.json package-lock.json ./
