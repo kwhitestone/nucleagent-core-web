@@ -54,7 +54,7 @@ Vite 会把 `import.meta.env.*` 内联进 bundle，所以下面这些**不能**�
 ## 容器
 
 ```bash
-docker build --build-arg VITE_SHELL_URL=https://shell.example.test -t nucleagent-core-web .
+docker build --build-arg VITE_SHELL_URL=https://shell.example.test --build-arg VITE_STORAGE_URL=https://storage.example.test -t nucleagent-core-web .
 docker run -p 8080:8080 -e CORE_UPSTREAM=https://backend.example.test nucleagent-core-web
 ```
 
