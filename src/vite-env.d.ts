@@ -10,6 +10,11 @@ interface ImportMetaEnv {
    * 走 vite 的 /api 代理会被 core 吞掉，所以只能跨域直连。
    */
   readonly VITE_STORAGE_URL?: string;
+  /**
+   * 允许发起嵌入握手的宿主 origin，逗号分隔（如 Agentia 的 NucleAgentPane）。
+   * 留空则不响应任何握手。
+   */
+  readonly VITE_EMBED_HOST_ORIGINS?: string;
 }
 
 interface ImportMeta {

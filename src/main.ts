@@ -10,12 +10,17 @@ import conversation from "./addons/conversation";
 import modelCatalog from "./addons/model-catalog";
 import platformApi from "./addons/platform-api";
 import App from "./App.vue";
+import { installEmbedHostHandshake } from "./composables/useEmbedHostHandshake";
 import i18n from "./i18n";
 import router, { coreRoutes } from "./router";
 import "./styles/aurora.css";
 import "./styles/global.css";
 
 const MOUNT_ID = "core-app";
+
+// 嵌入宿主在 iframe load 时就发 init，监听必须在模块求值阶段注册，
+// 不能等异步的 mount()／addon install 完成，否则首次 init 会丢。
+installEmbedHostHandshake();
 
 let app: VueApp | null = null;
 let host: HeadlessPluginHost | null = null;
