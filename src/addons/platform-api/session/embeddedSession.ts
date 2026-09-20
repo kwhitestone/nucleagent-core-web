@@ -1,5 +1,5 @@
 import { clearAccessToken, getAccessToken, setAccessToken } from "@/utils/token";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { emitSessionChange } from "@/contracts/platform-runtime";
 import { shouldAcceptShellSession } from "./embeddedSessionPolicy";
 import { replaceEmbeddedPermissions } from "./embeddedAuthorization";
 
@@ -39,12 +39,6 @@ export function setAuthRequiredNotifier(
 
 export function sessionVersion(): number {
   return currentVersion;
-}
-
-function emitSessionChange(authenticated: boolean): void {
-  window.dispatchEvent(new CustomEvent(SESSION_CHANGE_EVENT, {
-    detail: { authenticated },
-  }));
 }
 
 export function applyShellSession(

@@ -40,6 +40,17 @@ export interface PlatformRuntime {
 
 export const SESSION_CHANGE_EVENT = "nucleagent:session-change";
 
+/**
+ * Announce that the credential backing this document changed. It lives on the
+ * contract rather than inside platform-api because the embed host channel
+ * installs before any addon does and must be able to release the same views.
+ */
+export function emitSessionChange(authenticated: boolean): void {
+  window.dispatchEvent(new CustomEvent(SESSION_CHANGE_EVENT, {
+    detail: { authenticated },
+  }));
+}
+
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
