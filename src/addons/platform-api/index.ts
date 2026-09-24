@@ -3,6 +3,8 @@ import { registerPlatformRuntime } from "@/contracts/platform-runtime";
 import { getAccessToken } from "@/utils/token";
 import router from "@/router";
 import { platformRuntime } from "./runtime";
+import { coreShellPath, redirectToShellLogin } from "./shellLogin";
+import i18n from "@/i18n";
 
 let unregisterRuntime: (() => void) | undefined;
 let unregisterAuthGuard: (() => void) | undefined;
@@ -25,7 +27,11 @@ const platformApi: PluginModule = {
     unregisterAuthGuard = router.beforeEach((to) => {
       if (!to.meta.requiresAuth || getAccessToken()) return true;
       if (!platformRuntime.isInShell() && typeof window !== "undefined") {
-        window.location.href = `${SHELL_URL}/auth`;
+        redirectToShellLogin(SHELL_URL, coreShellPath(to.fullPath), {
+          title: String(i18n.global.t("login.redirectingTitle")),
+          body: String(i18n.global.t("login.redirectingBody")),
+        });
+        return false;
       }
       return true;
     });
