@@ -401,4 +401,8 @@ export default {
       importAllExist: "选中的工具都已存在",
     },
   },
+  login: {
+    redirectingTitle: "正在前往登录",
+    redirectingBody: "你尚未登录，正在跳转到 NucleAgent 登录页。",
+  },
 };

@@ -401,4 +401,8 @@ export default {
       importAllExist: "Selected tools already exist",
     },
   },
+  login: {
+    redirectingTitle: "Taking you to sign-in",
+    redirectingBody: "You're signed out — redirecting to the NucleAgent sign-in page.",
+  },
 };
