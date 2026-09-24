@@ -6,8 +6,8 @@
  * 否则宿主 15s 超时移除 iframe 并降级。ready 之后宿主才投递凭据——ready 是对端
  * 身份的最小证明，把凭据挂在 init 上等于发给一个还没自证的 frame。
  *
- *   agentia:embed-credential {conversationId, ucToken} → /exchange → 会话放行 → credential-ack
- *   agentia:embed-revoke     {conversationId, reason}  → 清内存 token + /revoke
+ *   agentia:embed-credential {conversationId, ucToken} → auth /portal/credential → 会话放行 → credential-ack
+ *   agentia:embed-revoke     {conversationId, reason}  → 清内存 token + auth /logout
  *
  * 与主壳的 Remote Application 通道（useShellBridge）不是同一协议：宿主不推送会话、
  * 鉴权或路由意图，只需要确认子应用已接管，所以单独实现，不混入 shell 通道。
@@ -25,8 +25,10 @@ import { clearAccessToken, getAccessToken, setAccessToken } from "../utils/token
 import { emitSessionChange } from "../contracts/platform-runtime.ts";
 
 const MAX_CONVERSATION_ID = 200;
-const EXCHANGE_PATH = "/api/v1/addons/uc-federation/exchange";
-const REVOKE_PATH = "/api/v1/addons/uc-federation/revoke";
+// auth's portal handoff (UNI PR-7 → PR-5) and stock logout. The host's `ucToken`
+// field name is a cross-team contract and stays; auth receives it as `credential`.
+const CREDENTIAL_PATH = "/api/v1/addons/auth/portal/credential";
+const REVOKE_PATH = "/api/v1/addons/auth/logout";
 
 type HostMessage =
   | { kind: "init"; conversationId: string }
@@ -80,24 +82,29 @@ export function allowedHostOrigins(configured: string | undefined): Set<string> 
 }
 
 /**
- * core 后端地址。与 platform-api 的 axios 实例同源配置，但这里不能复用它：
+ * auth 后端地址（与主壳同名变量）。这里不能复用 platform-api 的 axios 实例：
  * 凭据消息可能早于 addon 安装到达，且那个实例会给请求加 Authorization 并在
  * 嵌入态无 token 时直接 abort——换票请求恰恰是公开的、无 token 的。
  */
-function coreBackendBase(): string {
-  return import.meta.env?.VITE_CORE_BACKEND_URL?.trim() || "";
+function authBackendBase(): string {
+  return import.meta.env?.VITE_AUTH_BACKEND_URL?.trim() || "";
 }
 
+// Cookie-only: auth keeps the refresh credential in its HttpOnly cookie and
+// never returns it to this iframe origin; logout later revokes via that cookie.
+const AUTH_HEADERS = { "Content-Type": "application/json", "X-Refresh-Cookie-Only": "1" };
+
 /**
- * 用 UC 凭据换 core JWT。成功返回 JWT，失败返回 null——失败细节不出函数，
- * 避免把响应体（可能含凭据回显）带进调用方的日志或 ack。
+ * 把宿主递来的 portal 凭据交给 auth 换会话 JWT。成功返回 JWT，失败返回 null——
+ * 失败细节不出函数，避免把响应体（可能含凭据回显）带进调用方的日志或 ack。
  */
-async function exchange(ucToken: string): Promise<string | null> {
+async function exchange(credential: string): Promise<string | null> {
   try {
-    const response = await fetch(`${coreBackendBase()}${EXCHANGE_PATH}`, {
+    const response = await fetch(`${authBackendBase()}${CREDENTIAL_PATH}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ucToken }),
+      credentials: "include",
+      headers: AUTH_HEADERS,
+      body: JSON.stringify({ credential }),
     });
     if (!response.ok) return null;
     // 该端点回扁平 {accessToken, expiresAt}；core 其他 addon 用 {code,message,data}
@@ -116,9 +123,11 @@ async function exchange(ucToken: string): Promise<string | null> {
 /** 通知服务端撤销本会话族。fire-and-forget：前端已清 token，服务端失败不改变本地状态。 */
 function revokeServerSession(token: string): void {
   if (!token) return;
-  void fetch(`${coreBackendBase()}${REVOKE_PATH}`, {
+  void fetch(`${authBackendBase()}${REVOKE_PATH}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    credentials: "include",
+    headers: { ...AUTH_HEADERS, Authorization: `Bearer ${token}` },
+    body: "{}",
     keepalive: true,
   }).catch(() => undefined);
 }

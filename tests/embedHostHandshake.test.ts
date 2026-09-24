@@ -146,8 +146,14 @@ test("a credential for the handshaked conversation is exchanged and releases the
     await deliver(credential);
 
     assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /\/api\/v1\/addons\/uc-federation\/exchange$/);
-    assert.equal(calls[0].init.body, JSON.stringify({ ucToken: "uc-secret" }));
+    // UNI PR-7: auth's portal handoff, credential in the JSON body only, and
+    // cookie-only so the refresh credential never reaches this iframe origin.
+    assert.match(calls[0].url, /\/api\/v1\/addons\/auth\/portal\/credential$/);
+    assert.equal(calls[0].init.body, JSON.stringify({ credential: "uc-secret" }));
+    assert.equal(calls[0].init.credentials, "include");
+    assert.equal((calls[0].init.headers as Record<string, string>)["X-Refresh-Cookie-Only"], "1");
+    assert.equal((calls[0].init.headers as Record<string, string>).Authorization, undefined);
+    assert.doesNotMatch(calls[0].url, /uc-secret|\?/);
     assert.equal(token.getAccessToken(), "core-jwt");
     assert.deepEqual(sessionEvents, [true]);
     assert.deepEqual(sent[1], {
@@ -158,9 +164,9 @@ test("a credential for the handshaked conversation is exchanged and releases the
     assert.deepEqual([...new Set(targets)], [HOST]);
   }));
 
-test("accepts the core envelope shape as well as the flat body", () =>
+test("accepts auth's login envelope as well as the flat body", () =>
   embedded(async ({ deliver, respond }) => {
-    respond({ ok: true, body: { code: 0, message: "success", data: { accessToken: "enveloped" } } });
+    respond({ ok: true, body: { message: "success", data: { accessToken: "enveloped", refreshToken: "", expiresIn: 900 } } });
     await deliver(init);
     await deliver(credential);
     assert.equal(token.getAccessToken(), "enveloped");
@@ -204,6 +210,21 @@ test("a failed exchange is rejected without releasing the session", () =>
     });
   }));
 
+test("a network or CORS failure is rejected like a refused credential", () =>
+  embedded(async ({ deliver, sent, sessionEvents }) => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+    try {
+      await deliver(init);
+      await deliver(credential);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    assert.equal(token.getAccessToken(), "");
+    assert.deepEqual(sessionEvents, []);
+    assert.equal(sent[1].payload.status, "rejected");
+  }));
+
 test("revoke clears the local credential and retires the server family", () =>
   embedded(async ({ deliver, calls, sessionEvents }) => {
     await deliver(init);
@@ -213,7 +234,9 @@ test("revoke clears the local credential and retires the server family", () =>
     assert.equal(token.getAccessToken(), "");
     assert.deepEqual(sessionEvents, [true, false]);
     assert.equal(calls.length, 2);
-    assert.match(calls[1].url, /\/api\/v1\/addons\/uc-federation\/revoke$/);
+    assert.match(calls[1].url, /\/api\/v1\/addons\/auth\/logout$/);
+    assert.equal(calls[1].init.credentials, "include");
+    assert.equal((calls[1].init.headers as Record<string, string>)["X-Refresh-Cookie-Only"], "1");
     assert.equal(
       (calls[1].init.headers as Record<string, string>).Authorization,
       "Bearer core-jwt",
