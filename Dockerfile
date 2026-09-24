@@ -18,6 +18,10 @@ WORKDIR /build
 ARG VITE_SHELL_URL=http://localhost:26600
 ARG VITE_CORE_BACKEND_URL=
 ARG VITE_STORAGE_URL=http://localhost:26610
+# Embed host credential handoff (UNI PR-7): browser-reachable auth origin and
+# the exact host origins allowed to handshake. Empty host list = handshake off.
+ARG VITE_AUTH_BACKEND_URL=
+ARG VITE_EMBED_HOST_ORIGINS=
 
 # Dependency layer first so source edits do not invalidate the npm install.
 COPY package.json package-lock.json ./
@@ -27,6 +31,8 @@ COPY . .
 RUN VITE_SHELL_URL="${VITE_SHELL_URL}" \
     VITE_CORE_BACKEND_URL="${VITE_CORE_BACKEND_URL}" \
     VITE_STORAGE_URL="${VITE_STORAGE_URL}" \
+    VITE_AUTH_BACKEND_URL="${VITE_AUTH_BACKEND_URL}" \
+    VITE_EMBED_HOST_ORIGINS="${VITE_EMBED_HOST_ORIGINS}" \
     npm run build
 
 FROM ${NGINX_IMAGE} AS final

@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   /** 运行时后端地址（注入 import.meta.env）。留空则回退到相对路径 /api。 */
   readonly VITE_CORE_BACKEND_URL?: string;
+  /** auth 服务地址，嵌入宿主凭据直投（portal/credential）与撤销用。必须浏览器可达。 */
+  readonly VITE_AUTH_BACKEND_URL?: string;
   /**
    * storage 服务地址（:26610），附件上传用。
    *
