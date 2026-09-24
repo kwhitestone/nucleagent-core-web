@@ -5,6 +5,7 @@ import { ApiError } from "@/contracts/platform-runtime";
 import { shouldHandleUnauthorized } from "./authFailurePolicy";
 import { handleEmbeddedUnauthorized, isInShell, sessionRequestSignal } from "@/addons/platform-api/session/embeddedSession";
 import type { ApiErrorBody } from "./types";
+import { coreShellPath, redirectToShellLogin } from "../shellLogin";
 
 /**
  * Shared axios instance for the core backend (:26680).
@@ -59,9 +60,14 @@ function redirectToAuth(reason: "missing" | "rejected"): void {
     return;
   }
   clearAccessToken();
-  // 独立运行时跳主壳的 /auth（本站没有该路由，跳本站会死循环）。
+  // Standalone: interstitial, then the shell's /login (this site has no login route).
   const shellUrl = import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600";
-  window.location.href = `${shellUrl}/auth`;
+  const shellPath = coreShellPath(window.location.pathname + window.location.search);
+  // Lazy: i18n touches `document` at load, and this module is also loaded by SSR tests.
+  void import("@/i18n").then(({ default: i18n }) => redirectToShellLogin(shellUrl, shellPath, {
+    title: String(i18n.global.t("login.redirectingTitle")),
+    body: String(i18n.global.t("login.redirectingBody")),
+  }));
 }
 
 http.interceptors.response.use(

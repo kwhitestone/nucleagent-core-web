@@ -31,3 +31,12 @@ test("child routes map to the shell's mount paths", async () => {
   assert.equal(deliverablesShellPath("/other"), "/deliverables");
   assert.equal(executorShellPath(), "/executor");
 });
+
+test("no core-web path still targets the dead ${SHELL_URL}/auth route", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const walk = (dir: URL): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? walk(new URL(`${entry.name}/`, dir)) : [new URL(entry.name, dir).pathname]);
+  for (const file of walk(new URL("../src/addons/", import.meta.url)).filter((f) => /\.(ts|vue)$/.test(f))) {
+    assert.doesNotMatch(readFileSync(file, "utf8"), /\/auth`/, file);
+  }
+});
