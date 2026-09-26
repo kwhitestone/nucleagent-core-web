@@ -126,7 +126,7 @@ function revokeServerSession(token: string): void {
   void fetch(`${authBackendBase()}${REVOKE_PATH}`, {
     method: "POST",
     credentials: "include",
-    headers: { ...AUTH_HEADERS, Authorization: `Bearer ${token}` },
+    headers: { ...AUTH_HEADERS, Authorization: token },
     body: "{}",
     keepalive: true,
   }).catch(() => undefined);

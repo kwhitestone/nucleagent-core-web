@@ -41,7 +41,7 @@ const storageHttp = axios.create({
 storageHttp.interceptors.request.use((config) => {
   const token = getPlatformRuntime().getAccessToken();
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = token;
   }
   // storage 用它做命名空间隔离（决定文件落在 CS 的哪个路径前缀下）。
   config.headers["X-Namespace"] = NAMESPACE;
