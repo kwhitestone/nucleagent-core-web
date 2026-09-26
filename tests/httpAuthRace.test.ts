@@ -116,7 +116,7 @@ test("a delayed 401 from an older token cannot erase a refreshed token", async (
   localStorage.setItem(ACCESS_TOKEN_KEY, "old-token");
   const request = deferredUnauthorizedRequest();
   await request.started;
-  assert.equal(request.authorization(), "Bearer old-token");
+  assert.equal(request.authorization(), "old-token");
 
   localStorage.setItem(ACCESS_TOKEN_KEY, "fresh-token");
   request.release();
@@ -129,7 +129,7 @@ test("a 401 from the current token still invalidates that token", async () => {
   localStorage.setItem(ACCESS_TOKEN_KEY, "current-token");
   const request = deferredUnauthorizedRequest();
   await request.started;
-  assert.equal(request.authorization(), "Bearer current-token");
+  assert.equal(request.authorization(), "current-token");
 
   request.release();
 

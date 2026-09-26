@@ -239,7 +239,7 @@ test("revoke clears the local credential and retires the server family", () =>
     assert.equal((calls[1].init.headers as Record<string, string>)["X-Refresh-Cookie-Only"], "1");
     assert.equal(
       (calls[1].init.headers as Record<string, string>).Authorization,
-      "Bearer core-jwt",
+      "core-jwt",
     );
   }));
 

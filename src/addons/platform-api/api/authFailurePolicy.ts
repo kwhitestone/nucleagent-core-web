@@ -1,5 +1,3 @@
-const BEARER_PREFIX = "Bearer ";
-
 /**
  * Decide whether a 401 still applies to the active browser credential.
  *
@@ -13,7 +11,6 @@ export function shouldHandleUnauthorized(
   requestAuthorization: unknown,
 ): boolean {
   if (!currentToken) return true;
-  if (typeof requestAuthorization !== "string") return false;
-  if (!requestAuthorization.startsWith(BEARER_PREFIX)) return false;
-  return requestAuthorization.slice(BEARER_PREFIX.length) === currentToken;
+  // A-16: the gateway rejects `Bearer `-prefixed tokens, so the header is the bare token.
+  return requestAuthorization === currentToken;
 }

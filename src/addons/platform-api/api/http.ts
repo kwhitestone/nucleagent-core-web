@@ -33,7 +33,7 @@ const http = axios.create({
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    config.headers.Authorization = token;
   }
   if (isInShell()) {
     const scope = token ? sessionRequestSignal() : AbortSignal.abort();
@@ -108,7 +108,7 @@ export function authHeaders(): Record<string, string> {
     Accept: "text/event-stream",
   };
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.Authorization = token;
   }
   return headers;
 }
