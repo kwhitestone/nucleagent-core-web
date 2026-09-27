@@ -16,7 +16,7 @@ import { createRemoteChildChannel } from "@prism-fusion/plugin-runtime/remote";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
 import i18n, { setLocale } from "@/i18n";
 import { toast } from "@/composables/useToast";
-import { resolveShellViewPath } from "./shellMessagePolicy";
+import { resolveShellViewPath, shellViewLocation } from "./shellMessagePolicy";
 import { activeSidebarConversation, broadcastGroupId } from "./broadcastViewPolicy";
 import {
   applyShellSession,
@@ -134,13 +134,18 @@ export function installShellBridge(router: Router): () => void {
         : "/"
     );
     if (!target) return;
-    // A shell selection echoes the active group member as /c/:id. Preserve
-    // the group view and its live controller when that member is already open.
-    if (router.currentRoute.value.path.startsWith("/b/") &&
-        target === `/c/${activeSidebarConversation(router.currentRoute.value.path,
-          router.currentRoute.value.query.conversationId, store.sorted)}`) return;
-    if (router.currentRoute.value.path !== target) {
-      void router.push(target);
+    const current = router.currentRoute.value;
+    const location = shellViewLocation(target);
+    // A shell selection echoes the active group member (as /c/:id or
+    // /b/:groupId/:memberId). Preserve the group view and its live controller
+    // when that member is already open.
+    if (current.path.startsWith("/b/")) {
+      const active = activeSidebarConversation(current.path, current.query.conversationId, store.sorted);
+      if (target === `/c/${active}` ||
+          (location.path === current.path && location.query?.conversationId === String(active))) return;
+    }
+    if (current.path !== location.path || (location.query && current.query.conversationId !== location.query.conversationId)) {
+      void router.push(location);
     }
   }
 
