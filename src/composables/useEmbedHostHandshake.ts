@@ -23,6 +23,7 @@
 // resolves neither the `@/` alias nor extensionless specifiers.
 import { clearAccessToken, getAccessToken, setAccessToken } from "../utils/token.ts";
 import { emitSessionChange } from "../contracts/platform-runtime.ts";
+import { outerAware } from "../outerHost.ts";
 
 const MAX_CONVERSATION_ID = 200;
 // auth's portal handoff (UNI PR-7 → PR-5) and stock logout. The host's `ucToken`
@@ -87,7 +88,7 @@ export function allowedHostOrigins(configured: string | undefined): Set<string> 
  * 嵌入态无 token 时直接 abort——换票请求恰恰是公开的、无 token 的。
  */
 function authBackendBase(): string {
-  return import.meta.env?.VITE_AUTH_BACKEND_URL?.trim() || "";
+  return outerAware(import.meta.env?.VITE_AUTH_BACKEND_URL?.trim() || "");
 }
 
 // Cookie-only: auth keeps the refresh credential in its HttpOnly cookie and

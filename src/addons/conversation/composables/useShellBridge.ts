@@ -24,9 +24,10 @@ import {
   SESSION_CHANGE_EVENT,
   getPlatformRuntime,
 } from "@/contracts/platform-runtime";
+import { outerAware } from "@/outerHost";
 
 const SHELL_ORIGIN = new URL(
-  import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600",
+  outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600"),
 ).origin;
 
 /** core 是否被主壳以 iframe 嵌入。 */
