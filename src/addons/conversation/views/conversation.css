@@ -59,7 +59,7 @@
   max-width: none;
 }
 .chat-view .atc-process-summary {
-  display: flex; align-items: flex-start; gap: 6px;
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px;
   padding: 8px 25px 8px 12px;
   font-size: 12px; color: var(--text-tertiary);
   background: transparent; border-radius: var(--r-md);
@@ -86,7 +86,9 @@
   white-space: normal; overflow-wrap: anywhere;
 }
 .chat-view .atc-process-preview {
-  min-width: 0; flex: 1 1 0;
+  /* 10em basis: when label + timer leave less room, the preview wraps to its
+     own row instead of shrinking to one letter per line (UNI-MOBILE-IMPL §10). */
+  min-width: 0; flex: 1 1 10em;
   color: var(--text-tertiary); overflow: visible;
   text-overflow: clip; white-space: normal; overflow-wrap: anywhere;
   font-weight: 400;

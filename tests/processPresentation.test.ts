@@ -639,8 +639,11 @@ test("conversation process rows use the available width without truncating previ
 
   const previewRule = cssRule(".chat-view .atc-process-preview");
   assert.match(previewRule, /min-width:\s*0/);
-  // A zero basis reserves the label width before long preview text grows.
-  assert.match(previewRule, /flex:\s*1\s+1\s+0/);
+  // A readable basis + a wrapping summary: on narrow screens the preview moves to
+  // its own row instead of shrinking to one letter per line (UNI-MOBILE-IMPL §10;
+  // the old zero basis caused exactly that). Real layout: processSummaryLayout.test.ts.
+  assert.match(previewRule, /flex:\s*1\s+1\s+10em/);
+  assert.match(summaryRule, /flex-wrap:\s*wrap/);
   assert.match(previewRule, /overflow:\s*visible/);
   assert.match(previewRule, /text-overflow:\s*clip/);
   assert.match(previewRule, /white-space:\s*normal/);
