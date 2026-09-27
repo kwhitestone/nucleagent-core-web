@@ -288,6 +288,7 @@ export default {
     },
   },
   admin: {
+    desktopNotice: "管理后台为桌面设计。手机上可查看与小改；批量操作请用电脑。",
     title: "管理后台",
     subtitle: "平台资源配置：供应商 / 默认模型 / 技能 / 工具 / 执行端",
     tabs: {

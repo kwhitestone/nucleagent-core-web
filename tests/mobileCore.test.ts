@@ -198,6 +198,20 @@ for (const width of [393, 360, 320]) {
   });
 }
 
+test("admin @360 (R-ADMIN): chip tabs, calm desktop notice that stays dismissed, no sideways page scroll", { skip }, async () => {
+  const { ctx, page, errors } = await open(360, "/admin/providers");
+  await page.getByTestId("admin-desktop-notice").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+  const tabs = await page.locator(".admin-tab").evaluateAll((els: HTMLElement[]) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  assert.ok(tabs.every((h: number) => h >= 44), `tab chips: ${tabs}`);
+  await page.getByTestId("admin-desktop-notice").locator("button").tap();
+  await page.reload();
+  await page.locator(".admin-view").waitFor();
+  assert.equal(await page.getByTestId("admin-desktop-notice").count(), 0, "remembered");
+  assert.deepEqual(errors, []);
+  await ctx.close();
+});
+
 test("dark @360: task desk and task form stay readable (no light-on-light)", { skip }, async () => {
   const { ctx, page, errors } = await open(360, "/tasks", { dark: true });
   await page.getByTestId("task-mobile").waitFor();

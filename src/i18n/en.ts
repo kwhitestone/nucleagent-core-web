@@ -288,6 +288,7 @@ export default {
     },
   },
   admin: {
+    desktopNotice: "Admin is built for desktop. On a phone you can view and make small edits; use a computer for bulk work.",
     title: "Admin Console",
     subtitle: "Platform resources: providers / default model / skills / tools / executors",
     tabs: {
