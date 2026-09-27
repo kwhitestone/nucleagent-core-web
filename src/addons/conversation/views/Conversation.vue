@@ -37,8 +37,20 @@ import MessageItem from "@/addons/conversation/components/conversation/MessageIt
 import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vue";
 import { toMessageAttachment } from "@/addons/conversation/components/attachmentPresentation";
 import { broadcastRoute } from "../composables/broadcastViewPolicy";
+import { useNarrow } from "@/composables/useNarrow";
+import type { ConversationStatus } from "@/addons/conversation/api/types";
 
 const props = defineProps<{ id: string }>();
+const narrow = useNarrow();
+/** Q7: below 1024px the model/backend switch lives behind the header's 「⋯」. */
+const moreOpen = ref(false);
+const title = ref("");
+const status = ref<ConversationStatus | "">("");
+/** The live controller speaks idle/running/…; the header shows the API vocabulary. */
+function onLiveStatus(next: "idle" | "running" | "completed" | "failed" | "cancelled"): void {
+  if (next === "running") status.value = "executing";
+  else if (next !== "idle") status.value = next;
+}
 const { t, locale } = useI18n();
 const router = useRouter();
 
@@ -87,6 +99,8 @@ watch(
         getConversation(conversationId),
       ]);
       if (!active) return;
+      title.value = conversation.title ?? "";
+      status.value = conversation.status ?? "";
       const groupRoute = broadcastRoute(conversation);
       if (groupRoute) {
         await router.replace(groupRoute);
@@ -164,7 +178,54 @@ function onError(error: Error): void {
 
 <template>
   <div class="view active view--scroll-hidden">
-    <div class="chat-view">
+    <div class="chat-view" :class="{ 'chat-view--narrow': narrow }">
+      <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
+      <header v-if="narrow" class="conv-head" data-testid="conv-head">
+        <div class="conv-head-text">
+          <strong>{{ title || t('common.untitled') }}</strong>
+          <span v-if="status" class="conv-status" :data-status="status">
+            {{ status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${status}`) }}
+          </span>
+        </div>
+        <button type="button" class="conv-more" data-testid="conv-more" :aria-label="t('conversation.more')" :aria-expanded="moreOpen" @click="moreOpen = true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
+        </button>
+      </header>
+      <div v-if="narrow" v-show="moreOpen" class="osheet-scrim" data-testid="conv-more-sheet" @click.self="moreOpen = false" @keydown.esc="moreOpen = false">
+        <div class="osheet" role="dialog" aria-modal="true" :aria-label="t('home.runTitle')">
+          <div class="osheet-grab" aria-hidden="true" />
+          <div class="osheet-head">
+            <b>{{ t('home.runTitle') }}</b>
+            <button type="button" class="osheet-done" @click="moreOpen = false">{{ t('common.done') }}</button>
+          </div>
+          <div class="picker-group">
+            <ModelPicker
+              :model-value="modelChoice"
+              :disabled="modelLoading || settingsSaving || status === 'executing'"
+              :allow-default="true"
+              row
+              @update:model-value="(value) => (modelChoice = value)"
+            />
+            <ExecutionBackendPicker
+              :model-value="executionBackend"
+              :model-choice="modelChoice"
+              :disabled="backendLoading || settingsSaving || status === 'executing'"
+              :auto-select="false"
+              row
+              @update:model-value="(value) => (executionBackend = value)"
+              @validation-change="(value) => (backendCompatible = value.allowed)"
+            />
+          </div>
+          <div v-if="settingsDirty" class="conversation-settings-actions conv-more-actions">
+            <button type="button" :disabled="settingsSaving || status === 'executing' || !executionBackend || !backendCompatible" @click="applySettings">
+              {{ settingsSaving ? t('common.applying') : t('common.applySettings') }}
+            </button>
+            <button type="button" :disabled="settingsSaving" @click="discardSettings">
+              {{ t('common.discardSettings') }}
+            </button>
+          </div>
+        </div>
+      </div>
       <TaskConversation
         :conversation-key="id"
         :adapter="adapter"
@@ -173,6 +234,7 @@ function onError(error: Error): void {
         :show-process="true"
         :locale="locale === 'en' ? 'en-US' : 'zh-CN'"
         @error="onError"
+        @status-change="onLiveStatus"
       >
         <template #user-item="{ item }">
           <MessageItem :item="item" role="user" />
@@ -183,7 +245,7 @@ function onError(error: Error): void {
         <template #artifact="{ attachment }">
           <AttachmentChips :attachments="[toMessageAttachment(attachment)]" />
         </template>
-        <template #composer-toolbar-leading="{ status }">
+        <template v-if="!narrow" #composer-toolbar-leading="{ status }">
           <ModelPicker
             :model-value="modelChoice"
             :disabled="modelLoading || settingsSaving || status === 'running'"

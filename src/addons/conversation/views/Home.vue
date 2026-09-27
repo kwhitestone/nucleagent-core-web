@@ -20,12 +20,16 @@ import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vu
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import BroadcastOptions from "@/addons/conversation/components/BroadcastOptions.vue";
+import { useNarrow } from "@/composables/useNarrow";
+import { broadcastRoute } from "@/addons/conversation/composables/broadcastViewPolicy";
+import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskDesk";
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 
 const router = useRouter();
 const route = useRoute();
 const store = useConversationStore();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const narrow = useNarrow();
 
 const input = ref("");
 const submitting = ref(false);
@@ -100,6 +104,21 @@ async function handleCreate(): Promise<void> {
   }
 }
 
+// ---- Task desk below 1024px (board §11 ①–③) ----
+const runSheet = ref(false);
+const modelLabel = ref("");
+const backendLabel = ref("");
+const recent = computed(() => deskOrder(store.sorted).slice(0, 30));
+const now = ref(Date.now());
+function openTask(conversation: (typeof store.sorted)[number]): void {
+  void router.push(broadcastRoute(conversation) ?? `/c/${conversation.id}`);
+}
+/** 「更多设置」: upgrade the quick path to the full form without losing the text. */
+function moreSettings(): void {
+  runSheet.value = false;
+  void router.push({ name: "tasks", query: input.value.trim() ? { input: input.value.trim() } : {} });
+}
+
 function fillSuggestion(title: string): void {
   input.value = `${title}：`;
 }
@@ -113,6 +132,7 @@ onMounted(() => {
   }
 
   // 首页挂载时拉一次历史，用于推给壳侧栏（桥接在 store 变化时 dispatch）。
+  now.value = Date.now();
   store.load().catch((e: unknown) => {
     toast.error(e instanceof ApiError ? e.message : t("home.loadHistoryFailed"));
   });
@@ -120,8 +140,101 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="view active">
-    <div class="home-view">
+  <div class="view active" :class="{ 'view--scroll-hidden': narrow }">
+    <!-- Below 1024px: the task desk (board §11). Recent tasks + a resident composer. -->
+    <div v-if="narrow" class="desk" data-testid="task-desk">
+      <div class="desk-scroll">
+        <h1 class="desk-title">{{ t('home.deskTitle') }}</h1>
+        <p class="desk-lede">{{ t('home.deskLede') }}</p>
+        <p class="desk-glabel">{{ t('home.recent') }}</p>
+        <div v-if="recent.length" class="desk-list">
+          <button
+            v-for="c in recent"
+            :key="c.id"
+            type="button"
+            class="desk-row"
+            :data-status="c.status"
+            data-testid="desk-row"
+            @click="openTask(c)"
+          >
+            <span class="desk-row-title">{{ c.title || t('common.untitled') }}</span>
+            <span class="desk-row-meta">
+              <i class="desk-dot" aria-hidden="true" />
+              <span>{{ c.status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${c.status}`) }}</span>
+              <time :datetime="c.createdAt">{{ relativeTime(c.createdAt, now, locale === 'en' ? 'en' : 'zh-CN') }}</time>
+            </span>
+          </button>
+        </div>
+        <p v-else-if="store.loaded" class="desk-empty">{{ t('common.empty') }}</p>
+      </div>
+
+      <div class="desk-composer">
+        <AttachmentChips
+          v-if="attachments.length"
+          :attachments="attachments"
+          removable
+          @remove="(id: string) => (attachments = attachments.filter((a) => a.fileId !== id))"
+        />
+        <textarea
+          v-model="input"
+          class="desk-input"
+          rows="1"
+          enterkeyhint="enter"
+          data-testid="desk-input"
+          :placeholder="t('home.composerShort')"
+          :disabled="submitting"
+        />
+        <div class="desk-actions">
+          <AttachmentPicker v-model="attachments" :disabled="submitting" />
+          <button type="button" class="desk-pill" data-testid="run-pill" :disabled="submitting" @click="runSheet = true">
+            <span>{{ broadcast ? t('broadcast.toggle') : [modelLabel || t('common.modelDefault'), backendLabel].filter(Boolean).join(' · ') }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          <button
+            class="desk-send"
+            type="button"
+            data-testid="desk-send"
+            :aria-label="t('common.send')"
+            :disabled="submitting || !input.trim() || !canSend"
+            @click="handleCreate"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 本次执行 sheet (board §11 ③). The pickers stay mounted so their
+           validation keeps driving canSend while the sheet is closed. -->
+      <div v-show="runSheet" class="osheet-scrim" data-testid="run-sheet" @click.self="runSheet = false" @keydown.esc="runSheet = false">
+        <div class="osheet" role="dialog" aria-modal="true" :aria-label="t('home.runTitle')">
+          <div class="osheet-grab" aria-hidden="true" />
+          <div class="osheet-head"><b>{{ t('home.runTitle') }}</b></div>
+          <div class="picker-group">
+            <ModelPicker v-model="modelChoice" :disabled="submitting" row @label="modelLabel = $event" />
+            <ExecutionBackendPicker
+              v-if="!broadcast"
+              v-model="executionBackend"
+              :model-choice="modelChoice"
+              :disabled="submitting"
+              row
+              @label="backendLabel = $event"
+              @validation-change="(value) => (backendCompatible = value.allowed)"
+            />
+            <label class="picker-row desk-switch">
+              <span class="picker-row-k">{{ t('broadcast.toggle') }}</span>
+              <input v-model="broadcast" type="checkbox" role="switch" :disabled="submitting" />
+            </label>
+            <button type="button" class="picker-row" data-testid="run-more" @click="moreSettings">
+              <span class="picker-row-k">{{ t('home.runMore') }}</span>
+              <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+            </button>
+          </div>
+          <BroadcastOptions v-if="broadcast" :model-choice="modelChoice" @eligible-change="eligibleCount = $event" />
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="home-view">
       <div class="home-hero">
         <div class="home-greeting">{{ t('home.greeting') }}</div>
         <h1 class="home-title" v-html="t('home.title')"></h1>
@@ -326,4 +439,58 @@ onMounted(() => {
 .suggestion-chip .chip-icon svg { width: 16px; height: 16px; }
 .suggestion-chip .chip-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .suggestion-chip .chip-desc { font-size: 11.5px; color: var(--text-tertiary); }
+
+/* ---- Task desk below 1024px (board §11) ---- */
+.desk { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
+.desk-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 12px; }
+.desk-title { margin: 0; font-size: 24px; font-weight: 750; line-height: 1.25; color: var(--text-primary); }
+.desk-lede { margin: 4px 0 16px; font-size: 15px; color: var(--text-secondary); }
+.desk-glabel { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.desk-list { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.desk-row {
+  display: grid; gap: 4px; width: 100%; min-height: 64px; padding: 10px 16px;
+  border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
+}
+.desk-row + .desk-row { border-top: 1px solid var(--border); }
+.desk-row-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-row-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.desk-row-meta time { margin-left: auto; color: var(--text-tertiary); flex: none; }
+.desk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate-400); flex: none; }
+.desk-row[data-status="executing"] .desk-dot { background: var(--teal-500); }
+.desk-row[data-status="blocked"] .desk-dot { background: var(--amber-500, #f59e0b); }
+.desk-row[data-status="blocked"] .desk-row-meta span { color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); font-weight: 650; }
+.desk-row[data-status="completed"] .desk-dot { background: var(--emerald-500); }
+.desk-row[data-status="failed"] .desk-dot { background: var(--rose-500); }
+.desk-row:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; }
+.desk-empty { color: var(--text-tertiary); font-size: 14px; }
+.desk-composer {
+  flex: none; display: grid; gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border); background: var(--bg-card);
+}
+.desk-input {
+  width: 100%; min-height: 44px; max-height: calc(1.5em * 5 + 20px); padding: 10px 12px;
+  border: 1.5px solid var(--border); border-radius: var(--r-lg); background: var(--bg);
+  color: var(--text-primary); font: inherit; font-size: 16px; line-height: 1.5; resize: none; outline: none; field-sizing: content;
+}
+.desk-input:focus { border-color: var(--teal-400); }
+.desk-actions { display: flex; align-items: center; gap: 8px; }
+.desk-actions .attachment-btn { min-width: 44px; min-height: 44px; }
+.desk-pill {
+  flex: 1; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--bg-subtle);
+  color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 600;
+}
+.desk-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-pill svg, .desk-send svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.desk-send {
+  width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: var(--r-full);
+  background: var(--teal-700) var(--grad-teal-indigo); color: #fff;
+}
+.desk-send svg { width: 18px; height: 18px; }
+.desk-send:disabled { opacity: 0.4; }
+.desk-switch input { margin-left: auto; width: 44px; height: 26px; accent-color: var(--teal-600); }
+.desk .osheet .broadcast-options { margin-top: 4px; }
+@media (prefers-color-scheme: dark) {
+  .desk-row[data-status="blocked"] .desk-row-meta span { color: var(--amber-400); }
+}
 </style>

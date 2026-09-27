@@ -1,5 +1,6 @@
 export default {
   broadcast: {
+    stopAllShort: "Stop all",
     toggle: "Compare backends",
     title: "Compare backends",
     eligibleCount: "Send to {count} compatible backends",
@@ -32,6 +33,10 @@ export default {
     },
   },
   common: {
+    done: "Done",
+    search: "Search",
+    skillAuto: "Auto-match",
+    untitled: "Untitled task",
     appName: "Nucleagent Core",
     cancel: "Cancel",
     send: "Send",
@@ -113,6 +118,7 @@ export default {
     emptyHistory: "No conversations yet - start with a prompt",
   },
   conversation: {
+    more: "More",
     backToWorkbench: "Back to workbench",
     inputPlaceholder: "Keep typing - follow up or change direction...",
     send: "Send",
@@ -131,6 +137,13 @@ export default {
     followUpPlaceholder: "Continue the conversation...",
   },
   home: {
+    deskTitle: "What should the agent do today?",
+    deskLede: "Describe it — it plans, runs and delivers.",
+    recent: "Recent tasks",
+    composerShort: "Describe your task…",
+    needsYou: "Needs you",
+    runTitle: "This run",
+    runMore: "More: skills, mode, output format",
     greeting: "NucleAgent",
     title: "What will you <em>create</em> today?",
     subtitle: "NucleAgent is your AI work partner. Describe your needs and it will plan, execute, and deliver.",
@@ -207,6 +220,7 @@ export default {
     errApiKeyRequired: "API key is required when creating a provider",
   },
   creation: {
+    pick: "Pick a starting point",
     title: "Creation Studio",
     subtitle: "Choose a creation type - AI takes you from zero to one",
     types: {
@@ -218,6 +232,12 @@ export default {
     },
   },
   task: {
+    runSettings: "Run settings",
+    templateLabel: "Template",
+    whyDisabled: "Backend incompatible with the model · fix",
+    keptOnError: "Your input is kept.",
+    draftSaved: "Draft saved in this browser",
+    draftSavedShort: "Saved",
     title: "Create Task",
     subtitle: "Choose a template or customize - the Agent will plan and execute automatically",
     fillName: "Please enter a task name",

@@ -939,3 +939,132 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- below 1024px: board §13 (UNI-MOBILE-IMPL M3) ----------
+ * The process is one 52px line; opening it shows a bottom sheet (<= 85%)
+ * instead of expanding inline. The desktop <details> is the same element and
+ * the same processGroupItems data — only the placement changes. */
+.atc-process-scrim,
+.atc-process-sheet-head {
+  display: none;
+}
+
+.atc-narrow .atc-process-summary {
+  min-height: 52px;
+}
+
+.atc-narrow .atc-process-group[open] > .atc-process-scrim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.atc-narrow .atc-process-group[open] > .atc-process-group-content {
+  position: fixed;
+  z-index: 41;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  max-height: 85%;
+  margin: 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  border-radius: 28px 28px 0 0;
+  background: var(--atc-bg, #fff);
+  box-shadow: 0 -12px 48px rgba(15, 23, 42, 0.18);
+}
+
+.atc-narrow .atc-process-sheet-head {
+  display: grid;
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  margin: -8px -16px 4px;
+  padding: 8px 0 0;
+  background: inherit;
+  text-align: center;
+}
+
+.atc-narrow .atc-process-sheet-grab {
+  grid-column: 1 / -1;
+  width: 36px;
+  height: 5px;
+  margin: 0 auto 4px;
+  border-radius: 3px;
+  background: var(--atc-border, #cbd5e1);
+}
+
+.atc-narrow .atc-process-sheet-head b {
+  grid-column: 2;
+  font-size: 17px;
+}
+
+.atc-narrow .atc-process-sheet-close {
+  grid-column: 3;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+}
+
+.atc-narrow .atc-process-step-summary {
+  min-height: 44px;
+}
+
+/* Answers: 16px/1.6, full width, no bubble; wide content scrolls in its own box. */
+.atc-narrow .atc-assistant-item .atc-markdown {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.atc-narrow .atc-markdown pre,
+.atc-narrow .atc-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.atc-narrow .atc-markdown th,
+.atc-narrow .atc-markdown td {
+  white-space: nowrap;
+}
+
+.atc-narrow .atc-markdown pre:hover,
+.atc-narrow .atc-markdown table:hover {
+  mask-image: none;
+}
+
+.atc-narrow .atc-scroll-region {
+  overflow-x: hidden;
+}
+
+.atc-narrow .atc-composer-input {
+  font-size: 16px;
+}
+
+.atc-narrow .atc-attach-button,
+.atc-narrow .atc-send-button,
+.atc-narrow .atc-stop-button,
+.atc-narrow .atc-secondary-button,
+.atc-narrow .atc-action-button,
+.atc-narrow .atc-icon-action,
+.atc-narrow .atc-load-older,
+.atc-narrow .atc-jump-latest,
+.atc-narrow .atc-composer-attachment button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .atc-narrow .atc-process-group[open] > .atc-process-group-content {
+    background: var(--atc-bg, #131a2e);
+  }
+}

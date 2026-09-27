@@ -72,4 +72,10 @@ function submit(): void {
 }
 .cc-send:disabled { opacity: 0.45; cursor: default; }
 .cc-done { font-size: 12px; color: var(--text-tertiary); margin: 6px 0 0; }
+/* Below 1024px (board §13 ④): full-width 52px choices; 「其他回答」 is the bottom composer. */
+@media (max-width: 1023.98px) {
+  .cc-choices { flex-direction: column; }
+  .cc-ch { width: 100%; min-height: 52px; border-radius: var(--r-lg); font-size: 15px; text-align: left; padding: 0 16px; }
+  .cc-or, .cc-row { display: none; }
+}
 </style>

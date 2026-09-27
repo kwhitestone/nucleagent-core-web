@@ -55,6 +55,7 @@ import { executionTimingLabel, executionTimings } from "./executionTiming";
 import { executionPhaseLabel, isExecutionPhaseData } from "./executionPhasePresentation";
 import { useConversation } from "./useConversation";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { useNarrow } from "@/composables/useNarrow";
 
 defineOptions({ name: "TaskConversation" });
 
@@ -130,6 +131,8 @@ defineSlots<{
 
 const text = computed(() => resolveMessages(props.locale, props.messages));
 const composer = ref("");
+/** Phone layout below 1024px (board §13). */
+const narrow = useNarrow();
 const attachments = ref<ConversationAttachment[]>([]);
 const composerAttachmentChips = computed<MessageAttachment[]>(() =>
   attachments.value.map((attachment) => {
@@ -177,6 +180,7 @@ const runTimings = computed(() => executionTimings(
 
 const rootClasses = computed(() => [
   `atc-surface-${props.surface}`,
+  { "atc-narrow": narrow.value },
   `atc-theme-${props.theme}`,
   { "atc-is-detached": scrollMode.value === "detached" },
 ]);
@@ -365,6 +369,8 @@ const submit = async () => {
 };
 
 const onComposerKeydown = (event: KeyboardEvent) => {
+  // Phones: Return is a newline, sending is the button (board §11 ②).
+  if (narrow.value) return;
   if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
   void submit();
@@ -440,11 +446,13 @@ const processGroupFor = (
 const processGroupItems = (leaderId: string): ProcessGroupItems =>
   processGroupsByLeaderId.value.get(leaderId) ?? [];
 
+// Below 1024px the process stays one 52px line and opens as a sheet on tap
+// (board §13 ②), so the running group does not auto-expand inline there.
 const isProcessGroupExpanded = (leaderId: string): boolean =>
   resolveProcessExpanded(
     expandedProcessIds.value,
     processGroupDisclosureId(leaderId),
-    activeProcessGroupId.value ? processGroupDisclosureId(activeProcessGroupId.value) : undefined,
+    activeProcessGroupId.value && !narrow.value ? processGroupDisclosureId(activeProcessGroupId.value) : undefined,
     collapsedProcessIds.value,
   );
 
@@ -799,7 +807,13 @@ onBeforeUnmount(() => {
                   :data-agent-init-boundary="processGroupTiming(item.id)?.agentInitializationBoundary"
                 >{{ processGroupTimingText(item.id) }}</span>
               </summary>
-              <div class="atc-process-content atc-process-group-content">
+              <div v-if="narrow" class="atc-process-scrim" aria-hidden="true" @click="toggleProcessGroup(item.id)" />
+              <div class="atc-process-content atc-process-group-content" :role="narrow ? 'dialog' : undefined" :aria-label="narrow ? text.process : undefined">
+                <div v-if="narrow" class="atc-process-sheet-head">
+                  <span class="atc-process-sheet-grab" aria-hidden="true" />
+                  <b>{{ text.process }}</b>
+                  <button type="button" class="atc-process-sheet-close" :aria-label="text.close" @click="toggleProcessGroup(item.id)">×</button>
+                </div>
                 <component
                   v-for="processItem in processGroupItems(item.id)"
                   :id="`atc-item-${processItem.id}`"
@@ -1125,7 +1139,7 @@ onBeforeUnmount(() => {
           class="atc-composer-input"
           rows="1"
           :maxlength="MAX_MESSAGE_CONTENT_LENGTH * 2"
-          :placeholder="text.composerPlaceholder"
+          :placeholder="narrow ? text.composerPlaceholderShort : text.composerPlaceholder"
           :disabled="!capabilities.send || sending"
           @keydown="onComposerKeydown"
         />
@@ -1173,7 +1187,7 @@ onBeforeUnmount(() => {
               {{ text.rerun }}
             </button>
             <button
-              v-if="capabilities.stop && (controller.state.value.status === 'running' || hasActiveItem)"
+              v-if="capabilities.stop && (controller.state.value.status === 'running' || hasActiveItem) && !(narrow && composer.trim())"
               class="atc-stop-button"
               type="button"
               @click="controller.stop()"
@@ -1183,6 +1197,7 @@ onBeforeUnmount(() => {
               {{ text.stop }}
             </button>
             <button
+              v-if="!(narrow && capabilities.stop && (controller.state.value.status === 'running' || hasActiveItem) && !composer.trim())"
               class="atc-send-button"
               type="button"
               :disabled="!composer.trim() || sending || !capabilities.send || !canExecute"

@@ -12,6 +12,7 @@ import {
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
 import { toast } from "@/composables/useToast";
+import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
 
 const props = withDefaults(defineProps<{
   modelValue: string | null;
@@ -19,11 +20,14 @@ const props = withDefaults(defineProps<{
   compact?: boolean;
   autoSelect?: boolean;
   modelChoice?: ModelChoice | null;
-}>(), { disabled: false, compact: false, autoSelect: true });
+  /** Phones (board §12): list row + option sheet; an incompatible pick turns the row red with the reason. */
+  row?: boolean;
+}>(), { disabled: false, compact: false, autoSelect: true, row: false });
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   "validation-change": [value: ExecutionBackendCompatibility];
+  label: [value: string];
 }>();
 const { t } = useI18n();
 const options = ref<ExecutionBackendOption[]>([]);
@@ -58,6 +62,23 @@ function onChange(event: Event): void {
   const value = (event.target as HTMLSelectElement).value;
   if (value) emit("update:modelValue", value);
 }
+
+const sheetOpen = ref(false);
+const sheetOptions = computed<SheetOption[]>(() => options.value.map((item) => {
+  const reason = reasonLabel(compatibility(item).reason);
+  return {
+    value: item.id,
+    label: `${item.displayName}${item.default ? ` · ${t("common.default")}` : ""}`,
+    note: reason || undefined,
+    disabled: !compatibility(item).allowed,
+  };
+}));
+const selectedLabel = computed(() =>
+  options.value.find((item) => item.id === selected.value)?.displayName ?? (props.modelValue || "—"));
+watch(selectedLabel, (value) => emit("label", value), { immediate: true });
+const rowReason = computed(() => selectedCompatibility.value.allowed ? "" : reasonLabel(selectedCompatibility.value.reason));
+/** Parents open the sheet from their own "fix" link (board §12 ③). */
+defineExpose({ openSheet: () => { sheetOpen.value = true; } });
 
 async function loadOptions(warn = true): Promise<void> {
 	const request = requestGate.begin();
@@ -111,7 +132,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <label class="execution-backend-picker" :class="{ compact }">
+  <template v-if="row">
+    <button
+      type="button"
+      class="picker-row"
+      :class="{ invalid: !!rowReason }"
+      data-testid="row-backend"
+      :disabled="disabled || loading"
+      @click="sheetOpen = true"
+    >
+      <span class="picker-row-k">{{ t('common.executionBackend') }}</span>
+      <span class="picker-row-v">{{ selectedLabel }}<small v-if="rowReason">{{ rowReason }}</small></span>
+      <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+    </button>
+    <OptionSheet
+      :open="sheetOpen"
+      :title="t('common.executionBackend')"
+      :options="sheetOptions"
+      :model-value="selected"
+      @update:model-value="(v) => v && emit('update:modelValue', String(v))"
+      @close="sheetOpen = false"
+    />
+  </template>
+  <label v-else class="execution-backend-picker" :class="{ compact }">
     <span v-if="!compact" class="execution-backend-picker-label">{{ t('common.executionBackend') }}</span>
     <select
       class="execution-backend-picker-select"

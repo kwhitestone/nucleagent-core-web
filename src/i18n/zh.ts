@@ -1,5 +1,6 @@
 export default {
   broadcast: {
+    stopAllShort: "全部停止",
     toggle: "多后端对比",
     title: "多后端对比",
     eligibleCount: "将发送到 {count} 个兼容后端",
@@ -32,6 +33,10 @@ export default {
     },
   },
   common: {
+    done: "完成",
+    search: "搜索",
+    skillAuto: "自动匹配",
+    untitled: "未命名任务",
     appName: "Nucleagent Core",
     cancel: "取消",
     send: "发送",
@@ -113,6 +118,7 @@ export default {
     emptyHistory: "还没有对话，从一次输入开始吧",
   },
   conversation: {
+    more: "更多",
     backToWorkbench: "返回工作台",
     inputPlaceholder: "继续输入，追问或调整方向...",
     send: "发送",
@@ -131,6 +137,13 @@ export default {
     followUpPlaceholder: "继续对话...",
   },
   home: {
+    deskTitle: "今天想让 Agent 做什么？",
+    deskLede: "描述任务，它来规划、执行、交付。",
+    recent: "最近任务",
+    composerShort: "描述你的任务…",
+    needsYou: "待你确认",
+    runTitle: "本次执行",
+    runMore: "更多设置：技能、执行模式、输出格式",
     greeting: "NucleAgent",
     title: "今天想<em>创造</em>什么？",
     subtitle: "NucleAgent 是你的 AI 工作伙伴。描述你的需求，它来规划、执行、交付。",
@@ -207,6 +220,7 @@ export default {
     errApiKeyRequired: "新建时必须填写 API 密钥",
   },
   creation: {
+    pick: "选一个开始",
     title: "创作工坊",
     subtitle: "选择创作类型，AI 帮你从零到一",
     types: {
@@ -218,6 +232,12 @@ export default {
     },
   },
   task: {
+    runSettings: "执行设置",
+    templateLabel: "模板",
+    whyDisabled: "执行后端与所选模型不兼容 · 去修改",
+    keptOnError: "内容已保留。",
+    draftSaved: "草稿已保存在本浏览器",
+    draftSavedShort: "已保存",
     title: "创建任务",
     subtitle: "选择模板或自定义任务，Agent 会自动规划执行",
     fillName: "请填写任务名称",

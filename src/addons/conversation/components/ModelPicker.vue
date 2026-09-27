@@ -9,7 +9,7 @@
  * value 编码成 "{providerId}:{model}"：**光有模型名不足以定位 provider** ——
  * 后端 llmproxy 按 providerId 查库解密 API key，同名模型可能挂在不同 provider 下。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   fetchVisibleModels,
@@ -21,6 +21,7 @@ import { toast } from "@/composables/useToast";
 import type { ModelChoice } from "@/addons/conversation/api/types";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
+import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -31,11 +32,17 @@ const props = withDefaults(
     allowDefault?: boolean;
     /** 紧凑态：Home 的图标行空间紧张，不显示 label 文字。 */
     compact?: boolean;
+    /** Phones (board §12): a 52px list row that opens an option sheet instead of a <select>. */
+    row?: boolean;
   }>(),
-  { disabled: false, allowDefault: true, compact: false },
+  { disabled: false, allowDefault: true, compact: false, row: false },
 );
 
-const emit = defineEmits<{ "update:modelValue": [value: ModelChoice | null] }>();
+const emit = defineEmits<{
+  "update:modelValue": [value: ModelChoice | null];
+  /** Row mode: the display name of the current choice, for a parent's summary pill. */
+  label: [value: string];
+}>();
 
 const { t } = useI18n();
 const providers = ref<Provider[]>([]);
@@ -91,8 +98,31 @@ const selectedAvailable = computed(() => {
   );
 });
 
+/** The same options as the <select>, flattened for the phone sheet. */
+const sheetOptions = computed<SheetOption[]>(() => {
+  const out: SheetOption[] = [];
+  if (props.allowDefault || !props.modelValue) out.push({ value: "", label: t("common.modelDefault") });
+  if (visibleOptions.value.length) {
+    for (const m of visibleOptions.value) out.push({ value: `${m.configId}:${m.targetModel}`, label: m.alias || m.model });
+  } else {
+    for (const p of usable.value) for (const m of modelsOf(p)) out.push({ value: `${p.id}:${m}`, label: m, note: p.name });
+  }
+  return out;
+});
+const selectedLabel = computed(() =>
+  sheetOptions.value.find((o) => o.value === selected.value)?.label ??
+  (props.modelValue ? props.modelValue.model : t("common.modelDefault")));
+watch(selectedLabel, (value) => emit("label", value), { immediate: true });
+const sheetOpen = ref(false);
+function onSheetPick(value: string | string[]): void {
+  onValue(String(value));
+}
+
 function onChange(event: Event): void {
-  const raw = (event.target as HTMLSelectElement).value;
+  onValue((event.target as HTMLSelectElement).value);
+}
+
+function onValue(raw: string): void {
   if (!raw) {
     emit("update:modelValue", null);
     return;
@@ -152,7 +182,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <label class="model-picker" :class="{ compact }">
+  <template v-if="row">
+    <button type="button" class="picker-row" data-testid="row-model" :disabled="disabled || loading" @click="sheetOpen = true">
+      <span class="picker-row-k">{{ t('common.model') }}</span>
+      <span class="picker-row-v">{{ selectedLabel }}</span>
+      <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+    </button>
+    <OptionSheet :open="sheetOpen" :title="t('common.model')" :options="sheetOptions" :model-value="selected" @update:model-value="onSheetPick" @close="sheetOpen = false" />
+  </template>
+  <label v-else class="model-picker" :class="{ compact }">
     <span v-if="!compact" class="model-picker-label">{{ t('common.model') }}</span>
     <select
       class="model-picker-select"

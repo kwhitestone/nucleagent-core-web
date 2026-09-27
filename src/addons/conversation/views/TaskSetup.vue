@@ -10,8 +10,8 @@
  * 启动任务走 POST /conversation，执行模式/输出格式暂存 metadata 字段
  * （后端暂未持久化，预留给未来字段），不阻塞流程。
  */
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { listAgentTemplates } from "@/addons/conversation/api/agent";
@@ -22,6 +22,9 @@ import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vu
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import SkillPicker from "@/addons/conversation/components/SkillPicker.vue";
+import OptionSheet from "@/addons/conversation/components/OptionSheet.vue";
+import { useNarrow } from "@/composables/useNarrow";
+import { clearDraft, readDraft, saveDraft, type TaskDraft } from "@/addons/conversation/composables/taskDraft";
 import type {
   AgentTemplate,
   ConversationMode,
@@ -30,7 +33,9 @@ import type {
 } from "@/addons/conversation/api/types";
 
 const router = useRouter();
+const route = useRoute();
 const store = useConversationStore();
+const narrow = useNarrow();
 const { t } = useI18n();
 
 interface TaskTemplate {
@@ -74,7 +79,22 @@ function templateToTask(tpl: AgentTemplate, index: number): TaskTemplate {
   };
 }
 
+/**
+ * Q4: Creation hands over ?template=<name> (prefilled form); the Chat home's
+ * 「更多设置」 hands over ?input=<text>. A saved draft (Q5, desktop) wins over
+ * neither: an explicit hand-over is the newer intent.
+ */
+function applyEntry(): void {
+  const name = typeof route.query.template === "string" ? route.query.template : "";
+  const index = name ? templates.value.findIndex((tpl) => tpl.name === name) : -1;
+  if (index >= 0) selectTemplate(index);
+  const input = typeof route.query.input === "string" ? route.query.input : "";
+  if (input) form.desc = input;
+}
+
 onMounted(async () => {
+  const draft = !route.query.template && !route.query.input ? readDraft(localStorage) : null;
+  applyEntry(); // before the template request too, so the handed-over text never flickers
   try {
     const tpls = await listAgentTemplates();
     if (tpls.length > 0) {
@@ -85,6 +105,8 @@ onMounted(async () => {
   } catch (e) {
     console.warn("[TaskSetup] agent/templates 接口不可用，降级到前端常量", e);
   }
+  applyEntry();
+  if (draft) restoreDraft(draft);
 });
 
 const selected = ref(0);
@@ -136,18 +158,57 @@ const outputFormatOptions = computed(() => [
 ]);
 
 const submitting = ref(false);
+/** Board §12 ⑤: the error sits right above the button (not a toast), input kept. */
+const launchError = ref("");
+const nameError = ref(false);
+const nameInput = ref<HTMLInputElement | null>(null);
+const descInput = ref<HTMLTextAreaElement | null>(null);
+const backendPicker = ref<{ openSheet: () => void } | null>(null);
+const sheet = ref<"" | "execMode" | "outputFormat">("");
+const optionLabel = (options: { value: string; label: string }[], value: string) =>
+  options.find((o) => o.value === value)?.label ?? value;
+
+// --- Q5: 保存草稿 (desktop). Local, one draft per browser; launching clears it. ---
+const draftSaved = ref(false);
+function currentDraft(): TaskDraft {
+  return { ...form, templateName: templates.value[selected.value]?.name ?? "", skillIds: [...skillIds.value] };
+}
+function onSaveDraft(): void {
+  saveDraft(localStorage, currentDraft());
+  void nextTick(() => { draftSaved.value = true; });
+  toast.success(t("task.draftSaved"));
+}
+function restoreDraft(draft: TaskDraft): void {
+  const index = templates.value.findIndex((tpl) => tpl.name === draft.templateName);
+  if (index >= 0) selected.value = index;
+  Object.assign(form, { name: draft.name, desc: draft.desc, execMode: draft.execMode, outputFormat: draft.outputFormat });
+  skillIds.value = draft.skillIds;
+  void nextTick(() => { draftSaved.value = true; });
+}
+watch(form, () => { draftSaved.value = false; });
 
 async function launch(): Promise<void> {
   if (submitting.value) return;
+  launchError.value = "";
   if (!backendCompatible.value) {
-    toast.warning(t("common.executionBackendSelectionInvalid"));
+    if (narrow.value) backendPicker.value?.openSheet();
+    else toast.warning(t("common.executionBackendSelectionInvalid"));
     return;
   }
   const name = form.name.trim();
   if (!name) {
-    toast.warning(t("task.fillName"));
+    if (narrow.value) {
+      // Not greyed out: scroll to the field, focus it, error line above it (board §12 ③).
+      nameError.value = true;
+      await nextTick();
+      nameInput.value?.scrollIntoView({ block: "center" });
+      nameInput.value?.focus();
+    } else {
+      toast.warning(t("task.fillName"));
+    }
     return;
   }
+  nameError.value = false;
   submitting.value = true;
   try {
     // 执行模式/输出格式暂存 metadata（后端暂未持久化，预留给未来字段）。
@@ -169,9 +230,13 @@ async function launch(): Promise<void> {
       // 没选技能时必须整个字段缺省，不能传空数组：后端据此决定是否走自动匹配。
       skillIds: skillIds.value.length > 0 ? skillIds.value : undefined,
     });
-    router.push(`/c/${created.id}`);
+    clearDraft(localStorage);
+    // replace: Back from the conversation returns to the task desk, not the form (board §12 ⑤).
+    await (narrow.value ? router.replace(`/c/${created.id}`) : router.push(`/c/${created.id}`));
   } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : t("task.launchFailed"));
+    const message = error instanceof ApiError ? error.message : t("task.launchFailed");
+    if (narrow.value) launchError.value = `${message} ${t("task.keptOnError")}`;
+    else toast.error(message);
   } finally {
     submitting.value = false;
   }
@@ -180,7 +245,122 @@ async function launch(): Promise<void> {
 
 <template>
   <div class="view active">
-    <div class="task-setup-view">
+    <!-- Below 1024px (board §12): one page, written fields as big inputs, chosen
+         fields as list rows → option sheets, 启动任务 pinned at the bottom. -->
+    <div v-if="narrow" class="task-m" data-testid="task-mobile" :class="{ busy: submitting }">
+      <div class="task-m-scroll">
+        <div class="task-m-chips" role="listbox" :aria-label="t('task.templateLabel')">
+          <button
+            v-for="(tpl, i) in templates"
+            :key="i"
+            type="button"
+            role="option"
+            class="task-m-chip"
+            :aria-selected="selected === i"
+            :disabled="submitting"
+            @click="selectTemplate(i)"
+          >{{ tpl.name }}</button>
+        </div>
+
+        <label class="task-m-field">
+          <span class="task-m-label">{{ t('task.form.nameLabel') }}</span>
+          <span v-if="nameError" class="task-m-err" role="alert">{{ t('task.fillName') }}</span>
+          <input
+            ref="nameInput"
+            v-model="form.name"
+            type="text"
+            enterkeyhint="next"
+            data-testid="task-name"
+            :placeholder="t('task.form.namePlaceholder')"
+            :readonly="submitting"
+            @input="nameError = false"
+            @keydown.enter.prevent="descInput?.focus()"
+          />
+        </label>
+        <label class="task-m-field">
+          <span class="task-m-label">{{ t('task.form.descLabel') }}</span>
+          <textarea
+            ref="descInput"
+            v-model="form.desc"
+            data-testid="task-desc"
+            :placeholder="t('task.form.descPlaceholder')"
+            :readonly="submitting"
+          />
+        </label>
+
+        <p class="task-m-glabel">{{ t('task.runSettings') }}</p>
+        <div class="picker-group">
+          <ModelPicker v-model="modelChoice" :disabled="submitting" row />
+          <ExecutionBackendPicker
+            ref="backendPicker"
+            v-model="executionBackend"
+            :model-choice="modelChoice"
+            :disabled="submitting"
+            row
+            @validation-change="(value) => (backendCompatible = value.allowed)"
+          />
+          <SkillPicker v-model="skillIds" :disabled="submitting" row />
+          <button type="button" class="picker-row" data-testid="row-exec-mode" :disabled="submitting" @click="sheet = 'execMode'">
+            <span class="picker-row-k">{{ t('task.form.execModeLabel') }}</span>
+            <span class="picker-row-v">{{ optionLabel(execModeOptions, form.execMode) }}</span>
+            <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+          </button>
+          <button type="button" class="picker-row" data-testid="row-output-format" :disabled="submitting" @click="sheet = 'outputFormat'">
+            <span class="picker-row-k">{{ t('task.form.outputFormatLabel') }}</span>
+            <span class="picker-row-v">{{ optionLabel(outputFormatOptions, form.outputFormat) }}</span>
+            <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+          </button>
+        </div>
+
+        <p class="task-m-glabel">{{ t('common.attachment') }}</p>
+        <div class="picker-group task-m-attach">
+          <AttachmentChips
+            v-if="attachments.length"
+            :attachments="attachments"
+            removable
+            @remove="(id: string) => (attachments = attachments.filter((a) => a.fileId !== id))"
+          />
+          <AttachmentPicker v-model="attachments" :disabled="submitting" show-label />
+        </div>
+      </div>
+
+      <div class="task-m-bar">
+        <p v-if="launchError" class="task-m-err" role="alert">
+          {{ launchError }}
+          <button type="button" @click="launch">{{ t('common.retry') }}</button>
+        </p>
+        <button
+          class="task-m-launch"
+          type="button"
+          data-testid="task-launch"
+          :disabled="submitting || !backendCompatible"
+          :aria-busy="submitting"
+          @click="launch"
+        >{{ submitting ? t('task.launching') : t('task.launch') }}</button>
+        <button v-if="!backendCompatible && !submitting" type="button" class="task-m-why" @click="backendPicker?.openSheet()">
+          {{ t('task.whyDisabled') }}
+        </button>
+      </div>
+
+      <OptionSheet
+        :open="sheet === 'execMode'"
+        :title="t('task.form.execModeLabel')"
+        :options="execModeOptions"
+        :model-value="form.execMode"
+        @update:model-value="(v) => (form.execMode = String(v))"
+        @close="sheet = ''"
+      />
+      <OptionSheet
+        :open="sheet === 'outputFormat'"
+        :title="t('task.form.outputFormatLabel')"
+        :options="outputFormatOptions"
+        :model-value="form.outputFormat"
+        @update:model-value="(v) => (form.outputFormat = String(v))"
+        @close="sheet = ''"
+      />
+    </div>
+
+    <div v-else class="task-setup-view">
       <div class="task-setup-header">
         <h2>{{ t('task.title') }}</h2>
         <p>{{ t('task.subtitle') }}</p>
@@ -259,7 +439,10 @@ async function launch(): Promise<void> {
         </div>
 
         <div class="form-actions">
-          <button class="btn btn-secondary" type="button">{{ t('task.saveDraft') }}</button>
+          <!-- Q5: the desktop button had no handler; it now saves a local draft. -->
+          <button class="btn btn-secondary" type="button" data-testid="task-save-draft" :disabled="submitting" @click="onSaveDraft">
+            {{ draftSaved ? t('task.draftSavedShort') : t('task.saveDraft') }}
+          </button>
           <button class="btn btn-primary" type="button" :disabled="submitting || !backendCompatible" @click="launch">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
             <span>{{ submitting ? t('task.launching') : t('task.launch') }}</span>
@@ -382,4 +565,48 @@ async function launch(): Promise<void> {
 
 .btn svg { width: 16px; height: 16px; position: relative; z-index: 1; }
 .btn span { position: relative; z-index: 1; }
+
+/* ---- below 1024px (board §12) ---- */
+.task-m { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
+.task-m-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.task-m-scroll > * { flex-shrink: 0; }
+.task-m.busy .task-m-scroll { opacity: 0.55; }
+.task-m-chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.task-m-chip {
+  flex: none; min-height: 44px; padding: 0 16px; border: 1px solid var(--border); border-radius: var(--r-full);
+  background: var(--bg-card); color: var(--text-secondary); font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.task-m-chip[aria-selected="true"] { border-color: var(--teal-500); color: var(--teal-700); background: var(--teal-50); }
+.task-m-field { display: grid; gap: 6px; }
+.task-m-label, .task-m-glabel { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.task-m-glabel { margin: 8px 0 -4px; }
+.task-m-field input, .task-m-field textarea {
+  width: 100%; border: 1.5px solid var(--border); border-radius: var(--r-md); background: var(--bg-card);
+  color: var(--text-primary); font: inherit; font-size: 16px; outline: none;
+}
+.task-m-field input { height: 52px; padding: 0 14px; }
+.task-m-field textarea { min-height: 120px; max-height: 50vh; padding: 12px 14px; line-height: 1.5; resize: none; field-sizing: content; }
+.task-m-field input:focus, .task-m-field textarea:focus { border-color: var(--teal-400); }
+.task-m-err { margin: 0; font-size: 13.5px; color: #be123c; }
+.task-m-err button { min-height: 44px; min-width: 44px; margin-left: 4px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; }
+.task-m-attach { padding: 4px 8px; display: grid; gap: 4px; }
+.task-m-attach .attachment-btn { min-height: 44px; min-width: 44px; font-size: 15px; }
+.task-m-bar {
+  flex: none; display: grid; gap: 6px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border); background: var(--bg-card);
+}
+.task-m-launch {
+  width: 100%; height: 52px; border: 0; border-radius: var(--r-lg);
+  background: var(--teal-700) var(--grad-teal-indigo); color: #fff; font: inherit; font-size: 16px; font-weight: 700;
+}
+.task-m-launch:disabled { opacity: 0.5; }
+.task-m-why {
+  min-height: 44px; border: 0; background: transparent; font: inherit; font-size: 13px;
+  color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); text-decoration: underline; text-underline-offset: 3px;
+}
+@media (prefers-color-scheme: dark) {
+  .task-m-chip[aria-selected="true"] { color: var(--teal-300); background: rgba(20, 184, 166, 0.14); }
+  .task-m-err { color: var(--rose-400); }
+  .task-m-why { color: var(--amber-400); }
+}
 </style>
