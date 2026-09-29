@@ -44,7 +44,8 @@ ARG CORE_UPSTREAM=http://localhost:26680
 ENV CORE_UPSTREAM=${CORE_UPSTREAM} \
     SHELL_ORIGIN=${VITE_SHELL_URL}
 
-COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
+# Only our validated runtime hook renders this template.
+COPY nginx.conf.template /etc/nginx/runtime.conf.template
 COPY docker-entrypoint.d/40-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 COPY --from=web-build /build/dist/ /usr/share/nginx/html/
 RUN chmod 0555 /docker-entrypoint.d/40-runtime-config.sh

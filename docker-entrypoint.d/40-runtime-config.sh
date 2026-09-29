@@ -46,5 +46,5 @@ export CORE_UPSTREAM FRAME_ANCESTORS
 # Substitute only our own placeholders — nginx's own $uri, $proxy_host and
 # $http_authorization must survive into the generated config untouched.
 envsubst '${CORE_UPSTREAM} ${FRAME_ANCESTORS}' \
-    < /etc/nginx/templates/nginx.conf.template \
+    < /etc/nginx/runtime.conf.template \
     > /etc/nginx/conf.d/default.conf
