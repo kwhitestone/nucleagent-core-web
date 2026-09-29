@@ -1,6 +1,7 @@
 ## Public Maintenance Rules
 
-Before editing, read the [canonical maintenance rules](../nucleagent-docs/docs/nucleagent/09-workspace-frontend-maintenance.md)
+<!-- Absolute path on purpose: a ../nucleagent-docs link resolves against the checkout dir, so from a worktree (wt/<name>) it points at a nonexistent wt/nucleagent-docs. -->
+Before editing, read the [canonical maintenance rules](/home/workspace/nucleagent-workspace/nucleagent-docs/docs/nucleagent/09-workspace-frontend-maintenance.md)
 and this repository's existing rules. Report the paths actually read.
 The canonical guide owns product/adapter boundaries, credential prohibitions,
 working-tree and commit/history scans, deployment regression, and explicit Agent handoff.
