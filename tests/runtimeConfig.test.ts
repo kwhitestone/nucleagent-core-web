@@ -12,7 +12,7 @@ function render(overrides: Record<string, string>) {
   try {
     writeFileSync(template, readFileSync(new URL("../nginx.conf.template", import.meta.url)));
     const script = readFileSync(new URL("../docker-entrypoint.d/40-runtime-config.sh", import.meta.url), "utf8")
-      .replace("/etc/nginx/templates/nginx.conf.template", template)
+      .replace("/etc/nginx/runtime.conf.template", template)
       .replace("/etc/nginx/conf.d/default.conf", output);
     const result = spawnSync("sh", ["-c", script], {
       encoding: "utf8",
@@ -25,6 +25,12 @@ function render(overrides: Record<string, string>) {
     rmSync(directory, { recursive: true, force: true });
   }
 }
+
+test("custom template is outside the base image automatic envsubst directory", () => {
+  const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
+  assert.match(dockerfile, /^COPY nginx\.conf\.template \/etc\/nginx\/runtime\.conf\.template$/m);
+  assert.doesNotMatch(dockerfile, /^COPY .* \/etc\/nginx\/templates\//m);
+});
 
 test("runtime CSP defaults to the shell and preserves nginx variables", () => {
   const result = render({});
