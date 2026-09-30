@@ -454,3 +454,21 @@ a:hover {
   width: 18px;
   height: 18px;
 }
+
+/* UNI-MOBILE-IMPL (board §12): list rows shared by the pickers' `row` mode and
+   TaskSetup's own rows. 52px, label left, value right, chevron. */
+.picker-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 12px 8px 16px;
+  border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+}
+.picker-row + .picker-row, .picker-group > * + * { border-top: 1px solid var(--border); }
+.picker-row-k { flex: none; color: var(--text-secondary); }
+.picker-row-v { margin-left: auto; min-width: 0; display: grid; justify-items: end; text-align: right; overflow: hidden; }
+.picker-row-v, .picker-row-v small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.picker-row-v small { font-size: 12.5px; }
+.picker-row.invalid .picker-row-v small { color: #be123c; white-space: normal; }
+.picker-row.invalid { box-shadow: inset 3px 0 0 #be123c; }
+.picker-row-chev { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--text-tertiary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.picker-row[disabled] { opacity: 0.6; cursor: default; }
+.picker-row:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; }
+.picker-group { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }

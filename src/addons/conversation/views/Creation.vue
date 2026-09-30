@@ -23,6 +23,8 @@ interface CreationCard {
   title: string;
   desc: string;
   prompt: string;
+  /** Server template name, when the card came from GET agent/templates. */
+  template?: string;
 }
 
 /** category -> color 映射；未知 category 按 index 轮转五色。 */
@@ -68,6 +70,7 @@ function templateToCard(tpl: AgentTemplate, index: number): CreationCard {
     title: tpl.name,
     desc: (cfg.personality as string) || (cfg.role as string) || "",
     prompt: `${tpl.name}：`,
+    template: tpl.name,
   };
 }
 
@@ -82,11 +85,15 @@ onMounted(async () => {
   }
 });
 
+/**
+ * Q4 (user ruling 2026-09-27): a template opens the task form prefilled.
+ * Server templates are matched by name there; the built-in fallback cards have
+ * no task template, so they carry their prompt as the description instead.
+ */
 function pick(c: CreationCard): void {
-  // 跳回首页并把类型预填进 composer。首页通过 query 携带预填文本。
-  // 路由名是 "chat"（见 router/index.ts）—— 此前写的 "home" 并不存在，
-  // vue-router 对未知 name 直接抛错，导致这五张卡片点了全都没反应。
-  router.push({ name: "chat", query: { prefill: c.prompt } });
+  router.push(c.template
+    ? { name: "tasks", query: { template: c.template } }
+    : { name: "tasks", query: { input: c.prompt } });
 }
 </script>
 
@@ -96,13 +103,16 @@ function pick(c: CreationCard): void {
       <div class="creation-header">
         <h2>{{ t('creation.title') }}</h2>
         <p>{{ t('creation.subtitle') }}</p>
+        <p class="creation-pick">{{ t('creation.pick') }}</p>
       </div>
       <div class="creation-grid">
-        <div
-          v-for="c in cards"
-          :key="c.color"
+        <button
+          v-for="(c, i) in cards"
+          :key="`${c.color}-${i}`"
+          type="button"
           class="creation-card"
           :data-color="c.color"
+          data-testid="creation-card"
           @click="pick(c)"
         >
           <div class="card-icon">
@@ -117,7 +127,7 @@ function pick(c: CreationCard): void {
           <div class="card-arrow">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
           </div>
-        </div>
+        </button>
       </div>
     </div>
   </div>
@@ -145,6 +155,8 @@ function pick(c: CreationCard): void {
 }
 
 .creation-card {
+  /* <button> reset: keep the original card look. */
+  display: block; width: 100%; font: inherit; text-align: left; color: inherit;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border); border-radius: var(--r-lg);
@@ -219,4 +231,35 @@ function pick(c: CreationCard): void {
 .creation-card[data-color="music"]::before { background: var(--grad-violet-fuchsia); }
 .creation-card[data-color="music"]::after { background: var(--grad-violet-fuchsia); }
 .creation-card[data-color="music"] .card-icon { background: #ede9fe; color: #7c3aed; }
+.creation-pick { display: none; }
+
+/* ---- below 1024px (board §11 ④): one column of 68px rows; no gradient title,
+   top stripe, hover tilt or blur. The 36px tinted icon stays (template type). ---- */
+@media (max-width: 1023.98px) {
+  .creation-view { padding: 12px 16px 24px; }
+  .creation-header { margin-bottom: 8px; animation: none; }
+  .creation-header h2, .creation-header p:not(.creation-pick) { display: none; }
+  .creation-pick { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .creation-grid {
+    display: flex; flex-direction: column; gap: 0; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden;
+  }
+  .creation-card {
+    display: grid; grid-template-columns: 36px minmax(0, 1fr) 16px; column-gap: 12px; align-items: center;
+    min-height: 68px; padding: 10px 12px 10px 16px; border: 0; border-radius: 0;
+    background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; animation: none;
+  }
+  .creation-card + .creation-card { border-top: 1px solid var(--border); }
+  .creation-card::before, .creation-card::after { display: none; }
+  .creation-card:hover { transform: none; box-shadow: none; }
+  .creation-card .card-icon { grid-row: span 2; width: 36px; height: 36px; margin: 0; }
+  .creation-card:hover .card-icon { transform: none; }
+  .creation-card .card-icon svg { width: 20px; height: 20px; }
+  .creation-card .card-title { margin: 0; font-size: 15px; }
+  .creation-card .card-desc { grid-column: 2; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .creation-card .card-arrow {
+    position: static; grid-column: 3; grid-row: 1 / span 2; width: 16px; height: 16px;
+    background: transparent; opacity: 1; transform: none;
+  }
+}
 </style>

@@ -113,6 +113,22 @@ async function select(id: number): Promise<void> {
   void refreshCurrent();
 }
 
+/** Swipe left/right on the transcript switches backend (board §14); vertical drags scroll. */
+let swipe: { x: number; y: number } | null = null;
+function onSwipeStart(event: TouchEvent): void {
+  swipe = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+}
+function onSwipeEnd(event: TouchEvent): void {
+  if (!swipe || siblings.value.length < 2) return;
+  const dx = event.changedTouches[0].clientX - swipe.x;
+  const dy = event.changedTouches[0].clientY - swipe.y;
+  swipe = null;
+  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const index = siblings.value.findIndex((member) => member.id === activeId.value);
+  const next = siblings.value[(index + (dx < 0 ? 1 : -1) + siblings.value.length) % siblings.value.length];
+  void select(next.id);
+}
+
 function tabKey(event: KeyboardEvent, index: number): void {
   const count = siblings.value.length;
   const next = event.key === "ArrowRight" ? (index + 1) % count :
@@ -159,7 +175,8 @@ async function stopAll(): Promise<void> {
           <p>{{ t('broadcast.followUpHint') }}</p>
         </div>
         <button v-if="busyCount" class="broadcast-stop" type="button" :disabled="cancelling" @click="stopAll">
-          {{ t('broadcast.stopAll', { count: busyCount }) }}
+          <span class="broadcast-stop-long">{{ t('broadcast.stopAll', { count: busyCount }) }}</span>
+          <span class="broadcast-stop-short">{{ t('broadcast.stopAllShort') }}</span>
         </button>
       </header>
       <div v-if="notices.length" class="broadcast-notices" role="status">
@@ -191,7 +208,7 @@ async function stopAll(): Promise<void> {
           <small>{{ t(`broadcast.status.${member.status}`) }}</small>
         </button>
       </div>
-      <div v-if="adapter && activeId !== null" id="broadcast-panel" class="broadcast-panel" role="tabpanel" :aria-labelledby="`backend-tab-${activeId}`">
+      <div v-if="adapter && activeId !== null" id="broadcast-panel" class="broadcast-panel" role="tabpanel" @touchstart.passive="onSwipeStart" @touchend="onSwipeEnd" :aria-labelledby="`backend-tab-${activeId}`">
         <TaskConversation
           :conversation-key="String(activeId)" :adapter="adapter"
           :capabilities="{ send: !loading && !cancelling, stop: true, attachments: true }"
@@ -228,4 +245,19 @@ async function stopAll(): Promise<void> {
 .broadcast-notices ul { margin: 4px 0 0; padding-left: 18px; }
 .broadcast-error button { border: 0; background: transparent; color: var(--indigo-600); cursor: pointer; }
 .broadcast-composer-hint { color: var(--text-tertiary); font-size: 12px; }
+.broadcast-stop-short { display: none; }
+/* ---- below 1024px (board §14): compact header, 44px pill tabs, the hint moves out ---- */
+@media (max-width: 1023.98px) {
+  .broadcast-header { padding: 6px 4px 4px 16px; min-height: 52px; }
+  .broadcast-header p { display: none; }
+  .broadcast-stop { min-height: 44px; padding: 0 12px; border: 0; background: transparent; font-weight: 650; }
+  .broadcast-stop-long { display: none; }
+  .broadcast-stop-short { display: inline; }
+  .broadcast-tabs { gap: 8px; padding: 6px 16px 10px; scrollbar-width: none; }
+  .broadcast-tabs button { min-height: 44px; padding: 0 14px; border-radius: var(--r-full); font-size: 14px; }
+  .broadcast-tabs button[aria-selected="true"] { border-color: var(--text-primary); color: var(--bg-card); background: var(--text-primary); }
+  .broadcast-tabs button[aria-selected="true"] small { color: inherit; opacity: 0.8; }
+  .broadcast-status-dot { width: 8px; height: 8px; }
+  .broadcast-notices { font-size: 13px; }
+}
 </style>

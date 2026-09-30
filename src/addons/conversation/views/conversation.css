@@ -59,7 +59,7 @@
   max-width: none;
 }
 .chat-view .atc-process-summary {
-  display: flex; align-items: flex-start; gap: 6px;
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px;
   padding: 8px 25px 8px 12px;
   font-size: 12px; color: var(--text-tertiary);
   background: transparent; border-radius: var(--r-md);
@@ -86,7 +86,9 @@
   white-space: normal; overflow-wrap: anywhere;
 }
 .chat-view .atc-process-preview {
-  min-width: 0; flex: 1 1 0;
+  /* 10em basis: when label + timer leave less room, the preview wraps to its
+     own row instead of shrinking to one letter per line (UNI-MOBILE-IMPL §10). */
+  min-width: 0; flex: 1 1 10em;
   color: var(--text-tertiary); overflow: visible;
   text-overflow: clip; white-space: normal; overflow-wrap: anywhere;
   font-weight: 400;
@@ -147,3 +149,36 @@
   box-shadow: var(--shadow-lg), 0 0 0 4px rgb(20 184 166 / 8%);
 }
 .chat-view .atc-composer-input { font-family: var(--font-body); }
+
+/* ---- below 1024px (board §13): name + status row, 「⋯」 for run settings (Q7) ---- */
+.chat-view--narrow { display: flex; flex-direction: column; }
+.chat-view--narrow > .atc-root, .chat-view--narrow > section { flex: 1; min-height: 0; }
+.conv-head {
+  flex: none; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 4px 4px 4px 16px;
+  border-bottom: 1px solid var(--border); background: var(--bg-card);
+}
+.conv-head-text { display: grid; min-width: 0; flex: 1; line-height: 1.3; }
+.conv-head-text strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-status { font-size: 12.5px; color: var(--text-secondary); }
+.conv-status[data-status="executing"] { color: var(--teal-700); }
+.conv-status[data-status="blocked"] { color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); font-weight: 650; }
+.conv-status[data-status="failed"] { color: #be123c; }
+.conv-more { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-secondary); }
+.conv-more svg { width: 20px; height: 20px; fill: currentColor; }
+.conv-more-actions { display: flex; gap: 8px; }
+.conv-more-actions button { flex: 1; min-height: 44px; }
+@media (prefers-color-scheme: dark) {
+  .conv-status[data-status="executing"] { color: var(--teal-300); }
+  .conv-status[data-status="blocked"] { color: var(--amber-400); }
+  .conv-status[data-status="failed"] { color: var(--rose-400); }
+}
+
+/* Board §13 ①: below 1024px the process is ONE 52px line — preview ellipsized,
+   never wrapped (every child keeps min-width:0, so the §10 bug stays fixed). */
+.chat-view .atc-narrow .atc-process-summary { flex-wrap: nowrap; align-items: center; min-height: 52px; }
+.chat-view .atc-narrow .atc-process-summary .atc-process-marker { margin-top: 0; }
+.chat-view .atc-narrow .atc-process-summary .atc-process-label { flex: none; }
+.chat-view .atc-narrow .atc-process-summary .atc-process-preview {
+  flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-view .atc-narrow .atc-process-summary .atc-process-elapsed { flex: none; }

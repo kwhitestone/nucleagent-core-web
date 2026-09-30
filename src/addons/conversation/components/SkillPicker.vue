@@ -21,14 +21,17 @@ import { toast } from "@/composables/useToast";
 import type { Skill } from "@/addons/conversation/api/types";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
+import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
 
 const props = withDefaults(
   defineProps<{
     /** 已选技能 ID（由父组件持有，本组件通过 v-model 更新）。 */
     modelValue: number[];
     disabled?: boolean;
+    /** Phones (board §12): list row (default 自动匹配) + searchable multi-select sheet. */
+    row?: boolean;
   }>(),
-  { disabled: false },
+  { disabled: false, row: false },
 );
 
 const emit = defineEmits<{ "update:modelValue": [value: number[]] }>();
@@ -65,6 +68,16 @@ const selectedSkills = computed(() =>
     .map((id) => skills.value.find((s) => s.id === id))
     .filter((s): s is Skill => s !== undefined),
 );
+
+const sheetOpen = ref(false);
+const sheetOptions = computed<SheetOption[]>(() =>
+  skills.value.map((s) => ({ value: String(s.id), label: displayName(s), note: describe(s) || undefined })));
+const rowValue = computed(() => selectedSkills.value.length
+  ? selectedSkills.value.map(displayName).join("、")
+  : t("common.skillAuto"));
+function onSheet(value: string | string[]): void {
+  if (!props.disabled) emit("update:modelValue", (Array.isArray(value) ? value : [value]).map(Number));
+}
 
 function isSelected(id: number): boolean {
   return props.modelValue.includes(id);
@@ -125,7 +138,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="skill-picker">
+  <template v-if="row">
+    <button type="button" class="picker-row" data-testid="row-skills" :disabled="disabled || loading" @click="sheetOpen = true">
+      <span class="picker-row-k">{{ t('common.skill') }}</span>
+      <span class="picker-row-v">{{ rowValue }}</span>
+      <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+    </button>
+    <OptionSheet
+      :open="sheetOpen"
+      :title="t('common.skill')"
+      :options="sheetOptions"
+      :model-value="modelValue.map(String)"
+      multiple
+      searchable
+      @update:model-value="onSheet"
+      @close="sheetOpen = false"
+    />
+  </template>
+  <div v-else class="skill-picker">
     <button
       class="skill-toggle"
       :class="{ active: modelValue.length > 0 }"

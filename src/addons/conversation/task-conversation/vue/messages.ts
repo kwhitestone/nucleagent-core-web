@@ -6,8 +6,10 @@ export const conversationMessages: Record<
 > = {
   "zh-CN": {
     composerPlaceholder: "输入消息，Enter 发送，Shift + Enter 换行",
+    composerPlaceholderShort: "追问或调整方向…",
     send: "发送",
     stop: "停止",
+    close: "关闭",
     retry: "重试",
     rerun: "重新执行",
     attach: "添加附件",
@@ -33,8 +35,10 @@ export const conversationMessages: Record<
   },
   "en-US": {
     composerPlaceholder: "Message, Enter to send, Shift + Enter for a new line",
+    composerPlaceholderShort: "Follow up or redirect…",
     send: "Send",
     stop: "Stop",
+    close: "Close",
     retry: "Retry",
     rerun: "Run again",
     attach: "Add attachment",

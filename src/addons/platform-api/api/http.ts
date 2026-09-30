@@ -6,6 +6,7 @@ import { shouldHandleUnauthorized } from "./authFailurePolicy";
 import { handleEmbeddedUnauthorized, isInShell, sessionRequestSignal } from "@/addons/platform-api/session/embeddedSession";
 import type { ApiErrorBody } from "./types";
 import { coreShellPath, redirectToShellLogin } from "../shellLogin";
+import { outerAware } from "@/outerHost";
 
 /**
  * Shared axios instance for the core backend (:26680).
@@ -20,7 +21,7 @@ import { coreShellPath, redirectToShellLogin } from "../shellLogin";
  *   credential. Stale/pre-auth responses cannot erase a newly synchronized
  *   iframe token.
  */
-const baseURL = import.meta.env.VITE_CORE_BACKEND_URL?.trim() || "";
+const baseURL = outerAware(import.meta.env.VITE_CORE_BACKEND_URL?.trim() || "");
 
 const http = axios.create({
   baseURL,
@@ -61,7 +62,7 @@ function redirectToAuth(reason: "missing" | "rejected"): void {
   }
   clearAccessToken();
   // Standalone: interstitial, then the shell's /login (this site has no login route).
-  const shellUrl = import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600";
+  const shellUrl = outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600");
   const shellPath = coreShellPath(window.location.pathname + window.location.search);
   // Lazy: i18n touches `document` at load, and this module is also loaded by SSR tests.
   void import("@/i18n").then(({ default: i18n }) => redirectToShellLogin(shellUrl, shellPath, {

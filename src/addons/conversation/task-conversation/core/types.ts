@@ -204,6 +204,10 @@ export interface ConversationCapabilities {
 }
 
 export interface ConversationMessages {
+  /** Phone placeholder (the desktop one names keys and clips at 320px). */
+  composerPlaceholderShort: string;
+  /** Closes the phone process sheet. */
+  close: string;
   composerPlaceholder: string;
   send: string;
   stop: string;
