@@ -261,7 +261,7 @@ const applyEvent = (
     if (comparison === "gap") return requestSnapshot(state, "event-gap");
   }
 
-  let next = withSeenEvent(state, event);
+  const next = withSeenEvent(state, event);
   switch (event.type) {
     case "item.upsert":
       return upsertItem(next, event.item, eventVersion(event));

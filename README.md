@@ -77,3 +77,16 @@ nginx 反代 /api/ → https://backend.example.test/api/，
 `src/router/index.ts` 在被 iframe 嵌入时（`window.parent !== window`）使用
 hash 路由，独立访问时使用 history 路由，两种模式的 base 都是 `/`：本应用部署在
 自己域名的根路径，不在主壳的子路径下。
+
+
+### Additional shell origins
+
+`VITE_SHELL_ALLOWED_ORIGINS` is a build-time comma-separated allowlist for
+embedded shell messages. Omitted or empty preserves `VITE_SHELL_URL` as the
+single trusted shell. The child binds replies to the verified parent origin;
+parent, protocol, app, instance and session validation still apply.
+
+At container start, `FRAME_ANCESTORS` accepts comma-separated exact HTTP(S)
+origins. Omitted preserves `SHELL_ORIGIN`; explicit empty or invalid entries
+fail startup. Preserve the existing production origin when adding clients,
+and rebuild the frontend when changing the message allowlist.
