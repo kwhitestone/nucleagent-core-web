@@ -136,7 +136,9 @@ export function installShellBridge(router: Router): () => void {
     );
     if (!target) return;
     const current = router.currentRoute.value;
-    const location = shellViewLocation(target);
+    const parsed = router.resolve(target);
+    const mapped = shellViewLocation(parsed.path);
+    const location = router.resolve({ ...mapped, query: { ...parsed.query, ...mapped.query }, hash: parsed.hash });
     // A shell selection echoes the active group member (as /c/:id or
     // /b/:groupId/:memberId). Preserve the group view and its live controller
     // when that member is already open.
@@ -145,7 +147,7 @@ export function installShellBridge(router: Router): () => void {
       if (target === `/c/${active}` ||
           (location.path === current.path && location.query?.conversationId === String(active))) return;
     }
-    if (current.path !== location.path || (location.query && current.query.conversationId !== location.query.conversationId)) {
+    if (current.fullPath !== location.fullPath) {
       void router.push(location);
     }
   }
