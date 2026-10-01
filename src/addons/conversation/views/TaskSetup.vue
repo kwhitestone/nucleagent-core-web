@@ -90,10 +90,14 @@ function applyEntry(): void {
   if (index >= 0) selectTemplate(index);
   const input = typeof route.query.input === "string" ? route.query.input : "";
   if (input) form.desc = input;
+  if (route.query.skillIds !== undefined) {
+    const values = [route.query.skillIds].flat().flatMap((value) => (value ?? "").split(","));
+    skillIds.value = [...new Set(values.filter((value) => /^\d+$/.test(value)).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  }
 }
 
 onMounted(async () => {
-  const draft = !route.query.template && !route.query.input ? readDraft(localStorage) : null;
+  const draft = !route.query.template && !route.query.input && route.query.skillIds === undefined ? readDraft(localStorage) : null;
   applyEntry(); // before the template request too, so the handed-over text never flickers
   try {
     const tpls = await listAgentTemplates();
