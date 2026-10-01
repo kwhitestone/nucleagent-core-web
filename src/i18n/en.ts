@@ -424,6 +424,10 @@ export default {
     },
   },
   agents: {
+    title: "My agents",
+    listHint: "Every agent an administrator publishes is yours to use; each one is a personal instance that keeps your memory.",
+    none: "No agents available yet.",
+    sessionsCount: "{n} sessions",
     persona: "Persona",
     noPersona: "This agent has no extra persona.",
     personaNewSessions: "Persona changes apply to new sessions.",

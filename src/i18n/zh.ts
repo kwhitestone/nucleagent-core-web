@@ -424,6 +424,10 @@ export default {
     },
   },
   agents: {
+    title: "我的智能体",
+    listHint: "管理员发布的智能体你都可以直接使用；每个智能体在你这里是一个独立实例，带着你的记忆。",
+    none: "还没有可用的智能体。",
+    sessionsCount: "{n} 个会话",
     persona: "人设",
     noPersona: "这个智能体没有额外人设。",
     personaNewSessions: "修改人设对新会话生效。",

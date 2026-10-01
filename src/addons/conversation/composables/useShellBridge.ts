@@ -10,7 +10,7 @@
  * 仅在被 iframe 嵌入时（window.parent !== window）生效；独立 dev 运行时是 no-op。
  * 消息由框架 Remote Application 通道校验后交给本 addon 处理。
  */
-import { watch } from "vue";
+import { ref, watch } from "vue";
 import type { Router } from "vue-router";
 import { createRemoteChildChannel } from "@prism-fusion/plugin-runtime/remote";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
@@ -25,6 +25,7 @@ import {
   getPlatformRuntime,
 } from "@/contracts/platform-runtime";
 import { outerAware } from "@/outerHost";
+import { listMyAgents, type MyAgent } from "../api/agent";
 
 const SHELL_ORIGIN = new URL(
   outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600"),
@@ -44,15 +45,26 @@ export function installShellBridge(router: Router): () => void {
   if (!isInShell()) return () => undefined;
 
   const store = useConversationStore();
+  // "My agents" ride the sidebar projection; the shell never queries Core itself.
+  const agents = ref<MyAgent[]>([]);
   // Reset is synchronous: late requests from the previous identity must not
   // repopulate the shared history after logout or account/credential changes.
-  const onSessionChange = () => store.reset();
+  const onSessionChange = () => {
+    store.reset();
+    agents.value = [];
+  };
   window.addEventListener(SESSION_CHANGE_EVENT, onSessionChange);
 
   async function loadHistory(more = false): Promise<void> {
     const runtime = getPlatformRuntime();
     const version = runtime.getSessionVersion();
     const token = runtime.getAccessToken();
+    if (!more) {
+      // Best effort and identity-checked: an older Core without /agent/mine just shows none.
+      void listMyAgents().then((list) => {
+        if (runtime.getAccessToken() === token && runtime.getSessionVersion() === version) agents.value = list;
+      }, () => undefined);
+    }
     try {
       if (more) await store.loadMore();
       else await store.load(true);
@@ -171,12 +183,15 @@ export function installShellBridge(router: Router): () => void {
         })),
         activeId,
         hasMore: store.hasMore,
+        agents: agents.value.map((a) => ({
+          templateId: a.templateId, name: a.name, disabled: a.disabled, lastSessionAt: a.lastSessionAt,
+        })),
     });
   }
 
   // core → 壳：对话列表变化时推。
   const stopConversations = watch(
-    () => store.sorted,
+    () => [store.sorted, agents.value],
     () => pushConversations(),
     { deep: true },
   );

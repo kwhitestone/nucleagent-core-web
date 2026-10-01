@@ -44,6 +44,12 @@ const conversation: PluginModule = {
       props: (route) => ({ groupId: route.params.groupId as string }),
     },
     {
+      path: "/agents",
+      name: "agent-list",
+      component: authenticatedRoute(() => import("./views/AgentList.vue")),
+      meta: { requiresAuth: true },
+    },
+    {
       path: "/agents/:templateId",
       name: "agent-instance",
       component: authenticatedRoute(() => import("./views/AgentInstance.vue")),
