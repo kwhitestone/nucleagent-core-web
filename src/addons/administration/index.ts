@@ -41,6 +41,11 @@ const administration: PluginModule = {
           component: () => import("./views/admin/AdminTools.vue"),
         },
         {
+          path: "agents",
+          name: "admin-agents",
+          component: () => import("./views/admin/AdminAgents.vue"),
+        },
+        {
           path: "executors",
           name: "admin-executors",
           component: () => import("./views/admin/AdminExecutors.vue"),

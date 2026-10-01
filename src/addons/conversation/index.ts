@@ -15,7 +15,7 @@ const conversation: PluginModule = {
     id: "conversation",
     version: "0.1.0",
     requires: [{ id: "platform-api" }, { id: "model-catalog" }],
-    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b"],
+    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b", "/agents"],
   },
   routes: [
     {
@@ -42,6 +42,13 @@ const conversation: PluginModule = {
       component: authenticatedRoute(() => import("./views/BroadcastConversation.vue")),
       meta: { requiresAuth: true },
       props: (route) => ({ groupId: route.params.groupId as string }),
+    },
+    {
+      path: "/agents/:templateId",
+      name: "agent-instance",
+      component: authenticatedRoute(() => import("./views/AgentInstance.vue")),
+      meta: { requiresAuth: true },
+      props: (route) => ({ templateId: route.params.templateId as string }),
     },
     {
       path: "/c/:id",

@@ -132,6 +132,8 @@ export interface CreateConversationRequest {
    * （dispatch 阶段 MatchSkills）。显式选了技能才关掉自动匹配。
    */
   skillIds?: number[];
+  /** Agent definition: core runs the session in the caller's personal instance. */
+  agentTemplateId?: number;
 }
 
 /** POST /conversation/broadcast. An omitted/empty backend list selects all available backends. */

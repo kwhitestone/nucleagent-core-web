@@ -28,6 +28,7 @@ const tabs = computed(() => filterEmbeddedAuthorizedItems([
   { to: "/admin/default-model", label: t("admin.tabs.defaultModel"), permission: "core:admin:read" },
   { to: "/admin/skills", label: t("admin.tabs.skills"), permission: "core:skill:admin-read" },
   { to: "/admin/tools", label: t("admin.tabs.tools"), permission: "core:tool:read" },
+  { to: "/admin/agents", label: t("admin.tabs.agents"), permission: "core:admin:read" },
   { to: "/admin/executors", label: t("admin.tabs.executors"), permission: "core:admin:read" },
 ], embedded, authorization.can));
 

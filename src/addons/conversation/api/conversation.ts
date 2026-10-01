@@ -26,6 +26,8 @@ interface Envelope<T> {
 export interface ListConversationsParams {
   beforeId?: number;
   limit?: number;
+  /** Only this agent instance's sessions (still scoped to the caller). */
+  agentId?: number;
 }
 
 /** 列表响应：data 为本页对话，hasMore 指示是否还有下一页。 */
@@ -47,6 +49,7 @@ export async function listConversations(
     params: {
       beforeId: params?.beforeId,
       limit: params?.limit,
+      agentId: params?.agentId,
     },
   });
   return {

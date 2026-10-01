@@ -20,3 +20,37 @@ export async function listAgentTemplates(): Promise<AgentTemplate[]> {
   const response = await http().get<Envelope<AgentTemplate[]>>(BASE);
   return response.data?.data ?? [];
 }
+
+/** One of "my agents": an enabled definition joined with my personal instance. */
+export interface MyAgent {
+  templateId: number;
+  name: string;
+  slug: string;
+  description: string;
+  config?: AgentTemplate["config"];
+  i18n?: Record<string, unknown>;
+  disabled: boolean;
+  /** Null until first use: everyone owns every agent before a row exists. */
+  instanceId: number | null;
+  sessionCount: number;
+  lastSessionAt: string | null;
+  memory?: string | null;
+  memoryFoldedAt?: string | null;
+}
+
+const MINE = "/api/v1/addons/agent/mine";
+
+export async function listMyAgents(): Promise<MyAgent[]> {
+  const response = await http().get<Envelope<MyAgent[]>>(MINE);
+  return response.data?.data ?? [];
+}
+
+export async function getMyAgent(templateId: number): Promise<MyAgent | null> {
+  const response = await http().get<Envelope<MyAgent>>(`${MINE}/${templateId}`);
+  return response.data?.data ?? null;
+}
+
+/** Owner edits memory; an empty string clears it. */
+export async function updateAgentMemory(instanceId: number, memory: string): Promise<void> {
+  await http().patch(`/api/v1/addons/agent/instances/${instanceId}`, { memory });
+}
