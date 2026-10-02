@@ -76,8 +76,8 @@ export async function getConversation(
   });
 }
 
-export async function listExecutionBackends(): Promise<ExecutionBackendOption[]> {
-  const response = await http().get<Envelope<ExecutionBackendOption[]>>(`${BASE}/execution-backends`);
+export async function listExecutionBackends(deviceId?: string): Promise<ExecutionBackendOption[]> {
+  const response = await http().get<Envelope<ExecutionBackendOption[]>>(`${BASE}/execution-backends`, { params: { deviceId: deviceId || undefined } });
   return response.data?.data ?? [];
 }
 
@@ -322,4 +322,19 @@ export async function* streamMessages(
     disarmWatchdog();
     reader.releaseLock();
   }
+}
+
+export interface PrivateDevice {
+  id: string;
+  name: string;
+  os: string;
+  expiresAt: string;
+  revokedAt?: string;
+}
+export async function listPrivateDevices(): Promise<PrivateDevice[]> {
+  const response = await http().get<Envelope<PrivateDevice[]>>("/api/v1/addons/executor-devices");
+  return response.data?.data ?? [];
+}
+export async function confirmPrivateDevice(id: string, userCode: string): Promise<void> {
+  await http().post("/api/v1/addons/executor-devices/bind/confirm", { id, userCode });
 }

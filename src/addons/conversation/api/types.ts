@@ -114,6 +114,7 @@ export interface ExecutionBackendOption {
 
 /** POST /conversation body. */
 export interface CreateConversationRequest {
+  targetDeviceId?: string;
   mode: ConversationMode;
   input: string;
   model?: string;
