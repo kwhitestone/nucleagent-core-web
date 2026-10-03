@@ -18,6 +18,7 @@ import {
   type AgentDefinitionInput,
   type AgentInstanceMeta,
 } from "../../api/agent";
+import { definitionIMRequiresModel } from "../../agents/definitionValidation";
 
 const { t } = useI18n();
 const loading = ref(false);
@@ -35,6 +36,9 @@ const form = reactive({
 const usageOf = ref<AgentDefinition | null>(null);
 const usage = ref<AgentInstanceMeta[]>([]);
 const usageTotal = ref(0);
+
+const modelError = computed(() =>
+  definitionIMRequiresModel(form.authAgentUserId, form.model) ? t("agents.admin.errIMRequiresModel") : "");
 
 function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : t("common.operationFailed");
@@ -83,6 +87,10 @@ async function submit(): Promise<void> {
   if (saving.value) return;
   if (!form.name.trim() || !form.slug.trim()) {
     toast.error(t("agents.admin.errNameSlug"));
+    return;
+  }
+  if (modelError.value) {
+    toast.error(modelError.value);
     return;
   }
   saving.value = true;
@@ -182,7 +190,8 @@ function when(value: string | null): string {
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldProvider") }}</span>
               <input v-model="form.providerId" type="text" inputmode="numeric" /></label>
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldModel") }}</span>
-              <input v-model="form.model" type="text" /></label>
+              <input v-model="form.model" type="text" data-testid="agent-model" :class="{ invalid: modelError }" />
+              <span v-if="modelError" class="field-error" data-testid="agent-model-error">{{ modelError }}</span></label>
           </div>
           <label class="field"><span class="field-label">{{ t("agents.admin.fieldIM") }}</span>
             <input v-model="form.authAgentUserId" type="text" inputmode="numeric" :placeholder="t('agents.admin.phIM')" /></label>
@@ -190,7 +199,7 @@ function when(value: string | null): string {
         </div>
         <div class="modal-footer">
           <button class="btn-ghost" type="button" @click="editingId = undefined">{{ t("common.cancel") }}</button>
-          <button class="btn-primary" type="button" :disabled="saving" data-testid="agent-save" @click="submit">{{ t("common.save") }}</button>
+          <button class="btn-primary" type="button" :disabled="saving || !!modelError" data-testid="agent-save" @click="submit">{{ t("common.save") }}</button>
         </div>
       </div>
     </div>
@@ -266,6 +275,8 @@ function when(value: string | null): string {
 }
 .field input:focus, .field textarea:focus { outline: none; border-color: var(--teal-500); }
 .field input:disabled { background: var(--bg-subtle); color: var(--text-tertiary); }
+.field input.invalid { border-color: var(--rose-400); }
+.field-error { font-size: 11.5px; color: var(--rose-500); margin-top: 4px; }
 .switch-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .switch { accent-color: var(--teal-500); }
 .usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }

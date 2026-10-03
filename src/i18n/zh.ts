@@ -459,6 +459,7 @@ export default {
       editTitle: "编辑智能体",
       saved: "已保存",
       errNameSlug: "名称与 Slug 必填",
+      errIMRequiresModel: "设置了 IM 身份就必须选择模型：请选择供应商和模型",
       confirmDisable: "停用「{name}」？所有人都将不能再开新会话或追问，正在执行的一轮会跑完。",
       stats: "已建实例 {instances} · 近 7 天会话 {sessions}",
       viewInstances: "查看实例",

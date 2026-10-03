@@ -459,6 +459,7 @@ export default {
       editTitle: "Edit agent",
       saved: "Saved",
       errNameSlug: "Name and slug are required",
+      errIMRequiresModel: "IM identity requires a model: choose a provider and model",
       confirmDisable: "Disable \"{name}\"? Nobody can start sessions or follow up; a running turn finishes.",
       stats: "{instances} instances · {sessions} sessions in 7 days",
       viewInstances: "Instances",
