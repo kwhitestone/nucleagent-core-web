@@ -99,7 +99,10 @@ function applyEntry(): void {
   }
 }
 
+watch(() => route.query, applyEntry);
+
 onMounted(async () => {
+  const entryQuery = route.query;
   const draft = !route.query.template && !route.query.input && route.query.skillIds === undefined && route.query.device === undefined && route.query.backend === undefined ? readDraft(localStorage) : null;
   applyEntry(); // before the template request too, so the handed-over text never flickers
   try {
@@ -113,7 +116,7 @@ onMounted(async () => {
     console.warn("[TaskSetup] agent/templates 接口不可用，降级到前端常量", e);
   }
   applyEntry();
-  if (draft) restoreDraft(draft);
+  if (draft && route.query === entryQuery) restoreDraft(draft);
 });
 
 const selected = ref(0);
