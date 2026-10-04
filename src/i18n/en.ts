@@ -303,6 +303,7 @@ export default {
       skills: "Skills",
       tools: "Tools (MCP)",
       agents: "Agents",
+      users: "Users",
       executors: "Executors",
     },
     executors: {
@@ -486,6 +487,15 @@ export default {
       colSessions: "Sessions",
       colLast: "Last session",
       total: "{n} instances",
+    },
+  },
+  users: {
+    admin: {
+      searchPlaceholder: "Search by UID, username or nickname prefix",
+      hint: "A disabled account cannot sign in, its open sessions end on their next request, and nobody can message it or add it to a group. Enabling restores all of it.",
+      empty: "No matching users",
+      agent: "Agent account",
+      confirmDisable: "Disable \"{name}\"? The account will not be able to sign in or receive messages, and its open sessions will end.",
     },
   },
   login: {

@@ -303,6 +303,7 @@ export default {
       skills: "技能",
       tools: "工具 (MCP)",
       agents: "智能体",
+      users: "用户",
       executors: "执行端",
     },
     executors: {
@@ -486,6 +487,15 @@ export default {
       colSessions: "会话数",
       colLast: "最近会话",
       total: "共 {n} 个实例",
+    },
+  },
+  users: {
+    admin: {
+      searchPlaceholder: "按 UID、用户名或昵称前缀搜索",
+      hint: "停用后该账号不能登录，已登录的会话在下一次请求时失效，别人也不能给它发消息或把它拉进群。重新启用即全部恢复。",
+      empty: "没有匹配的用户",
+      agent: "智能体账号",
+      confirmDisable: "停用「{name}」？该账号将不能登录、不能接收消息，已登录的会话会失效。",
     },
   },
   login: {
