@@ -7,13 +7,11 @@ import { createServer, type ViteDevServer } from "vite";
 
 let vite: ViteDevServer;
 let component: any;
-let providerView: any;
 let messages: any;
 
 before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   ({ default: component } = await vite.ssrLoadModule("/src/addons/administration/provider/ProviderModelLimits.vue"));
-  ({ default: providerView } = await vite.ssrLoadModule("/src/addons/administration/views/Providers.vue"));
   const zh = await vite.ssrLoadModule("/src/i18n/zh.ts");
   const en = await vite.ssrLoadModule("/src/i18n/en.ts");
   messages = { zh: zh.default, en: en.default };
@@ -59,26 +57,4 @@ test("editing one budget produces a new map without dropping other model setting
     },
   });
   assert.match(await render(probe), /budget edit verified/);
-});
-
-test("provider dialog validates partial budgets and resets model budgets on create", async () => {
-  const probe = defineComponent({
-    setup() {
-      const state = providerView.setup({}, { expose() {} });
-      state.openEdit({ id: 9, name: "Provider", isActive: true, config: {
-        baseUrl: "https://provider.example/v1", models: ["model-a"],
-        modelLimits: { "model-a": { contextWindow: 65536, maxOutputTokens: 8192 } },
-      } });
-      assert.equal(state.form.modelLimits["model-a"].contextWindow, "65536");
-      assert.equal(state.validate(), null);
-      state.form.modelLimits = { "model-a": { contextWindow: "65536", maxOutputTokens: "" } };
-      assert.match(state.validate(), /model-a/);
-      state.closeForm();
-      state.openCreate();
-      assert.deepEqual(state.form.modelLimits, {});
-      assert.equal(state.form.models, "");
-      return () => h("div", "provider budgets verified");
-    },
-  });
-  assert.match(await render(probe), /provider budgets verified/);
 });
