@@ -167,6 +167,8 @@ export default {
     gatewayManaged: "托管 · 只读",
     gatewayNote: "模型由目鱼网关统一提供，这里只读展示。增删模型和上游请在目鱼网关的路由规则中管理。",
     gatewayModels: "可用模型（{count}）",
+    gatewaySyncedAt: "目录同步于 {time}",
+    gatewayNotSynced: "目录尚未同步",
     title: "模型提供商",
     subtitle: "管理 LLM 提供商与 API 密钥，Agent 调用模型时从这里取配置。",
     keyNotice: "出于安全考虑，API 密钥加密存储且永不回传。编辑时留空表示保持原密钥不变。",

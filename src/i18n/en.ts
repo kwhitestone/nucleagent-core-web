@@ -167,6 +167,8 @@ export default {
     gatewayManaged: "Managed · read-only",
     gatewayNote: "Models come from Muyu Gateway and are shown read-only here. Add or remove models and upstreams in the gateway's route rules.",
     gatewayModels: "Available models ({count})",
+    gatewaySyncedAt: "Catalog synced {time}",
+    gatewayNotSynced: "Catalog not synced yet",
     title: "Model Providers",
     subtitle: "Manage LLM providers and API keys. Agents read model config from here.",
     keyNotice: "For security, API keys are encrypted at rest and never returned. Leave blank when editing to keep the existing key.",

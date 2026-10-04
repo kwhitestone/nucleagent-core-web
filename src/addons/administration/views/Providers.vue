@@ -3,21 +3,22 @@
  * 模型提供商 —— 只读的「目鱼网关」条目（UNI-UI-GAP，GWLINK 设计 §2.1(6)）。
  *
  * 模型由目鱼网关统一提供：页面只显示一个条目，旧的提供商行（已停用/已收拢）
- * 不再列出，也不再提供新增、编辑、启停或删除。网关目录同步与刷新由
- * GWLINK-R3 的 core-web 波次在此基础上补充。
+ * 不再列出，也不再提供新增、编辑、启停或删除。卡片显示 Core 最近一次读取
+ * 网关目录的时间（UNI-GWLINK-R4；Core 每 5 分钟同步一次）。
  */
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { listProviders, type Provider } from "@/contracts/model-catalog";
 import { toast } from "@/composables/useToast";
-import { gatewayModels } from "../provider/gatewayEntry";
+import { formatSyncedAt, gatewayModels, gatewaySyncedAt } from "../provider/gatewayEntry";
 
 const { t } = useI18n();
 
 const providers = ref<Provider[]>([]);
 const loading = ref(true);
 const models = computed(() => gatewayModels(providers.value));
+const syncedAt = computed(() => gatewaySyncedAt(providers.value));
 
 onMounted(async () => {
   try {
@@ -49,7 +50,12 @@ onMounted(async () => {
               <span class="provider-badge on">{{ t('provider.gatewayManaged') }}</span>
             </div>
             <p class="provider-note">{{ t('provider.gatewayNote') }}</p>
-            <div class="provider-models-title">{{ t('provider.gatewayModels', { count: models.length }) }}</div>
+            <div class="provider-models-title">
+              {{ t('provider.gatewayModels', { count: models.length }) }}
+              <span class="provider-sync" data-testid="provider-gateway-sync">· {{ syncedAt
+                ? t('provider.gatewaySyncedAt', { time: formatSyncedAt(syncedAt) })
+                : t('provider.gatewayNotSynced') }}</span>
+            </div>
             <div v-if="models.length" class="provider-models">
               <span v-for="m in models" :key="m" class="model-chip">{{ m }}</span>
             </div>
@@ -89,6 +95,7 @@ onMounted(async () => {
 
 .provider-note { font-size: 12.5px; color: var(--text-secondary); margin: 6px 0 10px; }
 .provider-models-title { font-size: 12px; color: var(--text-tertiary); }
+.provider-sync { margin-left: 4px; }
 
 .provider-models { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .model-chip {

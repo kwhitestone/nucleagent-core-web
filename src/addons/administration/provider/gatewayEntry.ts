@@ -15,3 +15,22 @@ export function gatewayModels(providers: Provider[]): string[] {
     .map((m) => m.trim());
   return [...new Set(models)];
 }
+
+/**
+ * When Core last read the gateway catalog (UNI-GWLINK-R4): Core's 5-minute
+ * sync stamps `config.catalogSyncedAt` on the surviving row. `null` before
+ * the first sync (W3 off, or the gateway unreachable since boot).
+ */
+export function gatewaySyncedAt(providers: Provider[]): Date | null {
+  const times = providers
+    .filter((p) => p.isActive && !p.name.startsWith("ext:a2a:"))
+    .map((p) => Date.parse(String(p.config?.catalogSyncedAt ?? "")))
+    .filter((t) => !Number.isNaN(t));
+  return times.length ? new Date(Math.max(...times)) : null;
+}
+
+/** `YYYY-MM-DD HH:mm` in the viewer's local time. */
+export function formatSyncedAt(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
