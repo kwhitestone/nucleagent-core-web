@@ -1,3 +1,10 @@
+# Each proxy hop consumes X-Accel-Buffering. Re-emit it for the next ingress
+# even when an upstream gateway has already removed Core's original header.
+map $upstream_http_content_type $sse_buffering {
+    default "";
+    "~^text/event-stream(?:;|$)" no;
+}
+
 server {
     listen 8080;
     server_name _;
@@ -18,6 +25,8 @@ server {
     location /api/ {
         proxy_pass ${CORE_UPSTREAM}/api/;
         proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
         proxy_set_header Host $proxy_host;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -39,4 +48,5 @@ server {
     add_header Cache-Control "no-cache" always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Content-Security-Policy "frame-ancestors ${FRAME_ANCESTORS}" always;
+    add_header X-Accel-Buffering $sse_buffering always;
 }

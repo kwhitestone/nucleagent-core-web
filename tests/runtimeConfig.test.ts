@@ -46,6 +46,15 @@ test("runtime CSP accepts an exact configurable shell and engine origin list", (
   assert.match(result.config, /frame-ancestors https:\/\/shell\.example\.test https:\/\/engine\.example\.test:8443"/);
 });
 
+test("API streams disable buffering and retain the downstream ingress hint", () => {
+  const result = render({});
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.config, /map \$upstream_http_content_type \$sse_buffering/);
+  assert.match(result.config, /location \/api\/ \{[^}]*proxy_buffering off;/);
+  assert.match(result.config, /location \/api\/ \{[^}]*proxy_cache off;/);
+  assert.match(result.config, /add_header X-Accel-Buffering \$sse_buffering always;/);
+});
+
 test("runtime CSP rejects empty items, wildcards, credentials and configuration injection", () => {
   for (const value of ["", ",", "https://shell.example.test,", ",https://shell.example.test",
     "https://shell.example.test,,https://engine.example.test", "*", "'self'",
