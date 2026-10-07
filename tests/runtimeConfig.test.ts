@@ -69,3 +69,11 @@ test("runtime CSP rejects empty items, wildcards, credentials and configuration 
   assert.notEqual(render({ CORE_UPSTREAM: "https://user:pass@example.test" }).status, 0);
   assert.notEqual(render({ SHELL_ORIGIN: "https://example.test/path" }).status, 0);
 });
+
+test("upstream Cache-Control passes through; everything else stays no-cache", () => {
+  const result = render({});
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.config, /map \$upstream_http_cache_control \$default_cache_control \{\s*"" "no-cache";\s*default "";\s*\}/);
+  assert.match(result.config, /add_header Cache-Control \$default_cache_control always;/);
+  assert.doesNotMatch(result.config, /add_header Cache-Control "no-cache"/);
+});

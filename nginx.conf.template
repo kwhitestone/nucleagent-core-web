@@ -5,6 +5,14 @@ map $upstream_http_content_type $sse_buffering {
     "~^text/event-stream(?:;|$)" no;
 }
 
+# Static files and API responses without their own policy stay no-cache; an
+# upstream Cache-Control (e.g. Core's private, max-age=60 on home suggestions)
+# is passed through unchanged instead of being contradicted.
+map $upstream_http_cache_control $default_cache_control {
+    "" "no-cache";
+    default "";
+}
+
 server {
     listen 8080;
     server_name _;
@@ -45,7 +53,7 @@ server {
     }
 
     add_header X-Content-Type-Options nosniff always;
-    add_header Cache-Control "no-cache" always;
+    add_header Cache-Control $default_cache_control always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Content-Security-Policy "frame-ancestors ${FRAME_ANCESTORS}" always;
     add_header X-Accel-Buffering $sse_buffering always;
