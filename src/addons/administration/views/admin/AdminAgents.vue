@@ -186,7 +186,7 @@ function when(value: string | null): string {
             <span class="section-hint">{{ t("agents.personaNewSessions") }}</span></label>
           <div class="field-row">
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldBackend") }}</span>
-              <input v-model="form.executionBackend" type="text" placeholder="hermes" /></label>
+              <input v-model="form.executionBackend" type="text" placeholder="codex" /></label>
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldProvider") }}</span>
               <input v-model="form.providerId" type="text" inputmode="numeric" /></label>
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldModel") }}</span>
