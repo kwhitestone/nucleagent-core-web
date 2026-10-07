@@ -225,18 +225,6 @@ export default {
     errResponsesBaseUrlOrigin: "Responses Base URL 必须与 Base URL 同源",
     errApiKeyRequired: "新建时必须填写 API 密钥",
   },
-  creation: {
-    pick: "选一个开始",
-    title: "创作工坊",
-    subtitle: "选择创作类型，AI 帮你从零到一",
-    types: {
-      image: { title: "AI 绘画", desc: "文字描述生成高质量图片，支持多种风格", prompt: "AI 绘画：" },
-      ppt: { title: "演示文稿", desc: "从大纲到精美 PPT，自动排版与配图", prompt: "演示文稿：" },
-      write: { title: "文档撰写", desc: "自动生成报告、文章、技术文档", prompt: "文档撰写：" },
-      video: { title: "视频生成", desc: "文字脚本自动生成短视频内容", prompt: "视频生成：" },
-      music: { title: "音乐创作", desc: "AI 辅助编曲、配器与音乐生成", prompt: "音乐创作：" },
-    },
-  },
   task: {
     runSettings: "执行设置",
     templateLabel: "模板",

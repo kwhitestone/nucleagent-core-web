@@ -31,7 +31,7 @@ const STYLE = `
 export function coreShellPath(childPath: string): string {
   const conversation = /^\/c\/([^/?#]+)/.exec(childPath);
   if (conversation) return `/chat/${conversation[1]}`;
-  return /^\/(chat|creation|tasks|admin)(?=$|[/?#])/.test(childPath) ? childPath : "/chat";
+  return /^\/(chat|tasks|admin)(?=$|[/?#])/.test(childPath) ? childPath : "/chat";
 }
 
 export function deliverablesShellPath(childPath: string): string {

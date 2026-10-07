@@ -86,7 +86,7 @@ test("routes: instance page under /agents, admin tab gated by core:admin:read", 
 
 test("shell projection: my agents ride the existing conversations message (no new channel type)", () => {
   const bridge = readFileSync(new URL("../src/addons/conversation/composables/useShellBridge.ts", import.meta.url), "utf8");
-  assert.match(bridge, /fromChild: \["auth-required", "conversations"\]/, "capabilities unchanged");
+  assert.match(bridge, /fromChild: \["auth-required", "conversations", "view-changed"\]/, "agents add no channel type");
   assert.match(bridge, /agents: agents\.value\.map\(\(a\) => \(\{\s*templateId: a\.templateId, name: a\.name, disabled: a\.disabled, lastSessionAt: a\.lastSessionAt,/);
   assert.match(bridge, /agents\.value = \[\];/, "session change drops the previous identity's agents");
   assert.match(bridge, /runtime\.getAccessToken\(\) === token && runtime\.getSessionVersion\(\) === version\) agents\.value = list/,

@@ -225,18 +225,6 @@ export default {
     errResponsesBaseUrlOrigin: "Responses Base URL must have the same origin as Base URL",
     errApiKeyRequired: "API key is required when creating a provider",
   },
-  creation: {
-    pick: "Pick a starting point",
-    title: "Creation Studio",
-    subtitle: "Choose a creation type - AI takes you from zero to one",
-    types: {
-      image: { title: "AI Painting", desc: "Generate high-quality images from text, multiple styles supported", prompt: "AI Painting: " },
-      ppt: { title: "Presentation", desc: "Outline to polished PPT with auto-layout and images", prompt: "Presentation: " },
-      write: { title: "Document Writing", desc: "Auto-generate reports, articles, and technical docs", prompt: "Document Writing: " },
-      video: { title: "Video Generation", desc: "Auto-generate short video content from text scripts", prompt: "Video Generation: " },
-      music: { title: "Music Creation", desc: "AI-assisted arranging, orchestration, and music generation", prompt: "Music Creation: " },
-    },
-  },
   task: {
     runSettings: "Run settings",
     templateLabel: "Template",

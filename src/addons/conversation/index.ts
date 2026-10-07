@@ -24,12 +24,8 @@ const conversation: PluginModule = {
       component: authenticatedRoute(() => import("./views/Home.vue")),
       meta: { requiresAuth: true },
     },
-    {
-      path: "/creation",
-      name: "creation",
-      component: authenticatedRoute(() => import("./views/Creation.vue")),
-      meta: { requiresAuth: true },
-    },
+    // 创作 merged into 任务: old links and bookmarks land on the task form.
+    { path: "/creation", redirect: "/tasks" },
     {
       path: "/tasks",
       name: "tasks",

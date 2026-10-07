@@ -133,14 +133,9 @@ for (const width of [393, 360, 320]) {
     await ctx.close();
   });
 
-  test(`creation → task form @${width} (Q4): one-column rows, tap prefills the form, launch pinned, no 保存草稿 (Q5)`, { skip }, async () => {
+  test(`old /creation → task form @${width} (UNI-T3): redirect, template prefills the form, launch pinned, no 保存草稿 (Q5)`, { skip }, async () => {
     const { ctx, page, errors } = await open(width, "/creation");
-    await page.getByTestId("creation-card").first().waitFor();
-    const card = await page.getByTestId("creation-card").first().boundingBox();
-    assert.ok(card.width >= width - 40 && card.height >= 64, `list row: ${JSON.stringify(card)}`);
-    assert.deepEqual(await page.evaluate(AUDIT), { small: [], fonts: [], hscroll: false }, "creation");
-    await page.getByTestId("creation-card").first().tap();
-    await page.waitForURL(/\/tasks\?template=/);
+    await page.waitForURL(/\/tasks$/);
     await page.getByTestId("task-mobile").waitFor();
     assert.equal(await page.getByTestId("task-name").inputValue(), "竞品研究");
     assert.equal(await page.getByTestId("task-desc").inputValue(), "请调研以下市场的主要竞品：");
@@ -148,11 +143,9 @@ for (const width of [393, 360, 320]) {
     const launch = await page.getByTestId("task-launch").boundingBox();
     assert.ok(launch.height >= 52 && launch.y + launch.height <= 800 && launch.y > 600, `launch pinned: ${JSON.stringify(launch)}`);
     assert.deepEqual(await page.evaluate(AUDIT), { small: [], fonts: [], hscroll: false }, "task form");
-    // Options are sheets, not native selects.
-    await page.getByTestId("row-exec-mode").tap();
-    await page.getByTestId("option-sheet").waitFor();
-    await page.getByRole("radio").nth(1).tap();
-    assert.equal(await page.getByTestId("option-sheet").count(), 0, "single choice closes the sheet");
+    // The backend never reads execMode/outputFormat: the form no longer offers them.
+    assert.equal(await page.getByTestId("row-exec-mode").count(), 0, "exec mode hidden");
+    assert.equal(await page.getByTestId("row-output-format").count(), 0, "output format hidden");
     // Empty name: not greyed; tap scrolls to the field and shows the error above it.
     await page.getByTestId("task-name").fill("");
     await page.getByTestId("task-launch").tap();
@@ -163,7 +156,7 @@ for (const width of [393, 360, 320]) {
     await page.waitForURL(/\/c\/99$/);
     const sent = created.at(-1) as { metadata: { execMode: string; taskName: string }; executionBackend: string };
     assert.equal(sent.metadata.taskName, "竞品研究");
-    assert.equal(sent.metadata.execMode, "stepByStep");
+    assert.equal(sent.metadata.execMode, "auto");
     assert.equal(sent.executionBackend, "codex");
     assert.deepEqual(errors, []);
     await ctx.close();
@@ -232,10 +225,11 @@ test("dark @360: task desk and task form stay readable (no light-on-light)", { s
   await ctx.close();
 });
 
-test("desktop @1280: poster home, card creation, full form with a working 保存草稿 (Q5), composer pickers", { skip }, async () => {
+test("desktop @1280: poster home, card creation, full form without the unused execMode/outputFormat with a working 保存草稿 (Q5), composer pickers", { skip }, async () => {
   const { ctx, page, errors } = await open(1280, "/tasks", { desktop: true });
   await page.locator(".task-setup-view").waitFor();
   assert.equal(await page.getByTestId("task-mobile").count(), 0);
+  assert.equal(await page.locator(".task-setup-view label", { hasText: /执行模式|输出格式/ }).count(), 0, "no exec mode / output format fields");
   await page.locator(".form-input").fill("草稿任务");
   await page.getByTestId("task-save-draft").click();
   assert.match(await page.evaluate(() => localStorage.getItem("nucleagent_task_draft") ?? ""), /草稿任务/);
@@ -260,7 +254,6 @@ test("evidence screenshots 393/360/320 × light/dark", { skip: skip || (!evidenc
     const shots: [string, string, (p: any) => Promise<void>][] = [ // eslint-disable-line @typescript-eslint/no-explicit-any
       ["desk", "/chat", async (p) => { await p.getByTestId("desk-row").first().waitFor(); }],
       ["run-sheet", "/chat", async (p) => { await p.getByTestId("desk-row").first().waitFor(); await p.getByTestId("run-pill").tap(); }],
-      ["creation", "/creation", async (p) => { await p.getByTestId("creation-card").first().waitFor(); }],
       ["task-form", "/tasks?template=%E7%AB%9E%E5%93%81%E7%A0%94%E7%A9%B6", async (p) => { await p.getByTestId("task-mobile").waitFor(); }],
       ["task-backend-sheet", "/tasks", async (p) => { await p.getByTestId("row-backend").tap(); await p.getByTestId("option-sheet").waitFor(); }],
       ["conversation", "/c/12", async (p) => { await p.locator(".atc-markdown table").waitFor(); }],

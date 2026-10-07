@@ -2,13 +2,14 @@
 /**
  * 任务视图 - 对齐 design/nucleagent-design.html 第 1981–2046 行。
  *
- * 3 张 .template-card + .task-form（名称/描述/执行模式/输出格式）。
+ * 3 张 .template-card + .task-form（名称/描述/模型/执行端/技能/附件）。
  *
  * 数据来源：GET /api/v1/addons/agent/templates，映射为任务模板卡片。
  * 接口不可用时降级到 i18n 前端常量 + console.warn。
  *
- * 启动任务走 POST /conversation，执行模式/输出格式暂存 metadata 字段
- * （后端暂未持久化，预留给未来字段），不阻塞流程。
+ * 启动任务走 POST /conversation。执行模式/输出格式后端从不读取（CreateRequest.Metadata
+ * 无消费者），表单已隐藏这两项（UNI-T3）；metadata 只带默认值，后端接上消费后再恢复
+ * 控件（i18n task.execModes / task.outputFormats 保留）。
  */
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -22,7 +23,6 @@ import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vu
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import SkillPicker from "@/addons/conversation/components/SkillPicker.vue";
-import OptionSheet from "@/addons/conversation/components/OptionSheet.vue";
 import { useNarrow } from "@/composables/useNarrow";
 import { clearDraft, readDraft, saveDraft, type TaskDraft } from "@/addons/conversation/composables/taskDraft";
 import type {
@@ -80,7 +80,7 @@ function templateToTask(tpl: AgentTemplate, index: number): TaskTemplate {
 }
 
 /**
- * Q4: Creation hands over ?template=<name> (prefilled form); the Chat home's
+ * ?template=<name> preselects a template card; the Chat home's
  * 「更多设置」 hands over ?input=<text>. A saved draft (Q5, desktop) wins over
  * neither: an explicit hand-over is the newer intent.
  */
@@ -144,19 +144,6 @@ function selectTemplate(i: number): void {
   syncFormDefaults();
 }
 
-const execModeOptions = computed(() => [
-  { value: "auto", label: t("task.execModes.auto") },
-  { value: "stepByStep", label: t("task.execModes.stepByStep") },
-  { value: "planOnly", label: t("task.execModes.planOnly") },
-]);
-
-const outputFormatOptions = computed(() => [
-  { value: "markdown", label: t("task.outputFormats.markdown") },
-  { value: "pdf", label: t("task.outputFormats.pdf") },
-  { value: "ppt", label: t("task.outputFormats.ppt") },
-  { value: "excel", label: t("task.outputFormats.excel") },
-]);
-
 const submitting = ref(false);
 /** Board §12 ⑤: the error sits right above the button (not a toast), input kept. */
 const launchError = ref("");
@@ -164,9 +151,6 @@ const nameError = ref(false);
 const nameInput = ref<HTMLInputElement | null>(null);
 const descInput = ref<HTMLTextAreaElement | null>(null);
 const backendPicker = ref<{ openSheet: () => void } | null>(null);
-const sheet = ref<"" | "execMode" | "outputFormat">("");
-const optionLabel = (options: { value: string; label: string }[], value: string) =>
-  options.find((o) => o.value === value)?.label ?? value;
 
 // --- Q5: 保存草稿 (desktop). Local, one draft per browser; launching clears it. ---
 const draftSaved = ref(false);
@@ -211,7 +195,6 @@ async function launch(): Promise<void> {
   nameError.value = false;
   submitting.value = true;
   try {
-    // 执行模式/输出格式暂存 metadata（后端暂未持久化，预留给未来字段）。
     const input = form.desc.trim();
     const mode: ConversationMode = "a2a_agent";
     const created = await store.create({
@@ -300,16 +283,6 @@ async function launch(): Promise<void> {
             @validation-change="(value) => (backendCompatible = value.allowed)"
           />
           <SkillPicker v-model="skillIds" :disabled="submitting" row />
-          <button type="button" class="picker-row" data-testid="row-exec-mode" :disabled="submitting" @click="sheet = 'execMode'">
-            <span class="picker-row-k">{{ t('task.form.execModeLabel') }}</span>
-            <span class="picker-row-v">{{ optionLabel(execModeOptions, form.execMode) }}</span>
-            <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-          </button>
-          <button type="button" class="picker-row" data-testid="row-output-format" :disabled="submitting" @click="sheet = 'outputFormat'">
-            <span class="picker-row-k">{{ t('task.form.outputFormatLabel') }}</span>
-            <span class="picker-row-v">{{ optionLabel(outputFormatOptions, form.outputFormat) }}</span>
-            <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-          </button>
         </div>
 
         <p class="task-m-glabel">{{ t('common.attachment') }}</p>
@@ -342,22 +315,6 @@ async function launch(): Promise<void> {
         </button>
       </div>
 
-      <OptionSheet
-        :open="sheet === 'execMode'"
-        :title="t('task.form.execModeLabel')"
-        :options="execModeOptions"
-        :model-value="form.execMode"
-        @update:model-value="(v) => (form.execMode = String(v))"
-        @close="sheet = ''"
-      />
-      <OptionSheet
-        :open="sheet === 'outputFormat'"
-        :title="t('task.form.outputFormatLabel')"
-        :options="outputFormatOptions"
-        :model-value="form.outputFormat"
-        @update:model-value="(v) => (form.outputFormat = String(v))"
-        @close="sheet = ''"
-      />
     </div>
 
     <div v-else class="task-setup-view">
@@ -420,21 +377,6 @@ async function launch(): Promise<void> {
               removable
               @remove="(id: string) => (attachments = attachments.filter((a) => a.fileId !== id))"
             />
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label>{{ t('task.form.execModeLabel') }}</label>
-            <select v-model="form.execMode" class="form-select">
-              <option v-for="opt in execModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>{{ t('task.form.outputFormatLabel') }}</label>
-            <select v-model="form.outputFormat" class="form-select">
-              <option v-for="opt in outputFormatOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
           </div>
         </div>
 
@@ -531,8 +473,6 @@ async function launch(): Promise<void> {
 }
 
 .form-textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
-
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
 

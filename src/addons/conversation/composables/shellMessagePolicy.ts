@@ -15,3 +15,13 @@ export function shellViewLocation(path: string): { path: string; query?: { conve
   const member = path.match(/^(\/b\/[a-zA-Z0-9_-]{1,128})\/(\d+)$/);
   return member ? { path: member[1], query: { conversationId: member[2] } } : { path };
 }
+
+/**
+ * O-1: whether Core reports its own route to the shell (view-changed). Not
+ * before the shell's first view (the boot-time /chat), not a route the shell
+ * itself just asked for, and not conversations (/c, /b): those promote through
+ * the conversations message.
+ */
+export function shouldReportView(path: string, followingShell: boolean, shellInduced: string | null): boolean {
+  return followingShell && path !== shellInduced && !/^\/[cb]\//.test(path);
+}

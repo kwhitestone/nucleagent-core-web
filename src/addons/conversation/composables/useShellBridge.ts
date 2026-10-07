@@ -16,7 +16,7 @@ import { createRemoteChildChannel } from "@prism-fusion/plugin-runtime/remote";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
 import i18n, { setLocale } from "@/i18n";
 import { toast } from "@/composables/useToast";
-import { resolveShellViewPath, shellViewLocation } from "./shellMessagePolicy";
+import { resolveShellViewPath, shellViewLocation, shouldReportView } from "./shellMessagePolicy";
 import { activeSidebarConversation, broadcastGroupId } from "./broadcastViewPolicy";
 import {
   applyShellSession,
@@ -83,7 +83,7 @@ export function installShellBridge(router: Router): () => void {
     parent: window.parent,
     messages: {
       toChild: ["auth", "view", "locale", "load-more"],
-      fromChild: ["auth-required", "conversations"],
+      fromChild: ["auth-required", "conversations", "view-changed"],
     },
     onMessage(type, payload) {
       handleVerifiedMessage(type, payload);
@@ -96,7 +96,7 @@ export function installShellBridge(router: Router): () => void {
     const d = payload as {
       source?: string;
       type?: string;
-      view?: "home" | "chat" | "creation" | "tasks" | "admin";
+      view?: "home" | "chat" | "tasks" | "admin";
       conversationId?: string | null;
       token?: string | null;
       sessionVersion?: number;
@@ -134,13 +134,13 @@ export function installShellBridge(router: Router): () => void {
     }
 
     if (type !== "view" || d.type !== "view") return;
+    followingShell = true;
     const directPath = resolveShellViewPath(d);
     const target = directPath ?? (
       !d.view ? null :
       d.view === "chat" && d.conversationId
         ? `/c/${d.conversationId}`
         : d.view === "chat" ? "/chat"
-        : d.view === "creation" ? "/creation"
         : d.view === "tasks" ? "/tasks"
         : d.view === "admin" ? "/admin"
         : "/"
@@ -157,8 +157,21 @@ export function installShellBridge(router: Router): () => void {
           (location.path === current.path && location.query?.conversationId === String(active))) return;
     }
     if (current.path !== location.path || (location.query && current.query.conversationId !== location.query.conversationId)) {
+      shellInduced = router.resolve(location).fullPath;
       void router.push(location);
     }
+  }
+
+  // O-1: report our own route changes (task form from 「更多设置」, admin tabs…) so
+  // the shell URL and highlight follow the page (rules: shouldReportView).
+  let followingShell = false;
+  let shellInduced: string | null = null;
+  function pushView(): void {
+    const path = router.currentRoute.value.fullPath;
+    const induced = shellInduced;
+    shellInduced = null;
+    if (!shouldReportView(path, followingShell, induced)) return;
+    channel.send("view-changed", { source: "sub", type: "view-changed", path });
   }
 
   const onMessage = (event: MessageEvent) => channel.receive(event);
@@ -196,7 +209,10 @@ export function installShellBridge(router: Router): () => void {
     { deep: true },
   );
   // 路由变化时也推（选中项变了，但列表数据没变，上面的 watch 不触发）。
-  const stopRoute = watch(() => router.currentRoute.value.fullPath, () => pushConversations(true));
+  const stopRoute = watch(() => router.currentRoute.value.fullPath, () => {
+    pushConversations(true);
+    pushView();
+  });
   return () => {
     window.removeEventListener("message", onMessage);
     window.removeEventListener(SESSION_CHANGE_EVENT, onSessionChange);

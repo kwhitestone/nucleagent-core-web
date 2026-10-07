@@ -9,7 +9,7 @@
  * 仅保留内容。创建对话的逻辑沿用 useConversationStore。
  */
 import { computed, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { BroadcastApiError } from "@/addons/conversation/api/broadcast";
@@ -26,7 +26,6 @@ import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskD
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 
 const router = useRouter();
-const route = useRoute();
 const store = useConversationStore();
 const { t, locale } = useI18n();
 const narrow = useNarrow();
@@ -124,13 +123,6 @@ function fillSuggestion(title: string): void {
 }
 
 onMounted(() => {
-  // Creation 页点卡片会带 ?prefill=... 跳过来，预填进 composer。
-  // 此前没有这段读取，即使修好路由名，卡片点击也只是跳转、看不出任何效果。
-  const prefill = route.query.prefill;
-  if (typeof prefill === "string" && prefill.trim() && !input.value) {
-    input.value = prefill;
-  }
-
   // 首页挂载时拉一次历史，用于推给壳侧栏（桥接在 store 变化时 dispatch）。
   now.value = Date.now();
   store.load().catch((e: unknown) => {
