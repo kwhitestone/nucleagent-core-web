@@ -101,6 +101,13 @@ test("home: bad, empty or null responses fall back; bad items are skipped; en fa
   assert.equal(enCards[0].prompt, "写一份\n报告");
 });
 
+test("the built-in 9 (seed = restore defaults) pass validation as they are", () => {
+  const items = hs.FALLBACK_CARDS.map(({ id, icon }: any) => ({ id, icon, enabled: true, action: "fill-title",
+    titleZh: zh.home.suggestions[id].title, descZh: zh.home.suggestions[id].desc, promptZh: "",
+    titleEn: en.home.suggestions[id].title, descEn: en.home.suggestions[id].desc, promptEn: "" }));
+  assert.equal(hs.validateItems(items), null);
+});
+
 test("click: prefill inserts the prompt, empty prompt or fill-title inserts 'title：'", () => {
   assert.equal(hs.cardInput({ action: "prefill", title: "甲", prompt: "全文" }), "全文");
   assert.equal(hs.cardInput({ action: "prefill", title: "甲", prompt: "" }), "甲：");
@@ -117,8 +124,9 @@ test("admin validation mirrors Core: count, id, duplicate, icon, action, lengths
   assert.equal(hs.validateItems([ok, { ...ok, id: "A" }])?.reason, "duplicate");
   assert.equal(bad({ icon: "https://x/y.svg" })?.reason, "icon");
   assert.equal(bad({ action: "template" })?.reason, "action");
-  assert.deepEqual(bad({ titleZh: "字".repeat(21) }), { index: 0, field: "titleZh", reason: "tooLong" });
-  assert.equal(bad({ titleZh: "字".repeat(20) }), null);
+  assert.deepEqual(bad({ titleZh: "字".repeat(41) }), { index: 0, field: "titleZh", reason: "tooLong" });
+  assert.equal(bad({ titleZh: "字".repeat(40) }), null);
+  assert.deepEqual(bad({ descEn: "a".repeat(81) }), { index: 0, field: "descEn", reason: "tooLong" });
   assert.deepEqual(bad({ titleZh: "  " }), { index: 0, field: "titleZh", reason: "required" });
   assert.deepEqual(bad({ titleEn: "a\nb" }), { index: 0, field: "titleEn", reason: "control" });
   assert.deepEqual(bad({ promptZh: "ab" }), { index: 0, field: "promptZh", reason: "control" });

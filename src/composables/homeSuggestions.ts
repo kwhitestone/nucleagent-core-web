@@ -202,7 +202,8 @@ export interface Invalid {
   reason: InvalidReason | "count" | "noneEnabled";
 }
 
-export const LIMITS = { title: 20, desc: 40, prompt: 2000 } as const;
+/** Same rune limits as Core PUT. The verbatim seed English runs to 20/43, so 20/40 was too tight. */
+export const LIMITS = { title: 40, desc: 80, prompt: 2000 } as const;
 const ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/;
 const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f]/;
 const CONTROL_OR_NEWLINE = /[\u0000-\u001f\u007f]/;
