@@ -29,6 +29,7 @@ const tabs = computed(() => filterEmbeddedAuthorizedItems([
   { to: "/admin/skills", label: t("admin.tabs.skills"), permission: "core:skill:admin-read" },
   { to: "/admin/tools", label: t("admin.tabs.tools"), permission: "core:tool:read" },
   { to: "/admin/agents", label: t("admin.tabs.agents"), permission: "core:admin:read" },
+  { to: "/admin/home-suggestions", label: t("admin.tabs.homeSuggestions"), permission: "core:admin:read" },
   { to: "/admin/users", label: t("admin.tabs.users"), permission: "core:admin:read" },
   { to: "/admin/executors", label: t("admin.tabs.executors"), permission: "core:admin:read" },
 ], embedded, authorization.can));

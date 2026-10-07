@@ -46,6 +46,11 @@ const administration: PluginModule = {
           component: () => import("./views/admin/AdminAgents.vue"),
         },
         {
+          path: "home-suggestions",
+          name: "admin-home-suggestions",
+          component: () => import("./views/admin/AdminHomeSuggestions.vue"),
+        },
+        {
           path: "users",
           name: "admin-users",
           component: () => import("./views/admin/AdminUsers.vue"),

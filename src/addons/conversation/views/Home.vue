@@ -24,6 +24,9 @@ import { useNarrow } from "@/composables/useNarrow";
 import { broadcastRoute } from "@/addons/conversation/composables/broadcastViewPolicy";
 import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskDesk";
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
+import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
+import SuggestionChip from "@/components/SuggestionChip.vue";
+import { cardInput, fallbackCards, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
 
 const router = useRouter();
 const store = useConversationStore();
@@ -42,26 +45,9 @@ const broadcast = ref(false);
 const eligibleCount = ref(0);
 const canSend = computed(() => broadcast.value ? eligibleCount.value > 0 : backendCompatible.value);
 
-/** 9 张建议卡。点击后把标题填入输入框。 */
-const suggestionKeys = [
-  { key: "competitiveAnalysis", delay: 1, icon: "check", bg: "var(--teal-50)", color: "var(--teal-600)" },
-  { key: "presentation", delay: 2, icon: "ppt", bg: "#fef3c7", color: "#d97706" },
-  { key: "freeChat", delay: 3, icon: "chat", bg: "#e0e7ff", color: "var(--indigo-500)" },
-  { key: "videoGen", delay: 4, icon: "video", bg: "#ffe4e6", color: "#e11d48" },
-  { key: "musicCreation", delay: 5, icon: "music", bg: "#ede9fe", color: "#7c3aed" },
-  { key: "dataAnalysis", delay: 6, icon: "chart", bg: "var(--teal-50)", color: "var(--teal-600)" },
-  { key: "docWriting", delay: 7, icon: "doc", bg: "#e0e7ff", color: "var(--indigo-500)" },
-  { key: "workflowAutomation", delay: 8, icon: "clock", bg: "#fef3c7", color: "#d97706" },
-  { key: "knowledgeQA", delay: 9, icon: "layers", bg: "var(--teal-50)", color: "var(--teal-600)" },
-] as const;
-
-const suggestions = computed(() =>
-  suggestionKeys.map((s) => ({
-    ...s,
-    title: t(`home.suggestions.${s.key}.title`),
-    desc: t(`home.suggestions.${s.key}.desc`),
-  })),
-);
+/** 首页建议卡：先渲染内置 9 张，接口返回合法配置后替换；失败/为空/格式不对保持内置（UNI-T14）。 */
+const configured = ref<unknown>(null);
+const suggestions = computed<HomeCard[]>(() => resolveCards(configured.value, locale.value) ?? fallbackCards(t));
 
 async function handleCreate(): Promise<void> {
   const text = input.value.trim();
@@ -118,8 +104,8 @@ function moreSettings(): void {
   void router.push({ name: "tasks", query: input.value.trim() ? { input: input.value.trim() } : {} });
 }
 
-function fillSuggestion(title: string): void {
-  input.value = `${title}：`;
+function fillSuggestion(card: HomeCard): void {
+  input.value = cardInput(card);
 }
 
 onMounted(() => {
@@ -127,6 +113,9 @@ onMounted(() => {
   now.value = Date.now();
   store.load().catch((e: unknown) => {
     toast.error(e instanceof ApiError ? e.message : t("home.loadHistoryFailed"));
+  });
+  fetchHomeSuggestions().then((data) => (configured.value = data)).catch((e: unknown) => {
+    console.warn("home suggestions unavailable, using built-in cards", e);
   });
 });
 </script>
@@ -268,27 +257,13 @@ onMounted(() => {
         />
 
         <div class="suggestion-grid">
-          <div
-            v-for="s in suggestions"
-            :key="s.title"
-            class="suggestion-chip"
-            :class="`delay-${s.delay}`"
-            @click="fillSuggestion(s.title)"
-          >
-            <div class="chip-icon" :style="{ background: s.bg, color: s.color }">
-              <svg v-if="s.icon === 'check'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>
-              <svg v-else-if="s.icon === 'ppt'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /></svg>
-              <svg v-else-if="s.icon === 'chat'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
-              <svg v-else-if="s.icon === 'video'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
-              <svg v-else-if="s.icon === 'music'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
-              <svg v-else-if="s.icon === 'chart'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18" /><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" /></svg>
-              <svg v-else-if="s.icon === 'doc'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-              <svg v-else-if="s.icon === 'clock'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
-            </div>
-            <div class="chip-title">{{ s.title }}</div>
-            <div class="chip-desc">{{ s.desc }}</div>
-          </div>
+          <SuggestionChip
+            v-for="(s, i) in suggestions"
+            :key="s.id"
+            :card="s"
+            :delay="Math.min(i + 1, 9)"
+            @click="fillSuggestion(s)"
+          />
         </div>
       </div>
     </div>
@@ -394,43 +369,6 @@ onMounted(() => {
 
 /* .composer-btn 系列已移到 styles/global.css —— Conversation.vue 也在用它，
  * 放在这里只有先访问过 /chat 才生效（详见 global.css 里的说明）。 */
-
-.suggestion-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
-  width: 100%; max-width: 640px;
-}
-
-.suggestion-chip {
-  text-align: left; padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border); border-radius: var(--r-lg);
-  cursor: pointer; transition: all 0.3s var(--ease);
-  display: flex; flex-direction: column; gap: 4px;
-  position: relative; overflow: hidden;
-  animation: fade-in-up 0.4s var(--ease-out) both;
-}
-
-.suggestion-chip::before {
-  content: ''; position: absolute; inset: 0;
-  background: var(--grad-brand-soft);
-  opacity: 0; transition: opacity 0.3s var(--ease); border-radius: inherit;
-}
-
-.suggestion-chip:hover { border-color: var(--teal-300); box-shadow: var(--shadow-md); transform: translateY(-3px) scale(1.02); }
-.suggestion-chip:hover::before { opacity: 0.5; }
-.suggestion-chip > * { position: relative; z-index: 1; }
-
-.suggestion-chip .chip-icon {
-  width: 30px; height: 30px; border-radius: var(--r-sm);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 4px; transition: transform 0.3s var(--ease-spring);
-}
-
-.suggestion-chip:hover .chip-icon { transform: scale(1.15) rotate(-5deg); }
-.suggestion-chip .chip-icon svg { width: 16px; height: 16px; }
-.suggestion-chip .chip-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.suggestion-chip .chip-desc { font-size: 11.5px; color: var(--text-tertiary); }
 
 /* ---- Task desk below 1024px (board §11) ---- */
 .desk { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
