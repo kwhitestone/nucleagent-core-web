@@ -7,3 +7,5 @@ The canonical guide owns product/adapter boundaries, credential prohibitions,
 working-tree and commit/history scans, deployment regression, and explicit Agent handoff.
 If the guide is unavailable or conflicts with this file, report the issue before editing;
 do not duplicate the guide or infer that an active Agent has received new instructions.
+
+测试性能：遵守工作区根 `/home/workspace/nucleagent-workspace/AGENTS.md` 的《测试性能规则》。
