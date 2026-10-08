@@ -63,29 +63,27 @@ test("icon library: >= 60 unique ids, same set and order as Core's whitelist, le
   assert.equal(hs.iconFor("not-a-real-icon").id, "layers");
 });
 
-test("fallback is the pre-T14 9 cards, text verbatim from i18n in both locales", () => {
-  const cards = hs.fallbackCards(t(zh));
-  assert.equal(cards.length, 9);
-  assert.deepEqual(cards[0], { id: "competitiveAnalysis", icon: "check", action: "fill-title", prompt: "", title: "竞品分析", desc: "自动收集数据生成报告" });
-  assert.equal(hs.fallbackCards(t(en))[8].title, "Knowledge Base Q&A");
-  // Core's seed (shared DefaultHomeSuggestions) must say exactly the same.
-  try {
-    const go = sharedModel();
-    for (const [i, { id, icon }] of hs.FALLBACK_CARDS.entries()) {
-      const s = zh.home.suggestions[id];
-      const e = en.home.suggestions[id];
-      const row = `row(${(i + 1) * 10}, "${id}", "${icon}", "${s.title}", "${s.desc}", "${e.title}", "${e.desc}")`;
-      assert.ok(go.includes(row), `seed drifted from i18n: ${row}`);
-    }
-  } catch (error: any) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-});
+// Core's defaults (shared DefaultHomeSuggestions, = seed and "restore defaults"), parsed from the Go source.
+function sharedDefaults(): any[] | null {
+  let go: string;
+  try { go = sharedModel(); } catch (error: any) { if (error?.code === "ENOENT") return null; throw error; }
+  const body = go.slice(go.indexOf("func DefaultHomeSuggestions()"), go.indexOf("func RetiredHomeSuggestionDefaults()"));
+  const lit = String.raw`"((?:[^"\\]|\\.)*)"`;
+  const row = new RegExp(String.raw`row\((\d+),\s*` + Array(8).fill(lit).join(String.raw`,\s*`) + String.raw`\)`, "g");
+  return [...body.matchAll(row)].map((m) => {
+    const [id, icon, titleZh, descZh, promptZh, titleEn, descEn, promptEn] = m.slice(2).map((x) => JSON.parse(`"${x}"`));
+    return { id, icon, enabled: true, action: "prefill", titleZh, descZh, promptZh, titleEn, descEn, promptEn };
+  });
+}
 
-test("home: bad, empty or null responses fall back; bad items are skipped; en falls back to zh", () => {
+test("home: Core is the only source; null, bad or empty data is an empty list (no hard-coded cards)", () => {
+  assert.equal(hs.FALLBACK_CARDS, undefined);
+  assert.equal(hs.fallbackCards, undefined);
+  assert.equal(zh.home.suggestions, undefined, "the pre-T14 i18n cards are gone");
   for (const data of [null, undefined, {}, { items: "x" }, { items: [] }, { items: [{ id: "x" }] }, { items: [{ id: "a", titleZh: "甲", enabled: false }] }]) {
-    assert.equal(hs.resolveCards(data, "zh-CN"), null, JSON.stringify(data));
+    assert.deepEqual(hs.resolveCards(data, "zh-CN"), [], JSON.stringify(data));
   }
+  assert.ok(zh.home.suggestionsEmpty.includes("首页建议") && en.home.suggestionsEmpty.includes("Home suggestions"));
   const data = { items: [
     { id: "a", icon: "rocket", action: "prefill", titleZh: "甲", descZh: "描述", promptZh: "写一份\n报告", titleEn: "A" },
     { id: "b", icon: "unknown-icon", action: "weird", titleZh: "乙" },
@@ -101,11 +99,16 @@ test("home: bad, empty or null responses fall back; bad items are skipped; en fa
   assert.equal(enCards[0].prompt, "写一份\n报告");
 });
 
-test("the built-in 9 (seed = restore defaults) pass validation as they are", () => {
-  const items = hs.FALLBACK_CARDS.map(({ id, icon }: any) => ({ id, icon, enabled: true, action: "fill-title",
-    titleZh: zh.home.suggestions[id].title, descZh: zh.home.suggestions[id].desc, promptZh: "",
-    titleEn: en.home.suggestions[id].title, descEn: en.home.suggestions[id].desc, promptEn: "" }));
+test("Core's defaults (seed = restore defaults) are 6-8 prefill cards with known icons that pass admin validation", (ctx) => {
+  const items = sharedDefaults();
+  if (!items) return ctx.skip("no sibling nucleagent-shared checkout");
+  assert.ok(items.length >= 6 && items.length <= 8, `${items.length} defaults`);
   assert.equal(hs.validateItems(items), null);
+  for (const item of items) {
+    assert.ok(item.promptZh && item.promptEn, item.id);
+    assert.equal(hs.iconFor(item.icon).id, item.icon, `${item.id}: icon ${item.icon} not in the bundled library`);
+    assert.equal(hs.cardInput(hs.localize(item, "zh-CN")), item.promptZh);
+  }
 });
 
 test("click: prefill inserts the prompt, empty prompt or fill-title inserts 'title：'", () => {

@@ -3,7 +3,7 @@
  * 首页视图 —— 对齐 design/nucleagent-design.html 第 1760–1846 行。
  *
  * .home-hero（问候 + 标题 + 副标题）+ .home-composer（输入框 + 发送）+
- * .suggestion-grid（9 张建议卡，带 .delay-1..9 交错入场）。
+ * .suggestion-grid（建议卡，来自 Core 配置，带 .delay-1..9 交错入场；没有配置时显示空态）。
  *
  * 替代旧 Workbench.vue：去掉自带的品牌头部与侧栏（chrome 已上移到壳），
  * 仅保留内容。创建对话的逻辑沿用 useConversationStore。
@@ -26,7 +26,7 @@ import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskD
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
 import SuggestionChip from "@/components/SuggestionChip.vue";
-import { cardInput, fallbackCards, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
+import { cardInput, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
 
 const router = useRouter();
 const store = useConversationStore();
@@ -45,9 +45,13 @@ const broadcast = ref(false);
 const eligibleCount = ref(0);
 const canSend = computed(() => broadcast.value ? eligibleCount.value > 0 : backendCompatible.value);
 
-/** 首页建议卡：先渲染内置 9 张，接口返回合法配置后替换；失败/为空/格式不对保持内置（UNI-T14）。 */
+/**
+ * 首页建议卡只来自 Core（UNI-C7：去掉了前端写死的旧 9 张兜底）。
+ * loading → 不占位；loaded 且无卡 → 明确空态（提示管理员去配置）；failed → 空态 + 加载失败提示。
+ */
 const configured = ref<unknown>(null);
-const suggestions = computed<HomeCard[]>(() => resolveCards(configured.value, locale.value) ?? fallbackCards(t));
+const suggestionsState = ref<"loading" | "loaded" | "failed">("loading");
+const suggestions = computed<HomeCard[]>(() => resolveCards(configured.value, locale.value));
 
 async function handleCreate(): Promise<void> {
   const text = input.value.trim();
@@ -114,8 +118,12 @@ onMounted(() => {
   store.load().catch((e: unknown) => {
     toast.error(e instanceof ApiError ? e.message : t("home.loadHistoryFailed"));
   });
-  fetchHomeSuggestions().then((data) => (configured.value = data)).catch((e: unknown) => {
-    console.warn("home suggestions unavailable, using built-in cards", e);
+  fetchHomeSuggestions().then((data) => {
+    configured.value = data;
+    suggestionsState.value = "loaded";
+  }).catch((e: unknown) => {
+    console.warn("home suggestions unavailable", e);
+    suggestionsState.value = "failed";
   });
 });
 </script>
@@ -256,7 +264,7 @@ onMounted(() => {
           @remove="(id: string) => (attachments = attachments.filter((a) => a.fileId !== id))"
         />
 
-        <div class="suggestion-grid">
+        <div v-if="suggestions.length" class="suggestion-grid">
           <SuggestionChip
             v-for="(s, i) in suggestions"
             :key="s.id"
@@ -265,6 +273,9 @@ onMounted(() => {
             @click="fillSuggestion(s)"
           />
         </div>
+        <p v-else-if="suggestionsState !== 'loading'" class="suggestion-empty" data-testid="suggestion-empty">
+          {{ t(suggestionsState === 'failed' ? 'home.suggestionsFailed' : 'home.suggestionsEmpty') }}
+        </p>
       </div>
     </div>
   </div>
@@ -366,6 +377,7 @@ onMounted(() => {
 .broadcast-toggle { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; padding: 4px; cursor: pointer; }
 .broadcast-toggle input { accent-color: var(--indigo-500); }
 @media (max-width: 540px) { .composer-actions { flex-wrap: wrap; } }
+.suggestion-empty { max-width: 640px; margin: 0; font-size: 13px; color: var(--text-tertiary); }
 
 /* .composer-btn 系列已移到 styles/global.css —— Conversation.vue 也在用它，
  * 放在这里只有先访问过 /chat 才生效（详见 global.css 里的说明）。 */

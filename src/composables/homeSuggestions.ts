@@ -1,6 +1,5 @@
 /**
- * Home suggestion cards (UNI-T14): the built-in icon library, the 9 fallback
- * cards, response parsing for the home page and the admin's validation rules
+ * Home suggestion cards (UNI-T14): the built-in icon library, response parsing for the home page and the admin's validation rules
  * (same rules as Core's PUT, so an imported JSON is checked before saving).
  *
  * Icons are bundled components only: no upload, URL or SVG text. Ids are the
@@ -135,20 +134,6 @@ export interface HomeCard {
   prompt: string;
 }
 
-/** The pre-T14 cards, in order. Their text lives in i18n home.suggestions.<id>. */
-export const FALLBACK_CARDS: readonly { id: string; icon: string }[] = [
-  { id: "competitiveAnalysis", icon: "check" }, { id: "presentation", icon: "ppt" }, { id: "freeChat", icon: "chat" },
-  { id: "videoGen", icon: "video" }, { id: "musicCreation", icon: "music" }, { id: "dataAnalysis", icon: "chart" },
-  { id: "docWriting", icon: "doc" }, { id: "workflowAutomation", icon: "clock" }, { id: "knowledgeQA", icon: "layers" },
-];
-
-export function fallbackCards(t: (key: string) => string): HomeCard[] {
-  return FALLBACK_CARDS.map(({ id, icon }) => ({
-    id, icon, action: "fill-title", prompt: "",
-    title: t(`home.suggestions.${id}.title`), desc: t(`home.suggestions.${id}.desc`),
-  }));
-}
-
 const str = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 /** Coerces one untrusted object into an item; null when it has no id or zh title. */
@@ -175,16 +160,15 @@ export function localize(item: HomeSuggestionItem, locale: string): HomeCard {
 }
 
 /**
- * The user GET's data → cards for this locale, or null meaning "use the
- * fallback" (null data, wrong shape, or nothing valid left). Bad items are
- * skipped one by one.
+ * The user GET's data → cards for this locale. Core is the only source (UNI-C7):
+ * null data, a wrong shape or nothing valid left is an empty list, which the
+ * home shows as an explicit empty state. Bad items are skipped one by one.
  */
-export function resolveCards(data: unknown, locale: string): HomeCard[] | null {
+export function resolveCards(data: unknown, locale: string): HomeCard[] {
   const items = (data as { items?: unknown } | null)?.items;
-  if (!Array.isArray(items)) return null;
-  const cards = items.map(normalizeItem).filter((i): i is HomeSuggestionItem => !!i && i.enabled)
+  if (!Array.isArray(items)) return [];
+  return items.map(normalizeItem).filter((i): i is HomeSuggestionItem => !!i && i.enabled)
     .slice(0, MAX_CARDS).map((i) => localize(i, locale));
-  return cards.length ? cards : null;
 }
 
 /** What a click puts in the composer. Never sends. */
