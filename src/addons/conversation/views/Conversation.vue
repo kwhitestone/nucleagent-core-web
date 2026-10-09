@@ -18,6 +18,7 @@ import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { getConversation, updateConversationSettings } from "@/addons/conversation/api/conversation";
+import { getInstanceTemplateId, getMyAgent } from "@/addons/conversation/api/agent";
 import type { ModelChoice } from "@/addons/conversation/api/types";
 import type { ConversationAdapter } from "@/addons/conversation/task-conversation/core";
 import type { ConversationRendererRegistry } from "@/addons/conversation/task-conversation/vue";
@@ -45,6 +46,8 @@ const narrow = useNarrow();
 /** Q7: below 1024px the model/backend switch lives behind the header's 「⋯」. */
 const moreOpen = ref(false);
 const title = ref("");
+// AG1: the agent behind this conversation was deleted: history stays, sending is refused (server 409).
+const agentDeleted = ref(false);
 const status = ref<ConversationStatus | "">("");
 /** The live controller speaks idle/running/…; the header shows the API vocabulary. */
 function onLiveStatus(next: "idle" | "running" | "completed" | "failed" | "cancelled"): void {
@@ -100,6 +103,14 @@ watch(
       ]);
       if (!active) return;
       title.value = conversation.title ?? "";
+      agentDeleted.value = false;
+      if (conversation.agentId) {
+        void (async () => {
+          const templateId = await getInstanceTemplateId(conversation.agentId!);
+          const agent = templateId ? await getMyAgent(templateId) : null;
+          if (active) agentDeleted.value = agent?.deleted === true;
+        })().catch(() => {});
+      }
       status.value = conversation.status ?? "";
       const groupRoute = broadcastRoute(conversation);
       if (groupRoute) {
@@ -226,10 +237,11 @@ function onError(error: Error): void {
           </div>
         </div>
       </div>
+      <p v-if="agentDeleted" class="conv-agent-deleted" role="status" data-testid="conv-agent-deleted">{{ t("agents.deletedHint") }}</p>
       <TaskConversation
         :conversation-key="id"
         :adapter="adapter"
-        :capabilities="{ send: !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible, stop: true, attachments: true }"
+        :capabilities="{ send: !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted, stop: true, attachments: true }"
         :renderers="renderers"
         :show-process="true"
         :locale="locale === 'en' ? 'en-US' : 'zh-CN'"

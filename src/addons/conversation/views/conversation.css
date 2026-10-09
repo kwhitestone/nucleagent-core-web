@@ -182,3 +182,6 @@
   flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .chat-view .atc-narrow .atc-process-summary .atc-process-elapsed { flex: none; }
+
+/* AG1: banner when the conversation's agent was deleted */
+.conv-agent-deleted { margin: 8px 16px 0; padding: 8px 12px; border-radius: var(--r-md); background: #fef2f2; color: #b91c1c; font-size: 13px; }

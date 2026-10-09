@@ -7,7 +7,7 @@
 import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { ApiError } from "@/contracts/platform-runtime";
+import { ApiError, isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import { getMyAgent, updateAgentMemory, type MyAgent } from "../api/agent";
 import { listConversations } from "../api/conversation";
@@ -18,6 +18,9 @@ const props = defineProps<{ templateId: string }>();
 const { t } = useI18n();
 const router = useRouter();
 const store = useConversationStore();
+const authorization = useEmbeddedAuthorization();
+// Admins jump to the definition editor (/admin/agents?edit=id); others never see the link.
+const canEditDefinition = computed(() => isInShell() && authorization.can("core:admin:write"));
 
 const agent = ref<MyAgent | null>(null);
 const sessions = ref<Conversation[]>([]);
@@ -109,12 +112,17 @@ function source(c: Conversation): string {
         <header class="agent-head">
           <div class="agent-avatar" aria-hidden="true">{{ agent.name.slice(0, 1) }}</div>
           <div class="agent-title">
-            <h1>{{ agent.name }} <span v-if="agent.disabled" class="tag off">{{ t("agents.disabled") }}</span></h1>
+            <h1>{{ agent.name }}
+              <span v-if="agent.deleted" class="tag off" data-testid="agent-deleted-tag">{{ t("agents.deleted") }}</span>
+              <span v-else-if="agent.disabled" class="tag off">{{ t("agents.disabled") }}</span></h1>
             <p v-if="agent.description">{{ agent.description }}</p>
           </div>
+          <router-link v-if="canEditDefinition && !agent.deleted" class="btn-ghost" :to="`/admin/agents?edit=${agent.templateId}`"
+            data-testid="agent-admin-edit">{{ t("agents.editAsAdmin") }}</router-link>
         </header>
 
-        <p v-if="agent.disabled" class="notice" role="status">{{ t("agents.disabledHint") }}</p>
+        <p v-if="agent.deleted" class="notice" role="status" data-testid="agent-deleted-banner">{{ t("agents.deletedHint") }}</p>
+        <p v-else-if="agent.disabled" class="notice" role="status">{{ t("agents.disabledHint") }}</p>
         <form v-else class="agent-compose" @submit.prevent="startSession">
           <textarea v-model="input" rows="3" :placeholder="t('agents.newSessionPlaceholder', { name: agent.name })"
             data-testid="agent-new-input" @keydown.enter.exact.prevent="startSession" />

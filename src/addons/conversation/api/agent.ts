@@ -30,6 +30,8 @@ export interface MyAgent {
   config?: AgentTemplate["config"];
   i18n?: Record<string, unknown>;
   disabled: boolean;
+  /** The definition was deleted by an admin (only on the single-item endpoint). */
+  deleted?: boolean;
   /** Null until first use: everyone owns every agent before a row exists. */
   instanceId: number | null;
   sessionCount: number;
@@ -48,6 +50,12 @@ export async function listMyAgents(): Promise<MyAgent[]> {
 export async function getMyAgent(templateId: number): Promise<MyAgent | null> {
   const response = await http().get<Envelope<MyAgent>>(`${MINE}/${templateId}`);
   return response.data?.data ?? null;
+}
+
+/** The definition behind one of my instances (a conversation carries the instance id). */
+export async function getInstanceTemplateId(instanceId: number): Promise<number | null> {
+  const response = await http().get<Envelope<{ templateId: number }>>(`/api/v1/addons/agent/instances/${instanceId}`);
+  return response.data?.data?.templateId ?? null;
 }
 
 /** Owner edits memory; an empty string clears it. */

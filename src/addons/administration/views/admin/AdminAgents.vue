@@ -4,23 +4,38 @@
  * instance appears on first use. Disable is one row and takes effect for all
  * instances: the running turn finishes, later turns are refused. The usage view
  * is metadata only — who, first use, how many sessions — never content.
+ * Delete (AG1) is offered only for a disabled definition, after an impact
+ * preview and typing the slug; restore brings it back disabled. The audit drawer
+ * shows who changed what, with the prompt only as a hash.
  */
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { ApiError } from "@/contracts/platform-runtime";
+import { ApiError, isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import {
   createAgentDefinition,
+  deleteAgentDefinition,
+  getAgentImpact,
+  listAgentAudits,
   listAgentDefinitions,
   listAgentInstances,
+  restoreAgentDefinition,
   updateAgentDefinition,
+  type AgentAudit,
   type AgentDefinition,
   type AgentDefinitionInput,
+  type AgentImpact,
   type AgentInstanceMeta,
 } from "../../api/agent";
 import { definitionIMRequiresModel } from "../../agents/definitionValidation";
+import { canDelete, canRestore, confirmMatches, impactRows } from "../../agents/lifecycle";
 
 const { t } = useI18n();
+const route = useRoute();
+const authorization = useEmbeddedAuthorization();
+const canWrite = computed(() => !isInShell() || authorization.can("core:admin:write"));
+const showDeleted = ref(false);
 const loading = ref(false);
 const saving = ref(false);
 const agents = ref<AgentDefinition[]>([]);
@@ -29,7 +44,7 @@ const editingId = ref<number | null | undefined>(undefined); // null = create, u
 const formOpen = computed(() => editingId.value !== undefined);
 const isCreate = computed(() => editingId.value === null);
 const form = reactive({
-  name: "", slug: "", description: "", prompt: "", memory: true,
+  name: "", slug: "", description: "", prompt: "", avatar: "", memory: true,
   executionBackend: "", providerId: "", model: "", authAgentUserId: "",
 });
 
@@ -47,7 +62,8 @@ function errorText(error: unknown): string {
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    agents.value = await listAgentDefinitions();
+    agents.value = await listAgentDefinitions({ includeDeleted: showDeleted.value });
+    openEditFromQuery();
   } catch (error) {
     toast.error(errorText(error));
   } finally {
@@ -55,9 +71,22 @@ async function load(): Promise<void> {
   }
 }
 onMounted(load);
+watch(showDeleted, load);
+
+// /admin/agents?edit=<id> (the admin "edit" link on /agents/:id) opens that definition once.
+let editHandled = false;
+function openEditFromQuery(): void {
+  const id = Number(route.query.edit);
+  if (editHandled || !id || !canWrite.value) return;
+  const agent = agents.value.find((a) => a.id === id && !a.deletedAt);
+  if (agent) {
+    editHandled = true;
+    openEdit(agent);
+  }
+}
 
 function openCreate(): void {
-  Object.assign(form, { name: "", slug: "", description: "", prompt: "", memory: true,
+  Object.assign(form, { name: "", slug: "", description: "", prompt: "", avatar: "", memory: true,
     executionBackend: "", providerId: "", model: "", authAgentUserId: "" });
   editingId.value = null;
 }
@@ -65,7 +94,7 @@ function openCreate(): void {
 function openEdit(agent: AgentDefinition): void {
   const cfg = agent.config ?? {};
   Object.assign(form, {
-    name: agent.name, slug: agent.slug, description: cfg.description ?? "", prompt: cfg.prompt ?? "",
+    name: agent.name, slug: agent.slug, description: cfg.description ?? "", prompt: cfg.prompt ?? "", avatar: cfg.avatar ?? "",
     memory: cfg.memory !== false, executionBackend: cfg.defaults?.executionBackend ?? "",
     providerId: cfg.defaults?.providerId ? String(cfg.defaults.providerId) : "", model: cfg.defaults?.model ?? "",
     authAgentUserId: agent.authAgentUserId ? String(agent.authAgentUserId) : "",
@@ -77,7 +106,7 @@ function body(): AgentDefinitionInput {
   const providerId = Number(form.providerId) || undefined;
   return {
     name: form.name.trim(), slug: form.slug.trim(), description: form.description.trim(),
-    prompt: form.prompt, memory: form.memory,
+    prompt: form.prompt, avatar: form.avatar.trim(), memory: form.memory,
     defaults: { executionBackend: form.executionBackend.trim(), providerId, model: form.model.trim() },
     authAgentUserId: Number(form.authAgentUserId) || 0,
   };
@@ -128,6 +157,64 @@ async function openUsage(agent: AgentDefinition, offset = 0): Promise<void> {
   }
 }
 
+// ---- delete / restore (AG1)
+const deleting = ref<AgentDefinition | null>(null);
+const impact = ref<AgentImpact | null>(null);
+const typedSlug = ref("");
+const busy = ref(false);
+
+async function openDelete(agent: AgentDefinition): Promise<void> {
+  if (!canDelete(agent)) return;
+  try {
+    impact.value = await getAgentImpact(agent.id);
+    typedSlug.value = "";
+    deleting.value = agent;
+  } catch (error) {
+    toast.error(errorText(error));
+  }
+}
+
+async function confirmDelete(): Promise<void> {
+  const agent = deleting.value;
+  if (!agent || busy.value || !confirmMatches(agent.slug, typedSlug.value)) return;
+  busy.value = true;
+  try {
+    await deleteAgentDefinition(agent.id);
+    toast.success(t("agents.admin.deletedToast"));
+    deleting.value = null;
+    await load();
+  } catch (error) {
+    toast.error(errorText(error));
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function restore(agent: AgentDefinition): Promise<void> {
+  try {
+    await restoreAgentDefinition(agent.id);
+    toast.success(t("agents.admin.restoredToast"));
+    await load();
+  } catch (error) {
+    toast.error(errorText(error));
+  }
+}
+
+// ---- audit drawer
+const auditsOf = ref<AgentDefinition | null>(null);
+const audits = ref<AgentAudit[]>([]);
+
+async function openAudits(agent: AgentDefinition): Promise<void> {
+  try {
+    audits.value = (await listAgentAudits(agent.id)).items;
+    auditsOf.value = agent;
+  } catch (error) {
+    toast.error(errorText(error));
+  }
+}
+
+const shortHash = (h: string): string => (h ? h.slice(0, 12) : "—");
+
 function when(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
@@ -137,7 +224,10 @@ function when(value: string | null): string {
   <div class="agents-view">
     <div class="list-header">
       <span class="count-hint">{{ t("agents.admin.count", { n: agents.length }) }}</span>
-      <button class="btn-primary" type="button" data-testid="agent-create" @click="openCreate">{{ t("agents.admin.create") }}</button>
+      <div class="header-actions">
+        <label class="switch-row small"><input v-model="showDeleted" type="checkbox" class="switch" data-testid="agent-show-deleted" />{{ t("agents.admin.showDeleted") }}</label>
+        <button v-if="canWrite" class="btn-primary" type="button" data-testid="agent-create" @click="openCreate">{{ t("agents.admin.create") }}</button>
+      </div>
     </div>
     <p class="section-hint">{{ t("agents.admin.hint") }}</p>
 
@@ -145,12 +235,13 @@ function when(value: string | null): string {
     <p v-else-if="!agents.length" class="empty-hint">{{ t("agents.admin.empty") }}</p>
 
     <div v-else class="tool-list">
-      <div v-for="agent in agents" :key="agent.id" class="tool-card" :class="{ inactive: !agent.isActive }" data-testid="agent-row">
+      <div v-for="agent in agents" :key="agent.id" class="tool-card" :class="{ inactive: !agent.isActive, deleted: !!agent.deletedAt }" data-testid="agent-row">
         <div class="tool-main">
           <div class="tool-title-row">
             <span class="tool-name">{{ agent.name }}</span>
             <span class="tool-slug">{{ agent.slug }}</span>
-            <span class="badge" :class="agent.isActive ? 'on' : 'off'">
+            <span v-if="agent.deletedAt" class="badge gone" data-testid="agent-deleted-badge">{{ t("agents.admin.deleted") }}</span>
+            <span v-else class="badge" :class="agent.isActive ? 'on' : 'off'">
               {{ agent.isActive ? t("common.enabled") : t("common.disabled") }}
             </span>
             <span v-if="agent.authAgentUserId" class="type-chip">IM UID {{ agent.authAgentUserId }}</span>
@@ -160,10 +251,20 @@ function when(value: string | null): string {
         </div>
         <div class="tool-actions">
           <button class="btn-ghost" type="button" @click="openUsage(agent)">{{ t("agents.admin.viewInstances") }}</button>
-          <button class="btn-ghost" type="button" @click="openEdit(agent)">{{ t("common.edit") }}</button>
-          <button class="btn-ghost" :class="{ danger: agent.isActive }" type="button" data-testid="agent-toggle" @click="toggleActive(agent)">
-            {{ agent.isActive ? t("common.disable") : t("common.enable") }}
-          </button>
+          <button class="btn-ghost" type="button" data-testid="agent-audits" @click="openAudits(agent)">{{ t("agents.admin.audits") }}</button>
+          <template v-if="canWrite && canRestore(agent)">
+            <button class="btn-ghost" type="button" data-testid="agent-restore" @click="restore(agent)">{{ t("agents.admin.restore") }}</button>
+          </template>
+          <template v-else-if="canWrite">
+            <button class="btn-ghost" type="button" @click="openEdit(agent)">{{ t("common.edit") }}</button>
+            <button class="btn-ghost" :class="{ danger: agent.isActive }" type="button" data-testid="agent-toggle" @click="toggleActive(agent)">
+              {{ agent.isActive ? t("common.disable") : t("common.enable") }}
+            </button>
+            <button class="btn-ghost danger" type="button" data-testid="agent-delete" :disabled="!canDelete(agent)"
+              :title="canDelete(agent) ? '' : t('agents.admin.deleteNeedsDisable')" @click="openDelete(agent)">
+              {{ t("agents.admin.delete") }}
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -175,15 +276,17 @@ function when(value: string | null): string {
           <button class="modal-close" type="button" :aria-label="t('common.close')" @click="editingId = undefined">×</button>
         </div>
         <div class="modal-body">
+          <p class="section-hint" data-testid="agent-effect-timing">{{ t("agents.admin.effectTiming") }}</p>
           <label class="field"><span class="field-label">{{ t("agents.admin.fieldName") }} *</span>
             <input v-model="form.name" type="text" maxlength="128" data-testid="agent-name" /></label>
           <label class="field"><span class="field-label">Slug *</span>
             <input v-model="form.slug" type="text" maxlength="64" :disabled="!isCreate" placeholder="hr-assistant" data-testid="agent-slug" /></label>
           <label class="field"><span class="field-label">{{ t("agents.admin.fieldDescription") }}</span>
             <input v-model="form.description" type="text" maxlength="200" /></label>
+          <label class="field"><span class="field-label">{{ t("agents.admin.fieldAvatar") }}</span>
+            <input v-model="form.avatar" type="url" maxlength="1024" placeholder="https://" data-testid="agent-avatar" /></label>
           <label class="field"><span class="field-label">{{ t("agents.admin.fieldPrompt") }}</span>
-            <textarea v-model="form.prompt" rows="8" maxlength="4000" data-testid="agent-prompt" />
-            <span class="section-hint">{{ t("agents.personaNewSessions") }}</span></label>
+            <textarea v-model="form.prompt" rows="8" maxlength="4000" data-testid="agent-prompt" /></label>
           <div class="field-row">
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldBackend") }}</span>
               <input v-model="form.executionBackend" type="text" placeholder="codex" /></label>
@@ -227,6 +330,53 @@ function when(value: string | null): string {
           <div v-if="usageTotal > usage.length" class="count-hint">{{ t("agents.admin.total", { n: usageTotal }) }}</div>
         </div>
       </div>
+    </div>
+
+    <div v-if="deleting && impact" class="modal-mask" @click.self="deleting = null">
+      <div class="modal-card" role="dialog" aria-modal="true" :aria-label="t('agents.admin.deleteTitle', { name: deleting.name })" data-testid="agent-delete-dialog">
+        <div class="modal-header">
+          <h2>{{ t("agents.admin.deleteTitle", { name: deleting.name }) }}</h2>
+          <button class="modal-close" type="button" :aria-label="t('common.close')" @click="deleting = null">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="field-label">{{ t("agents.admin.deleteImpact") }}</p>
+          <dl class="impact" data-testid="agent-impact">
+            <template v-for="row in impactRows(impact)" :key="row.key">
+              <dt>{{ t(`agents.admin.impact_${row.key}`) }}</dt>
+              <dd :data-key="row.key">{{ row.value === null ? t("agents.admin.impactUnavailable") : row.value }}</dd>
+            </template>
+          </dl>
+          <p class="section-hint">{{ t("agents.admin.deleteKeeps") }}</p>
+          <label class="field"><span class="field-label">{{ t("agents.admin.deleteTypeSlug", { slug: deleting.slug }) }}</span>
+            <input v-model="typedSlug" type="text" autocomplete="off" spellcheck="false" data-testid="agent-delete-slug" /></label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost" type="button" @click="deleting = null">{{ t("common.cancel") }}</button>
+          <button class="btn-danger" type="button" data-testid="agent-delete-confirm"
+            :disabled="busy || !confirmMatches(deleting.slug, typedSlug)" @click="confirmDelete">{{ t("agents.admin.deleteConfirm") }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="auditsOf" class="modal-mask drawer-mask" @click.self="auditsOf = null">
+      <aside class="modal-card drawer" role="dialog" aria-modal="true" :aria-label="t('agents.admin.auditsTitle', { name: auditsOf.name })" data-testid="agent-audit-drawer">
+        <div class="modal-header">
+          <h2>{{ t("agents.admin.auditsTitle", { name: auditsOf.name }) }}</h2>
+          <button class="modal-close" type="button" :aria-label="t('common.close')" @click="auditsOf = null">×</button>
+        </div>
+        <div class="modal-body">
+          <p v-if="!audits.length" class="empty-hint">{{ t("agents.admin.noAudits") }}</p>
+          <ol v-else class="audit-list">
+            <li v-for="row in audits" :key="row.id" data-testid="agent-audit-row">
+              <div class="audit-head"><b>{{ t(`agents.admin.action_${row.action}`) }}</b>
+                <span class="tool-slug">UID {{ row.actorUserId }} · {{ when(row.createdAt) }}</span></div>
+              <div v-if="row.fields?.length" class="tool-url">{{ row.fields.join(", ") }}</div>
+              <div v-if="row.promptSha256After || row.promptSha256Before" class="tool-slug">
+                {{ t("agents.admin.promptHash") }}: {{ shortHash(row.promptSha256Before) }} → {{ shortHash(row.promptSha256After) }}</div>
+            </li>
+          </ol>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
@@ -294,4 +444,28 @@ function when(value: string | null): string {
 .btn-ghost:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .btn-ghost.danger:hover { border-color: var(--rose-400); color: var(--rose-500); }
 @media (max-width: 759.98px) { .field-row { grid-template-columns: 1fr; } }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.switch-row.small { font-size: 12.5px; color: var(--text-secondary); }
+.tool-card.deleted { opacity: 0.5; }
+.badge.gone { background: #fee2e2; color: #b91c1c; }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-danger { background: #dc2626; color: #fff; border: none; border-radius: var(--r-md); padding: 8px 16px; font-size: 13px; cursor: pointer; }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+.impact { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; margin: 4px 0 12px; font-size: 13px; }
+.impact dt { color: var(--text-secondary); }
+.impact dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.drawer-mask { justify-content: flex-end; padding: 0; }
+.drawer { height: 100%; max-height: 100%; border-radius: 0; width: min(440px, 100%); }
+.audit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.audit-list li { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.audit-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+@media (max-width: 480px) {
+  .modal-mask { padding: 8px; }
+  .modal-card { width: 100%; max-width: 100%; max-height: calc(100dvh - 16px); }
+  .modal-footer { flex-wrap: wrap; }
+  .modal-footer button { flex: 1 1 auto; }
+  .list-header { flex-wrap: wrap; gap: 8px; }
+  .tool-card { flex-direction: column; align-items: stretch; }
+  .tool-actions { flex-shrink: 1; }
+}
 </style>
