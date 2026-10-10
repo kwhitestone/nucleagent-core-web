@@ -14,7 +14,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { ApiError } from "@/contracts/platform-runtime";
+import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
 import { listAgentTemplates } from "@/addons/conversation/api/agent";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
 import { toast } from "@/composables/useToast";
@@ -217,7 +217,7 @@ async function launch(): Promise<void> {
     // replace: Back from the conversation returns to the task desk, not the form (board §12 ⑤).
     await (narrow.value ? router.replace(`/c/${created.id}`) : router.push(`/c/${created.id}`));
   } catch (error) {
-    const message = error instanceof ApiError ? error.message : t("task.launchFailed");
+    const message = modelErrorMessage(error, t, t("task.launchFailed"));
     if (narrow.value) launchError.value = `${message} ${t("task.keptOnError")}`;
     else toast.error(message);
   } finally {

@@ -13,15 +13,20 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   fetchVisibleModels,
+  listAllTypedModels,
   listProviders,
+  type ModelType,
   type Provider,
+  type TypedModel,
   type UserVisibleModel,
 } from "@/contracts/model-catalog";
 import { toast } from "@/composables/useToast";
 import type { ModelChoice } from "@/addons/conversation/api/types";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
+import { modelTypeName } from "@/addons/conversation/composables/modelErrorMessage";
 import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
+import { pickerOptions, visiblePickerOptions } from "./modelPickerOptions";
 
 const props = withDefaults(
   defineProps<{
@@ -34,8 +39,10 @@ const props = withDefaults(
     compact?: boolean;
     /** Phones (board §12): a 52px list row that opens an option sheet instead of a <select>. */
     row?: boolean;
+    /** Model type to list (MT2-coreweb); chat boxes and the task page keep the default. */
+    type?: string;
   }>(),
-  { disabled: false, allowDefault: true, compact: false, row: false },
+  { disabled: false, allowDefault: true, compact: false, row: false, type: "chat" },
 );
 
 const emit = defineEmits<{
@@ -57,29 +64,19 @@ const requestGate = createLatestRequestGate();
  * 列表拉不到/未配置时回退全量列表（与旧行为一致）。
  */
 const visibleModels = ref<UserVisibleModel[]>([]);
+/** All types from `/provider/models?type=`; null = old Core (fallback to config.models). */
+const typedAll = ref<Record<ModelType, TypedModel[]> | null>(null);
+const typed = computed(() => typedAll.value?.[props.type as ModelType] ?? null);
 
-/**
- * 取 provider 的模型清单。
- *
- * config 与 models 都是可选，且 config 是自由 JSON —— 必须做 Array.isArray 守卫，
- * 否则脏数据会让整个下拉炸掉（与 Providers.vue 的 modelsOf 同一处理）。
- */
-function modelsOf(p: Provider): string[] {
-  const m = p.config?.models;
-  return Array.isArray(m) ? m.filter((x): x is string => typeof x === "string") : [];
-}
-
-/** 只保留启用且配了模型清单的 provider —— 没配 models 的选不出东西来。 */
-const usable = computed(() => providers.value.filter((p) => p.isActive && modelsOf(p).length > 0));
+/** Active providers with this type's models (chat: config.models ∩ typed chat). */
+const usable = computed(() => pickerOptions(providers.value, typed.value, props.type));
 
 /**
  * 可见模型组选项：只保留能解析出具体落点（targetModel 非空）的组。
  * value 直接用具体 "{configId}:{targetModel}"，与全量列表的编码一致 ——
  * onChange 无需区分来源。
  */
-const visibleOptions = computed(() =>
-  visibleModels.value.filter((m) => m.targetModel && m.configId > 0),
-);
+const visibleOptions = computed(() => visiblePickerOptions(visibleModels.value, props.type));
 
 /** 当前选中项编码。空串 = 用服务端默认。 */
 const selected = computed(() =>
@@ -93,9 +90,24 @@ const selectedAvailable = computed(() => {
     (m) => m.configId === props.modelValue?.providerId && m.targetModel === props.modelValue?.model,
   )) return true;
   return usable.value.some(
-    (provider) => provider.id === props.modelValue?.providerId &&
-      modelsOf(provider).includes(props.modelValue.model),
+    (group) => group.id === props.modelValue?.providerId && group.models.includes(props.modelValue.model),
   );
+});
+
+/** Type name of an unavailable current model, when the typed lists know it and it is not this picker's type. */
+const unavailableType = computed(() => {
+  const current = props.modelValue;
+  if (!current || selectedAvailable.value || !typedAll.value) return "";
+  for (const [type, list] of Object.entries(typedAll.value)) {
+    if (type !== props.type && list.some((m) => m.providerId === current.providerId && m.model === current.model)) return type;
+  }
+  return "";
+});
+const unavailableLabel = computed(() => {
+  const base = t("common.modelCurrentUnavailable", { model: props.modelValue?.model ?? "" });
+  return unavailableType.value && props.type === "chat"
+    ? `${base} · ${t("common.modelNotChat", { type: modelTypeName(unavailableType.value, t) })}`
+    : base;
 });
 
 /** The same options as the <select>, flattened for the phone sheet. */
@@ -105,7 +117,7 @@ const sheetOptions = computed<SheetOption[]>(() => {
   if (visibleOptions.value.length) {
     for (const m of visibleOptions.value) out.push({ value: `${m.configId}:${m.targetModel}`, label: m.alias || m.model });
   } else {
-    for (const p of usable.value) for (const m of modelsOf(p)) out.push({ value: `${p.id}:${m}`, label: m, note: p.name });
+    for (const p of usable.value) for (const m of p.models) out.push({ value: `${p.id}:${m}`, label: m, note: p.name });
   }
   return out;
 });
@@ -142,14 +154,17 @@ async function loadModels(warn = true): Promise<void> {
 	const request = requestGate.begin();
   loading.value = true;
   try {
-	const [nextProviders, nextVisible] = await Promise.all([
+	const [nextProviders, nextVisible, nextTyped] = await Promise.all([
 	  listProviders(),
 	  // 可见模型拉不到不视为失败（未配置时本来就是空数组）。
 	  fetchVisibleModels().catch(() => []),
+	  // Typed lists: old Core (404) or a failed read falls back to config.models.
+	  listAllTypedModels().catch(() => null),
 	]);
 	if (!request.isCurrent()) return;
 	providers.value = nextProviders;
 	visibleModels.value = nextVisible;
+	typedAll.value = nextTyped;
   } catch {
     // 取不到清单不阻断发送：留空即用服务端默认模型。
 	if (request.isCurrent() && warn) toast.warning(t("common.modelLoadFailed"));
@@ -164,6 +179,7 @@ function onSessionChange(event: Event): void {
 	requestGate.invalidate();
     providers.value = [];
     visibleModels.value = [];
+    typedAll.value = null;
     loading.value = false;
     return;
   }
@@ -213,7 +229,7 @@ onBeforeUnmount(() => {
         selected
         disabled
       >
-        {{ t('common.modelCurrentUnavailable', { model: modelValue.model }) }}
+        {{ unavailableLabel }}
       </option>
       <!-- 管理端可见模型组（v2 配置存在时）：显示名优先，落点仍是具体模型。
            组清单非空时隐藏全量列表（组即运营圈定的推荐面），空则回退全量。 -->
@@ -228,7 +244,7 @@ onBeforeUnmount(() => {
       <template v-if="!visibleOptions.length">
         <optgroup v-for="p in usable" :key="p.id" :label="p.name">
           <option
-            v-for="m in modelsOf(p)"
+            v-for="m in p.models"
             :key="`${p.id}:${m}`"
             :value="`${p.id}:${m}`"
             :selected="selected === `${p.id}:${m}`"

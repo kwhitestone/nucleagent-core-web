@@ -88,7 +88,7 @@ http.interceptors.response.use(
       const message = [body?.message, body?.detail, error.message, "Network error"]
         .find((value): value is string => typeof value === "string" && value.trim().length > 0)!
         .trim().slice(0, 1024);
-      return Promise.reject(new ApiError(message, body?.code ?? "NETWORK_ERROR", status));
+      return Promise.reject(new ApiError(message, body?.code ?? "NETWORK_ERROR", status, body));
     }
     return Promise.reject(error);
   },

@@ -72,6 +72,7 @@ export default {
     modelLoadFailed: "Failed to load models; the default will be used",
     modelRestoreFailed: "Failed to load the current conversation model",
     modelCurrentUnavailable: "{model} (current)",
+    modelNotChat: "this is a {type} model, not a chat model; pick another",
     modelSwitched: "Switched to {model}; takes effect next turn",
     modelSwitchFailed: "Failed to switch model",
     skill: "Skills",
@@ -135,6 +136,18 @@ export default {
     stopped: "Stopped",
     agentMode: "Agent mode",
     followUpPlaceholder: "Continue the conversation...",
+  },
+  model: {
+    typeMismatch: "{model} is a model of type \"{type}\"; chats and tasks need a chat model. Please pick another.",
+    types: {
+      chat: "chat",
+      image: "image",
+      video: "video",
+      audio: "audio",
+      embedding: "embedding",
+      rerank: "rerank",
+      other: "other",
+    },
   },
   home: {
     deskTitle: "What should the agent do today?",

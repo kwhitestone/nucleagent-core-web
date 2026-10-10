@@ -72,6 +72,7 @@ export default {
     modelLoadFailed: "加载模型列表失败，将使用默认模型",
     modelRestoreFailed: "当前会话模型加载失败",
     modelCurrentUnavailable: "{model}（当前）",
+    modelNotChat: "该模型是{type}模型，不是聊天模型，请改选",
     modelSwitched: "已切换到 {model}，下一轮生效",
     modelSwitchFailed: "切换模型失败",
     skill: "技能",
@@ -135,6 +136,18 @@ export default {
     stopped: "已停止",
     agentMode: "Agent 模式",
     followUpPlaceholder: "继续对话...",
+  },
+  model: {
+    typeMismatch: "{model} 是{type}模型，聊天和任务只能选聊天模型，请改选。",
+    types: {
+      chat: "聊天",
+      image: "生图",
+      video: "生视频",
+      audio: "语音",
+      embedding: "向量",
+      rerank: "重排",
+      other: "其他",
+    },
   },
   home: {
     deskTitle: "今天想让 Agent 做什么？",

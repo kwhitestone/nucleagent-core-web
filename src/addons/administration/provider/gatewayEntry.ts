@@ -1,4 +1,4 @@
-import type { Provider } from "@/contracts/model-catalog";
+import { MODEL_TYPES, type ModelType, type Provider, type TypedModel } from "@/contracts/model-catalog";
 
 /**
  * The Providers page shows one entry, 目鱼网关 (UNI-UI-GAP; GWLINK design
@@ -33,4 +33,34 @@ export function gatewaySyncedAt(providers: Provider[]): Date | null {
 export function formatSyncedAt(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** One gateway model chip with its type (MT2-coreweb read-only type label). */
+export interface TypedChip {
+  model: string;
+  type: string;
+}
+
+/**
+ * Chips from `/provider/models?type=` per type, chat first then the enum
+ * order; a model listed twice keeps its first type.
+ */
+export function typedChips(byType: Partial<Record<ModelType, TypedModel[]>>): TypedChip[] {
+  const seen = new Set<string>();
+  const out: TypedChip[] = [];
+  for (const type of MODEL_TYPES) {
+    for (const m of byType[type] ?? []) {
+      if (seen.has(m.model)) continue;
+      seen.add(m.model);
+      out.push({ model: m.model, type });
+    }
+  }
+  return out;
+}
+
+/** Chip count per type, every type present (0 when empty). */
+export function typeCounts(byType: Partial<Record<ModelType, TypedModel[]>>): Record<ModelType, number> {
+  const counts = Object.fromEntries(MODEL_TYPES.map((type) => [type, 0])) as Record<ModelType, number>;
+  for (const chip of typedChips(byType)) counts[chip.type as ModelType] += 1;
+  return counts;
 }

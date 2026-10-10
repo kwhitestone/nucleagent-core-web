@@ -54,12 +54,15 @@ export function emitSessionChange(authenticated: boolean): void {
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  /** The parsed problem body (e.g. `model`, `modelType` of a model_type_mismatch); `{}` when absent. */
+  readonly problem: Record<string, unknown>;
 
-  constructor(message: string, code: string, status: number) {
+  constructor(message: string, code: string, status: number, problem?: unknown) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.problem = problem && typeof problem === "object" ? problem as Record<string, unknown> : {};
   }
 }
 

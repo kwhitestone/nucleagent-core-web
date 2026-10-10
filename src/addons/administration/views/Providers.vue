@@ -9,20 +9,27 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
-import { listProviders, type Provider } from "@/contracts/model-catalog";
+import { listAllTypedModels, listProviders, type ModelType, type Provider, type TypedModel } from "@/contracts/model-catalog";
 import { toast } from "@/composables/useToast";
-import { formatSyncedAt, gatewayModels, gatewaySyncedAt } from "../provider/gatewayEntry";
+import { formatSyncedAt, gatewayModels, gatewaySyncedAt, typeCounts, typedChips } from "../provider/gatewayEntry";
 
 const { t } = useI18n();
 
 const providers = ref<Provider[]>([]);
 const loading = ref(true);
-const models = computed(() => gatewayModels(providers.value));
 const syncedAt = computed(() => gatewaySyncedAt(providers.value));
+/** Per-type lists from `/provider/models?type=`; null on an old Core (plain chips, no labels). */
+const byType = ref<Record<ModelType, TypedModel[]> | null>(null);
+const chips = computed(() => (byType.value
+  ? typedChips(byType.value)
+  : gatewayModels(providers.value).map((model) => ({ model, type: "" }))));
+const counts = computed(() => (byType.value
+  ? Object.entries(typeCounts(byType.value)).filter(([, n]) => n > 0)
+  : []));
 
 onMounted(async () => {
   try {
-    providers.value = await listProviders();
+    [providers.value, byType.value] = await Promise.all([listProviders(), listAllTypedModels().catch(() => null)]);
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : t("provider.loadFailed"));
   } finally {
@@ -51,13 +58,17 @@ onMounted(async () => {
             </div>
             <p class="provider-note">{{ t('provider.gatewayNote') }}</p>
             <div class="provider-models-title">
-              {{ t('provider.gatewayModels', { count: models.length }) }}
+              {{ t('provider.gatewayModels', { count: chips.length }) }}
               <span class="provider-sync" data-testid="provider-gateway-sync">· {{ syncedAt
                 ? t('provider.gatewaySyncedAt', { time: formatSyncedAt(syncedAt) })
                 : t('provider.gatewayNotSynced') }}</span>
             </div>
-            <div v-if="models.length" class="provider-models">
-              <span v-for="m in models" :key="m" class="model-chip">{{ m }}</span>
+            <div v-if="counts.length" class="provider-type-counts" data-testid="provider-type-counts">
+              <span v-for="[type, n] in counts" :key="type">{{ t(`model.types.${type}`) }} {{ n }}</span>
+            </div>
+            <div v-if="chips.length" class="provider-models">
+              <span v-for="chip in chips" :key="chip.model" class="model-chip">{{ chip.model }}<span
+                v-if="chip.type" class="model-type" :class="`t-${chip.type}`" data-testid="provider-model-type">{{ t(`model.types.${chip.type}`) }}</span></span>
             </div>
           </div>
         </div>
@@ -102,4 +113,7 @@ onMounted(async () => {
   font-size: 11px; padding: 2px 7px; border-radius: var(--r-sm);
   background: var(--bg-hover); color: var(--text-secondary); font-family: var(--font-mono);
 }
+.provider-type-counts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
+.model-type { margin-left: 5px; padding: 0 4px; border-radius: 3px; font-family: var(--font-body); background: var(--bg-card); color: var(--text-tertiary); }
+.model-type:not(.t-chat) { color: #b45309; }
 </style>

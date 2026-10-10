@@ -13,6 +13,7 @@ import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { BroadcastApiError } from "@/addons/conversation/api/broadcast";
+import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
 import { toast } from "@/composables/useToast";
 import AttachmentPicker from "@/addons/conversation/components/AttachmentPicker.vue";
@@ -83,7 +84,7 @@ async function handleCreate(): Promise<void> {
     await router.push(target);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    const message = error instanceof ApiError ? error.message : t("home.createFailed");
+    const message = modelErrorMessage(error, t, t("home.createFailed"));
     const reasons = error instanceof BroadcastApiError
       ? error.details.skipped?.map(item => `${item.backend}: ${t(`broadcast.reasons.${item.reason}`)}`).join("; ")
       : "";

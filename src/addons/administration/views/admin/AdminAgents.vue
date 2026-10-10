@@ -29,6 +29,9 @@ import {
   type AgentInstanceMeta,
 } from "../../api/agent";
 import { definitionIMRequiresModel } from "../../agents/definitionValidation";
+import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
+import { modelFieldError } from "@/addons/conversation/composables/modelErrorMessage";
+import type { ModelChoice } from "@/addons/conversation/api/types";
 import { canDelete, canRestore, confirmMatches, impactRows } from "../../agents/lifecycle";
 
 const { t } = useI18n();
@@ -54,6 +57,17 @@ const usageTotal = ref(0);
 
 const modelError = computed(() =>
   definitionIMRequiresModel(form.authAgentUserId, form.model) ? t("agents.admin.errIMRequiresModel") : "");
+/** The server's model 400 on save (model_type_mismatch / im_invalid_provider_model), shown under the field. */
+const serverModelError = ref("");
+/** Defaults pick a chat model from the shared picker (MT2-coreweb); null = no model default. */
+const defaultModel = computed<ModelChoice | null>({
+  get: () => (Number(form.providerId) && form.model ? { providerId: Number(form.providerId), model: form.model } : null),
+  set: (choice) => {
+    form.providerId = choice ? String(choice.providerId) : "";
+    form.model = choice?.model ?? "";
+    serverModelError.value = "";
+  },
+});
 
 function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : t("common.operationFailed");
@@ -88,6 +102,7 @@ function openEditFromQuery(): void {
 function openCreate(): void {
   Object.assign(form, { name: "", slug: "", description: "", prompt: "", avatar: "", memory: true,
     executionBackend: "", providerId: "", model: "", authAgentUserId: "" });
+  serverModelError.value = "";
   editingId.value = null;
 }
 
@@ -99,6 +114,7 @@ function openEdit(agent: AgentDefinition): void {
     providerId: cfg.defaults?.providerId ? String(cfg.defaults.providerId) : "", model: cfg.defaults?.model ?? "",
     authAgentUserId: agent.authAgentUserId ? String(agent.authAgentUserId) : "",
   });
+  serverModelError.value = "";
   editingId.value = agent.id;
 }
 
@@ -130,7 +146,8 @@ async function submit(): Promise<void> {
     editingId.value = undefined;
     await load();
   } catch (error) {
-    toast.error(errorText(error));
+    serverModelError.value = modelFieldError(error, t);
+    if (!serverModelError.value) toast.error(errorText(error));
   } finally {
     saving.value = false;
   }
@@ -290,11 +307,9 @@ function when(value: string | null): string {
           <div class="field-row">
             <label class="field"><span class="field-label">{{ t("agents.admin.fieldBackend") }}</span>
               <input v-model="form.executionBackend" type="text" placeholder="codex" /></label>
-            <label class="field"><span class="field-label">{{ t("agents.admin.fieldProvider") }}</span>
-              <input v-model="form.providerId" type="text" inputmode="numeric" /></label>
-            <label class="field"><span class="field-label">{{ t("agents.admin.fieldModel") }}</span>
-              <input v-model="form.model" type="text" data-testid="agent-model" :class="{ invalid: modelError }" />
-              <span v-if="modelError" class="field-error" data-testid="agent-model-error">{{ modelError }}</span></label>
+            <div class="field"><span class="field-label">{{ t("agents.admin.fieldModel") }}</span>
+              <ModelPicker v-model="defaultModel" type="chat" allow-default compact data-testid="agent-model" :class="{ invalid: modelError || serverModelError }" />
+              <span v-if="modelError || serverModelError" class="field-error" data-testid="agent-model-error">{{ modelError || serverModelError }}</span></div>
           </div>
           <label class="field"><span class="field-label">{{ t("agents.admin.fieldIM") }}</span>
             <input v-model="form.authAgentUserId" type="text" inputmode="numeric" :placeholder="t('agents.admin.phIM')" /></label>
@@ -427,6 +442,8 @@ function when(value: string | null): string {
 .field input:disabled { background: var(--bg-subtle); color: var(--text-tertiary); }
 .field input.invalid { border-color: var(--rose-400); }
 .field-error { font-size: 11.5px; color: var(--rose-500); margin-top: 4px; }
+.field :deep(.model-picker-select) { max-width: none; width: 100%; border-color: var(--border); background: var(--bg-card); color: var(--text-primary); }
+.field :deep(.model-picker.invalid .model-picker-select) { border-color: var(--rose-400); }
 .switch-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
 .switch { accent-color: var(--teal-500); }
 .usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }

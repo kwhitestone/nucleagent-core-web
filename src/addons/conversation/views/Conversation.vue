@@ -17,6 +17,7 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
+import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
 import { getConversation, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import { getInstanceTemplateId, getMyAgent } from "@/addons/conversation/api/agent";
 import type { ModelChoice } from "@/addons/conversation/api/types";
@@ -166,7 +167,7 @@ async function applySettings(): Promise<void> {
     toast.success(t("common.executionSettingsSwitched"));
   } catch (error) {
     if (props.id !== conversationId || mutationGeneration !== settingsMutationGeneration) return;
-    toast.error(error instanceof ApiError ? error.message : t("common.executionSettingsSwitchFailed"));
+    toast.error(modelErrorMessage(error, t, t("common.executionSettingsSwitchFailed")));
   } finally {
     if (mutationGeneration === settingsMutationGeneration) settingsSaving.value = false;
   }
@@ -183,7 +184,7 @@ function onError(error: Error): void {
     toast.error("消息格式异常，已跳过一条更新");
     return;
   }
-  toast.error(error.message);
+  toast.error(modelErrorMessage(error, t));
 }
 </script>
 

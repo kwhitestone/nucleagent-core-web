@@ -49,7 +49,7 @@ export class BroadcastApiError extends ApiError {
   readonly details: BroadcastProblem;
 
   constructor(error: ApiError, details: BroadcastProblem) {
-    super(error.message, error.code, error.status);
+    super(error.message, error.code, error.status, error.problem);
     this.name = "BroadcastApiError";
     this.details = details;
   }
