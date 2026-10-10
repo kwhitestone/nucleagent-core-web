@@ -9,13 +9,13 @@ import { createServer, type ViteDevServer } from "vite";
 // Pure modules load natively so the test:unit coverage gate measures them.
 import * as gen from "../src/addons/conversation/composables/generation.ts";
 import { narrowTo, pickerOptions } from "../src/addons/conversation/components/modelPickerOptions.ts";
-import { ApiError } from "../src/contracts/platform-runtime.ts";
+import { ApiError, registerPlatformRuntime } from "../src/contracts/platform-runtime.ts";
+import * as media from "../src/addons/conversation/api/media.ts";
+import axios from "axios";
 
 let vite: ViteDevServer;
 let zh: any;
 let en: any;
-let media: any;
-let http: any;
 const calls: { method: string; url: string }[] = [];
 let respond: (method: string, url: string) => unknown = () => ({});
 const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
@@ -28,10 +28,8 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   ({ default: zh } = await vite.ssrLoadModule("/src/i18n/zh.ts"));
   ({ default: en } = await vite.ssrLoadModule("/src/i18n/en.ts"));
-  ({ default: http } = await vite.ssrLoadModule("/src/addons/platform-api/api/http.ts"));
-  const { platformRuntime } = await vite.ssrLoadModule("/src/addons/platform-api/runtime.ts");
-  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
-  registerPlatformRuntime(platformRuntime);
+  const http = axios.create();
+  registerPlatformRuntime({ http } as any);
   http.defaults.adapter = async (config: any) => {
     const method = String(config.method).toUpperCase();
     const q = config.params ? `?${new URLSearchParams(config.params)}` : "";
@@ -39,7 +37,6 @@ before(async () => {
     await new Promise((r) => setTimeout(r, 5));
     return { config, data: respond(method, `${config.url}${q}`), headers: {}, status: 200, statusText: "OK" };
   };
-  media = await vite.ssrLoadModule("/src/addons/conversation/api/media.ts");
 });
 after(async () => {
   await vite.close();
@@ -189,7 +186,7 @@ test("W4b poller: 3 s then 10 s, pauses while hidden, stops on leave and when no
 test("W5 the form submits once while busy: one POST for a double click", async () => {
   calls.length = 0;
   respond = (m) => (m === "POST" ? { id: 7, status: "queued" } : {});
-  const submitter = gen.createSubmitter(media.createGeneration);
+  const submitter = gen.createSubmitter(media.createGeneration as any);
   const body = { kind: "image", providerId: 1, model: "doubao-seedream-4-0-250828", prompt: "a cat" };
   const first = submitter.submit(body);
   assert.equal(submitter.state.busy, true, "button disabled while submitting");
