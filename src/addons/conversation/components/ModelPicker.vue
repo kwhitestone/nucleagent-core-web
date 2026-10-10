@@ -26,7 +26,7 @@ import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
 import { modelTypeName } from "@/addons/conversation/composables/modelErrorMessage";
 import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
-import { pickerOptions, visiblePickerOptions } from "./modelPickerOptions";
+import { narrowTo, pickerOptions, visiblePickerOptions } from "./modelPickerOptions";
 
 const props = withDefaults(
   defineProps<{
@@ -73,7 +73,7 @@ const typedAll = ref<Record<ModelType, TypedModel[]> | null>(null);
 const typed = computed(() => typedAll.value?.[props.type as ModelType] ?? null);
 
 /** Active providers with this type's models (chat: config.models ∩ typed chat). */
-const usable = computed(() => pickerOptions(providers.value, typed.value, props.type, props.only));
+const usable = computed(() => narrowTo(pickerOptions(providers.value, typed.value, props.type), props.only));
 const noteOf = (key: string): string => (props.notes?.[key] ? ` · ${props.notes[key]}` : "");
 
 /**

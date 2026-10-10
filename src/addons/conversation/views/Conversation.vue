@@ -257,7 +257,7 @@ function onError(error: Error): void {
       <TaskConversation
         :conversation-key="id"
         :adapter="adapter"
-        :capabilities="{ send: acceptsInput && !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted, stop: true, attachments: true }"
+        :capabilities="{ send: !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted && acceptsInput, stop: true, attachments: true }"
         :renderers="renderers"
         :show-process="true"
         :locale="locale === 'en' ? 'en-US' : 'zh-CN'"

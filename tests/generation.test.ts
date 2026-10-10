@@ -8,7 +8,7 @@ import { createServer, type ViteDevServer } from "vite";
 
 // Pure modules load natively so the test:unit coverage gate measures them.
 import * as gen from "../src/addons/conversation/composables/generation.ts";
-import { pickerOptions } from "../src/addons/conversation/components/modelPickerOptions.ts";
+import { narrowTo, pickerOptions } from "../src/addons/conversation/components/modelPickerOptions.ts";
 import { ApiError } from "../src/contracts/platform-runtime.ts";
 
 let vite: ViteDevServer;
@@ -245,8 +245,10 @@ test("model dropdown: only /media/models of this kind, verified preselected, unv
     { providerId: 1, model: "doubao-seedance-2-0-fast-260128", type: "video", capabilities: [] },
   ];
   const only = gen.mediaChoiceKeys(MODELS, "image");
-  assert.deepEqual(pickerOptions(providers, typed, "image", only).flatMap((g) => g.models), ["doubao-seedream-4-0-250828"]);
+  assert.deepEqual(narrowTo(pickerOptions(providers, typed, "image"), only).flatMap((g) => g.models), ["doubao-seedream-4-0-250828"]);
   assert.deepEqual(pickerOptions(providers, typed, "image").flatMap((g) => g.models), ["doubao-seedream-4-0-250828", "gpt-image-2"]);
+  assert.equal(narrowTo(pickerOptions(providers, typed, "image"), []).length, 0);
+  assert.ok(/narrowTo\(pickerOptions\([^)]*\), props\.only\)/.test(src("addons/conversation/components/ModelPicker.vue")), "picker narrows");
   const page = src("addons/conversation/views/Generate.vue");
   assert.ok(/<ModelPicker[^>]*:type="kind"[^>]*:only="choiceKeys"/s.test(page), 'page /<ModelPicker[^>]*:type="kind"[^>]*:only="choiceKeys"/s');
 });
