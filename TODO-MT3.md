@@ -4,8 +4,8 @@
 - [x] B: task list/status/poll/preview/download, W2/W3/W4
 - [x] C: media conversation banner, mobile, W7
 - [x] i18n generate.* zh/en
-- [ ] mutations scripts/mt3-web-mutations.sh (>=8)
-- [ ] vue-tsc + vite build, full tests (homeSuggestions separately)
+- [x] mutations scripts/mt3-web-mutations.sh (>=8)
+- [x] vue-tsc + vite build, full tests (homeSuggestions separately)
 - [ ] nd-docs docs/acceptance/mt3/run-web.mjs + README Web; mt2 A06-UI
 - [ ] LOCAL stack PASS, DEV baseline FAIL
 - [ ] rebase/merge, ls-remote, docker build
