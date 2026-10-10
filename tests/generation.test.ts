@@ -54,12 +54,12 @@ test("W1 only the two generate cards route; every other card keeps prefilling", 
   assert.equal(gen.generationKind(card("generateVideo")), "video");
   for (const id of ["generateimage", "video", "writeReport", "generateImage2", ""]) assert.equal(gen.generationKind(card(id)), null, id);
   const home = src("addons/conversation/views/Home.vue");
-  assert.match(home, /generationKind\(card\)/);
-  assert.match(home, /name: "generate", params: \{ kind \}/);
-  assert.match(home, /input\.value = cardInput\(card\)/);
+  assert.ok(/generationKind\(card\)/.test(home), 'home /generationKind\\(card\\)/');
+  assert.ok(/name: "generate", params: \{ kind \}/.test(home), 'home /name: "generate", params: \\{ kind \\}/');
+  assert.ok(/input\.value = cardInput\(card\)/.test(home), 'home /input\\.value = cardInput\\(card\\)/');
   const routes = src("addons/conversation/index.ts");
-  assert.match(routes, /path: "\/generate\/:kind\(image\|video\)"/);
-  assert.match(routes, /routeScopes: \[[^\]]*"\/generate"/);
+  assert.ok(/path: "\/generate\/:kind\(image\|video\)"/.test(routes), 'routes /path: "\\/generate\\/:kind\\(image\\|video\\)"/');
+  assert.ok(/routeScopes: \[[^\]]*"\/generate"/.test(routes), 'routes /routeScopes: \\[[^\\]]*"\\/generate"/');
 });
 
 // ---- W2
@@ -182,8 +182,8 @@ test("W4b poller: 3 s then 10 s, pauses while hidden, stops on leave and when no
   await clock.advance(600_000);
   assert.equal(ticks.length, n + 2, "stops once nothing is pending");
   const page = src("addons/conversation/views/Generate.vue");
-  assert.match(page, /onBeforeUnmount\([^)]*\{[\s\S]*poller\.stop\(\)/);
-  assert.match(page, /visibilitychange/);
+  assert.ok(/onBeforeUnmount\([^)]*\{[\s\S]*poller\.stop\(\)/.test(page), 'page /onBeforeUnmount\\([^)]*\\{[\\s\\S]*poller\\.stop\\(\\)/');
+  assert.ok(/visibilitychange/.test(page), 'page /visibilitychange/');
 });
 
 // ---- W5
@@ -200,7 +200,7 @@ test("W5 the form submits once while busy: one POST for a double click", async (
   assert.equal(calls[0].url, "/api/v1/addons/media/generations");
   assert.equal(submitter.state.busy, false);
   const page = src("addons/conversation/views/Generate.vue");
-  assert.match(page, /:disabled="[^"]*submitter\.state\.busy/);
+  assert.ok(/:disabled="[^"]*submitter\.state\.busy/.test(page), 'page /:disabled="[^"]*submitter\\.state\\.busy/');
 });
 
 test("W5b download link is fetched fresh every time, never cached; unsafe links refused", async () => {
@@ -249,7 +249,7 @@ test("model dropdown: only /media/models of this kind, verified preselected, unv
   assert.deepEqual(pickerOptions(providers, typed, "image", only).flatMap((g) => g.models), ["doubao-seedream-4-0-250828"]);
   assert.deepEqual(pickerOptions(providers, typed, "image").flatMap((g) => g.models), ["doubao-seedream-4-0-250828", "gpt-image-2"]);
   const page = src("addons/conversation/views/Generate.vue");
-  assert.match(page, /<ModelPicker[^>]*:type="kind"[^>]*:only="choiceKeys"/s);
+  assert.ok(/<ModelPicker[^>]*:type="kind"[^>]*:only="choiceKeys"/s.test(page), 'page /<ModelPicker[^>]*:type="kind"[^>]*:only="choiceKeys"/s');
 });
 
 test("prompt 1–2000 chars", () => {
@@ -291,6 +291,6 @@ test("W7 a mode=media conversation hides the composer and links to /generate/<ki
   assert.equal(gen.conversationMediaKind("x", null), "image");
   assert.equal(gen.conversationMediaKind(undefined, []), "image");
   const conv = src("addons/conversation/views/Conversation.vue");
-  assert.match(conv, /conversationAcceptsInput\(/);
-  assert.match(conv, /\/generate\/\$\{mediaKind\}/);
+  assert.ok(/conversationAcceptsInput\(/.test(conv), 'conv /conversationAcceptsInput\\(/');
+  assert.ok(/\/generate\/\$\{mediaKind\}/.test(conv), 'conv /\\/generate\\/\\$\\{mediaKind\\}/');
 });
