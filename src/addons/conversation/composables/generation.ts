@@ -141,11 +141,14 @@ export function createSubmitter<B, R>(post: (body: B) => Promise<R>, state: { bu
  * Submit error text: 400 model_type_mismatch → modelErrorMessage (MT2), the 8
  * known codes → i18n (429 with the caller's in-flight count), else the server text.
  */
-export function submitErrorText(error: unknown, t: Translate, busy: number): string {
+export function submitErrorText(error: unknown, t: Translate, busy: number, kind: GenerationKind = "image"): string {
   if (error instanceof ApiError && error.code !== "model_type_mismatch" && (ERROR_CODES as readonly string[]).includes(error.code)) {
     return errorText(error.code, t, error.message, busy);
   }
-  return modelErrorMessage(error, t);
+  // Same helper as chat (MT2), worded for this page: "X is a video model; pick an image model".
+  const page: Translate = (key, named) => key === "model.typeMismatch"
+    ? t("generate.typeMismatch", { ...named, kind: t(`model.types.${kind}`) }) : t(key, named);
+  return modelErrorMessage(error, page);
 }
 
 /** Notes beside dropdown entries: unverified models. */

@@ -109,7 +109,7 @@ async function submit(): Promise<void> {
     toast.success(t("generate.submitted"));
     await loadTasks();
   } catch (error) {
-    formError.value = submitErrorText(error, t, inFlightCount(tasks.value, Date.now()));
+    formError.value = submitErrorText(error, t, inFlightCount(tasks.value, Date.now()), kind.value);
   }
 }
 

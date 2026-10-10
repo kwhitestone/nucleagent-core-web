@@ -606,6 +606,7 @@ export default {
     regenerate: "再次生成",
     videoHint: "通常约 2 分钟",
     mediaConversation: "这是一次生成任务，查看/再次生成",
+    typeMismatch: "{model} 是{type}模型，这里只能选{kind}模型，请改选。",
     status: {
       queued: "生成中",
       submitting: "生成中",

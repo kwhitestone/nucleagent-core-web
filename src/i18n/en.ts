@@ -606,6 +606,7 @@ export default {
     regenerate: "Generate again",
     videoHint: "usually about 2 minutes",
     mediaConversation: "This is a generation task. View / generate again",
+    typeMismatch: "{model} is a model of type \"{type}\"; this page needs a \"{kind}\" model. Please pick another.",
     status: {
       queued: "Generating",
       submitting: "Generating",

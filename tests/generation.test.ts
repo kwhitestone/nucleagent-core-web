@@ -102,7 +102,9 @@ test("W3b submit errors: 400 model_type_mismatch via modelErrorMessage, 429 with
   const t = zhT();
   const mismatch = new ApiError("x", "model_type_mismatch", 400, { code: "model_type_mismatch", model: "doubao-seedance-2-0", modelType: "video" });
   assert.match(gen.submitErrorText(mismatch, t, 0), /doubao-seedance-2-0/);
-  assert.match(gen.submitErrorText(mismatch, t, 0), /视频/);
+  assert.equal(gen.submitErrorText(mismatch, t, 0, "image"), "doubao-seedance-2-0 是生视频模型，这里只能选生图模型，请改选。");
+  assert.match(gen.submitErrorText(mismatch, tOf("en"), 0, "image"), /doubao-seedance-2-0 .*"video".*"image" model/);
+  assert.equal(gen.submitErrorText(new ApiError("srv", "model_type_mismatch", 400, {}), t, 0), "srv");
   assert.match(gen.submitErrorText(new ApiError("busy", "media_busy", 429, {}), t, 4), /已有 4 个进行中的任务/);
   assert.equal(gen.submitErrorText(new ApiError("srv text", "invalid_prompt", 400, {}), t, 0), "srv text");
   assert.equal(gen.submitErrorText(new ApiError("srv", "gateway_unavailable", 400, {}), t, 0), zh.generate.errors.gateway_unavailable);
