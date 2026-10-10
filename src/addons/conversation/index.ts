@@ -15,7 +15,7 @@ const conversation: PluginModule = {
     id: "conversation",
     version: "0.1.0",
     requires: [{ id: "platform-api" }, { id: "model-catalog" }],
-    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b", "/agents"],
+    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b", "/agents", "/generate"],
   },
   routes: [
     {
@@ -51,6 +51,13 @@ const conversation: PluginModule = {
       component: authenticatedRoute(() => import("./views/AgentInstance.vue")),
       meta: { requiresAuth: true },
       props: (route) => ({ templateId: route.params.templateId as string }),
+    },
+    {
+      path: "/generate/:kind(image|video)",
+      name: "generate",
+      component: authenticatedRoute(() => import("./views/Generate.vue")),
+      meta: { requiresAuth: true },
+      props: (route) => ({ kind: route.params.kind as string }),
     },
     {
       path: "/c/:id",

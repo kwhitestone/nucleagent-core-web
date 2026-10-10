@@ -1,0 +1,12 @@
+# MT3-coreweb TODO (delete before merge)
+- [x] skeleton: route /generate/:kind, Generate.vue, api/media.ts
+- [ ] A: generationKind + Home.vue fillSuggestion, form, ModelPicker type, W1/W5/W6
+- [ ] B: task list/status/poll/preview/download, W2/W3/W4
+- [ ] C: media conversation banner, mobile, W7
+- [ ] i18n generate.* zh/en
+- [ ] mutations scripts/mt3-web-mutations.sh (>=8)
+- [ ] vue-tsc + vite build, full tests (homeSuggestions separately)
+- [ ] nd-docs docs/acceptance/mt3/run-web.mjs + README Web; mt2 A06-UI
+- [ ] LOCAL stack PASS, DEV baseline FAIL
+- [ ] rebase/merge, ls-remote, docker build
+- [ ] report + coord DONE
