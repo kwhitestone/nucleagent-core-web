@@ -1,4 +1,4 @@
-import type { Provider, TypedModel, UserVisibleModel } from "@/contracts/model-catalog";
+import type { Provider, TypedModel, UserVisibleModel } from "../../../contracts/model-catalog.ts";
 
 export interface PickerGroup {
   id: number;

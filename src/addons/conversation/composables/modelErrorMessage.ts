@@ -1,5 +1,6 @@
-import { MODEL_TYPES } from "@/contracts/model-catalog";
-import { ApiError } from "@/contracts/platform-runtime";
+// Relative .ts imports: loaded natively by node --test (coverage-gated in test:unit).
+import { MODEL_TYPES } from "../../../contracts/model-catalog.ts";
+import { ApiError } from "../../../contracts/platform-runtime.ts";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
 

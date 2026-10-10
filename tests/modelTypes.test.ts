@@ -6,12 +6,15 @@ import { after, before, test } from "node:test";
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
 
+// Pure modules load natively so the test:unit coverage gate measures them.
+import * as options from "../src/addons/conversation/components/modelPickerOptions.ts";
+import * as errors from "../src/addons/conversation/composables/modelErrorMessage.ts";
+import * as gateway from "../src/addons/administration/provider/gatewayEntry.ts";
+import { ApiError } from "../src/contracts/platform-runtime.ts";
+
 let vite: ViteDevServer;
-let options: any;
-let errors: any;
-let gateway: any;
 let catalog: any;
-let ApiError: any;
+let ViteApiError: any;
 let zh: any;
 let en: any;
 const TYPES = ["chat", "image", "video", "audio", "embedding", "rerank", "other"];
@@ -20,11 +23,8 @@ const tOf = (locale: "zh" | "en") => createI18n({ legacy: false, locale, message
 
 before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
-  options = await vite.ssrLoadModule("/src/addons/conversation/components/modelPickerOptions.ts");
-  errors = await vite.ssrLoadModule("/src/addons/conversation/composables/modelErrorMessage.ts");
-  gateway = await vite.ssrLoadModule("/src/addons/administration/provider/gatewayEntry.ts");
   catalog = await vite.ssrLoadModule("/src/addons/model-catalog/api/catalog.ts");
-  ({ ApiError } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts"));
+  ({ ApiError: ViteApiError } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts"));
   ({ default: zh } = await vite.ssrLoadModule("/src/i18n/zh.ts"));
   ({ default: en } = await vite.ssrLoadModule("/src/i18n/en.ts"));
 });
@@ -64,7 +64,7 @@ test("W1 visible-model groups are unchanged for chat and hidden for other types"
     { configId: 1, model: "fast", alias: "快速", isQuick: true, targetModel: "glm-4.7-flash" },
     { configId: 1, model: "broken", alias: "", isQuick: false, targetModel: "" },
   ];
-  assert.deepEqual(options.visiblePickerOptions(visible, "chat").map((m: any) => m.model), ["fast"]);
+  assert.deepEqual(options.visiblePickerOptions(visible, "chat").map((m) => m.model), ["fast"]);
   assert.deepEqual(options.visiblePickerOptions(visible, "image"), []);
 });
 
@@ -89,9 +89,9 @@ test("W1 catalog: /provider/models 404 or typesAvailable=false means old Core (n
     assert.deepEqual(urls, ["/api/v1/addons/provider/models?type=chat"]);
     reply = () => ({ data: { code: 0, typesAvailable: false, data: [] } });
     assert.equal(await catalog.modelCatalog.listTypedModels("chat"), null);
-    reply = () => { throw new ApiError("Not Found", "NETWORK_ERROR", 404); };
+    reply = () => { throw new ViteApiError("Not Found", "NETWORK_ERROR", 404); };
     assert.equal(await catalog.modelCatalog.listTypedModels("chat"), null);
-    reply = () => { throw new ApiError("boom", "NETWORK_ERROR", 500); };
+    reply = () => { throw new ViteApiError("boom", "NETWORK_ERROR", 500); };
     await assert.rejects(catalog.modelCatalog.listTypedModels("chat"));
   } finally {
     unregister();
@@ -186,7 +186,7 @@ test("W5 gateway chips: every typed model labelled with its own type, counts per
   assert.equal(chips.length, 28);
   for (const chip of chips) assert.equal(chip.model.split("-")[0], chip.type, chip.model);
   assert.deepEqual(gateway.typeCounts(byType), { chat: 1, image: 2, video: 3, audio: 4, embedding: 5, rerank: 6, other: 7 });
-  assert.deepEqual(chips.slice(0, 3).map((c: any) => c.type), ["chat", "image", "image"], "chat first, then the enum order");
+  assert.deepEqual(chips.slice(0, 3).map((c) => c.type), ["chat", "image", "image"], "chat first, then the enum order");
 });
 
 test("W5 Providers page shows the type label on each chip and stays read-only", () => {
