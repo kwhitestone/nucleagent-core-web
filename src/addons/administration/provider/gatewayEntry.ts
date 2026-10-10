@@ -1,4 +1,4 @@
-import { MODEL_TYPES, type ModelType, type Provider, type TypedModel } from "@/contracts/model-catalog";
+import { MODEL_TYPES, type ModelType, type Provider, type TypedModel } from "../../../contracts/model-catalog.ts";
 
 /**
  * The Providers page shows one entry, 目鱼网关 (UNI-UI-GAP; GWLINK design
