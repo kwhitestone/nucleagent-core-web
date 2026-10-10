@@ -1,6 +1,8 @@
 // MT3-coreweb: pure logic of the generate page (/generate/:kind). Relative
 // imports only: loaded natively by node --test (coverage-gated in test:unit).
 // Core contract: app/src/server/addons/media (core 9c0c74a).
+import { ApiError } from "../../../contracts/platform-runtime.ts";
+import { modelErrorMessage } from "./modelErrorMessage.ts";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
 
@@ -120,8 +122,7 @@ export function conversationMediaKind(model: string | undefined, videoModels: st
 }
 
 /** One POST in flight at a time: a second click while busy returns null without a request. */
-export function createSubmitter<B, R>(post: (body: B) => Promise<R>) {
-  const state = { busy: false };
+export function createSubmitter<B, R>(post: (body: B) => Promise<R>, state: { busy: boolean } = { busy: false }) {
   return {
     state,
     async submit(body: B): Promise<R | null> {
@@ -134,4 +135,76 @@ export function createSubmitter<B, R>(post: (body: B) => Promise<R>) {
       }
     },
   };
+}
+
+/**
+ * Submit error text: 400 model_type_mismatch → modelErrorMessage (MT2), the 8
+ * known codes → i18n (429 with the caller's in-flight count), else the server text.
+ */
+export function submitErrorText(error: unknown, t: Translate, busy: number): string {
+  if (error instanceof ApiError && error.code !== "model_type_mismatch" && (ERROR_CODES as readonly string[]).includes(error.code)) {
+    return errorText(error.code, t, error.message, busy);
+  }
+  return modelErrorMessage(error, t);
+}
+
+/** Notes beside dropdown entries: unverified models. */
+export function mediaNotes(models: MediaModel[], kind: string, label: string): Record<string, string> {
+  return Object.fromEntries(models.filter((m) => m.kind === kind && !m.verified).map((m) => [`${m.providerId}:${m.model}`, label]));
+}
+
+/** The server list is the truth (own tasks only); fresher polled rows replace their entries. */
+export function mergeTasks<T extends { id: number }>(server: T[], polled: T[]): T[] {
+  const byId = new Map(polled.map((p) => [p.id, p]));
+  return server.map((s) => byId.get(s.id) ?? s);
+}
+
+/**
+ * Poll loop for unfinished tasks. `tick` polls and returns whether anything is
+ * still pending; the loop schedules itself by nextPollDelay, pauses while
+ * hidden (visibility() resumes) and ends for good on stop().
+ */
+export function createPoller(o: {
+  now: () => number;
+  hidden: () => boolean;
+  tick: () => Promise<boolean>;
+  setTimer: (fn: () => void, ms: number) => unknown;
+  clearTimer: (handle: unknown) => void;
+}) {
+  let started = 0;
+  let handle: unknown = null;
+  let running = false;
+  let stopped = false;
+  const clear = () => { if (handle !== null) o.clearTimer(handle); handle = null; };
+  const schedule = () => {
+    clear();
+    if (stopped) return;
+    const delay = nextPollDelay(o.now() - started, o.hidden());
+    if (delay === null) return;
+    handle = o.setTimer(async () => {
+      handle = null;
+      if (stopped || running) return;
+      running = true;
+      let more = false;
+      try {
+        more = await o.tick();
+      } catch {
+        more = true; // a failed poll retries on the next beat
+      } finally {
+        running = false;
+      }
+      if (more) schedule();
+    }, delay);
+  };
+  return {
+    /** (Re)start for newly pending tasks; the 3 s → 10 s clock restarts. */
+    start() { stopped = false; started = o.now(); schedule(); },
+    visibility() { if (!stopped && !running) schedule(); },
+    stop() { stopped = true; clear(); },
+  };
+}
+
+/** In-flight count for the 429 text: pending tasks, plus unknown ones from the last 30 min (Core counts those too). */
+export function inFlightCount(tasks: Pick<GenerationTask, "status" | "createdAt">[], now: number): number {
+  return tasks.filter((t) => isPending(t.status) || (t.status === "unknown" && now - Date.parse(t.createdAt) < 30 * 60_000)).length;
 }

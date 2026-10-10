@@ -185,3 +185,8 @@
 
 /* AG1: banner when the conversation's agent was deleted */
 .conv-agent-deleted { margin: 8px 16px 0; padding: 8px 12px; border-radius: var(--r-md); background: #fef2f2; color: #b91c1c; font-size: 13px; }
+
+/* MT3: mode=media carrier conversations take no follow-ups; the banner links to /generate/<kind>. */
+.chat-view--media .atc-composer-shell { display: none; }
+.conv-media-banner { margin: 8px 16px 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--teal-50); color: var(--text-primary); font-size: 13px; overflow-wrap: anywhere; }
+.conv-media-banner a { display: inline-flex; align-items: center; min-height: 44px; }

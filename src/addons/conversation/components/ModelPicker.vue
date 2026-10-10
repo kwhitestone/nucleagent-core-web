@@ -41,6 +41,10 @@ const props = withDefaults(
     row?: boolean;
     /** Model type to list (MT2-coreweb); chat boxes and the task page keep the default. */
     type?: string;
+    /** MT3: allowed "{providerId}:{model}" keys (`/media/models?kind=`); unset = no extra filter. */
+    only?: string[];
+    /** MT3: note shown after an option, by "{providerId}:{model}" (e.g. unverified). */
+    notes?: Record<string, string>;
   }>(),
   { disabled: false, allowDefault: true, compact: false, row: false, type: "chat" },
 );
@@ -69,7 +73,8 @@ const typedAll = ref<Record<ModelType, TypedModel[]> | null>(null);
 const typed = computed(() => typedAll.value?.[props.type as ModelType] ?? null);
 
 /** Active providers with this type's models (chat: config.models ∩ typed chat). */
-const usable = computed(() => pickerOptions(providers.value, typed.value, props.type));
+const usable = computed(() => pickerOptions(providers.value, typed.value, props.type, props.only));
+const noteOf = (key: string): string => (props.notes?.[key] ? ` · ${props.notes[key]}` : "");
 
 /**
  * 可见模型组选项：只保留能解析出具体落点（targetModel 非空）的组。
@@ -117,7 +122,7 @@ const sheetOptions = computed<SheetOption[]>(() => {
   if (visibleOptions.value.length) {
     for (const m of visibleOptions.value) out.push({ value: `${m.configId}:${m.targetModel}`, label: m.alias || m.model });
   } else {
-    for (const p of usable.value) for (const m of p.models) out.push({ value: `${p.id}:${m}`, label: m, note: p.name });
+    for (const p of usable.value) for (const m of p.models) out.push({ value: `${p.id}:${m}`, label: m + noteOf(`${p.id}:${m}`), note: p.name });
   }
   return out;
 });
@@ -249,7 +254,7 @@ onBeforeUnmount(() => {
             :value="`${p.id}:${m}`"
             :selected="selected === `${p.id}:${m}`"
           >
-            {{ m }}
+            {{ m + noteOf(`${p.id}:${m}`) }}
           </option>
         </optgroup>
       </template>

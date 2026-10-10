@@ -155,9 +155,8 @@ test("W4b poller: 3 s then 10 s, pauses while hidden, stops on leave and when no
   poller.start();
   await clock.advance(9_000);
   assert.deepEqual(ticks, [3000, 6000, 9000]);
-  await clock.advance(60_000);
-  const after = ticks.filter((t) => t > 60_000);
-  assert.ok(after.length >= 1 && after.every((t, i) => i === 0 || t - after[i - 1] === 10_000), String(after));
+  await clock.advance(81_000); // now = 90 s
+  assert.deepEqual(ticks.filter((t) => t >= 57_000), [57_000, 60_000, 70_000, 80_000, 90_000]);
   hidden = true;
   poller.visibility();
   const n = ticks.length;
@@ -182,7 +181,7 @@ test("W4b poller: 3 s then 10 s, pauses while hidden, stops on leave and when no
   await clock.advance(600_000);
   assert.equal(ticks.length, n + 2, "stops once nothing is pending");
   const page = src("addons/conversation/views/Generate.vue");
-  assert.ok(/onBeforeUnmount\([^)]*\{[\s\S]*poller\.stop\(\)/.test(page), 'page /onBeforeUnmount\\([^)]*\\{[\\s\\S]*poller\\.stop\\(\\)/');
+  assert.ok(/onBeforeUnmount\(\(\) => \{\s*poller\.stop\(\)/.test(page), 'page /onBeforeUnmount\\([^)]*\\{[\\s\\S]*poller\\.stop\\(\\)/');
   assert.ok(/visibilitychange/.test(page), 'page /visibilitychange/');
 });
 
@@ -200,7 +199,7 @@ test("W5 the form submits once while busy: one POST for a double click", async (
   assert.equal(calls[0].url, "/api/v1/addons/media/generations");
   assert.equal(submitter.state.busy, false);
   const page = src("addons/conversation/views/Generate.vue");
-  assert.ok(/:disabled="[^"]*submitter\.state\.busy/.test(page), 'page /:disabled="[^"]*submitter\\.state\\.busy/');
+  assert.ok(/data-testid="gen-submit" :disabled="[^"]*submitter\.state\.busy/.test(page), 'page /:disabled="[^"]*submitter\\.state\\.busy/');
 });
 
 test("W5b download link is fetched fresh every time, never cached; unsafe links refused", async () => {
@@ -293,4 +292,14 @@ test("W7 a mode=media conversation hides the composer and links to /generate/<ki
   const conv = src("addons/conversation/views/Conversation.vue");
   assert.ok(/conversationAcceptsInput\(/.test(conv), 'conv /conversationAcceptsInput\\(/');
   assert.ok(/\/generate\/\$\{mediaKind\}/.test(conv), 'conv /\\/generate\\/\\$\\{mediaKind\\}/');
+});
+
+test("429 count: pending plus recent unknown", () => {
+  const now = Date.parse("2026-10-10T08:00:00Z");
+  const at = (min: number) => new Date(now - min * 60_000).toISOString();
+  assert.equal(gen.inFlightCount([
+    { status: "running", createdAt: at(1) }, { status: "queued", createdAt: at(50) },
+    { status: "unknown", createdAt: at(10) }, { status: "unknown", createdAt: at(40) },
+    { status: "succeeded", createdAt: at(1) }, { status: "failed", createdAt: at(1) },
+  ], now), 3);
 });

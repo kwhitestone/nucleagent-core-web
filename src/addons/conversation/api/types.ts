@@ -34,7 +34,8 @@ export interface Conversation {
   completedAt?: string | null;
 }
 
-export type ConversationMode = "a2a" | "a2a_agent" | "a2a_employee";
+/** "media": MT3 carrier of one image/video generation (Core addons/media); no follow-ups. */
+export type ConversationMode = "a2a" | "a2a_agent" | "a2a_employee" | "media";
 export type ConversationStatus =
   | "drafting"
   | "executing"

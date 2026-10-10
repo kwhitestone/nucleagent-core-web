@@ -22,8 +22,10 @@ export function modelsOf(p: Provider): string[] {
  * (404 or `typesAvailable:false`). chat = config.models ∩ typed chat, and on an
  * old Core plain config.models (a new Core keeps config.models chat-only
  * anyway). Any other type lists exactly the typed entries, nothing without them.
+ * `only` ("{providerId}:{model}") narrows further (MT3: `/media/models?kind=`).
  */
-export function pickerOptions(providers: Provider[], typed: TypedModel[] | null, type: string): PickerGroup[] {
+export function pickerOptions(providers: Provider[], typed: TypedModel[] | null, type: string, only?: string[]): PickerGroup[] {
+  const allowed = only ? new Set(only) : null;
   const active = providers.filter((p) => p.isActive);
   const keep = typed ? new Set(typed.filter((m) => m.type === type).map((m) => `${m.providerId}:${m.model}`)) : null;
   return active
@@ -31,6 +33,7 @@ export function pickerOptions(providers: Provider[], typed: TypedModel[] | null,
       const listed = type === "chat" ? modelsOf(p) : (typed ?? []).filter((m) => m.providerId === p.id).map((m) => m.model);
       return { id: p.id, name: p.name, models: keep ? listed.filter((m) => keep.has(`${p.id}:${m}`)) : type === "chat" ? listed : [] };
     })
+    .map((g) => (allowed ? { ...g, models: g.models.filter((m) => allowed.has(`${g.id}:${m}`)) } : g))
     .filter((g) => g.models.length > 0);
 }
 

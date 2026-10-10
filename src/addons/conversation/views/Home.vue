@@ -27,7 +27,7 @@ import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskD
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
 import SuggestionChip from "@/components/SuggestionChip.vue";
-import { cardInput, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
+import { cardInput, generationKind, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
 
 const router = useRouter();
 const store = useConversationStore();
@@ -110,6 +110,12 @@ function moreSettings(): void {
 }
 
 function fillSuggestion(card: HomeCard): void {
+  // MT3: the two generate cards open the generate page; every other card prefills.
+  const kind = generationKind(card);
+  if (kind) {
+    void router.push({ name: "generate", params: { kind } });
+    return;
+  }
   input.value = cardInput(card);
 }
 

@@ -41,6 +41,8 @@ import { toMessageAttachment } from "@/addons/conversation/components/attachment
 import { broadcastRoute } from "../composables/broadcastViewPolicy";
 import { useNarrow } from "@/composables/useNarrow";
 import type { ConversationStatus } from "@/addons/conversation/api/types";
+import { conversationAcceptsInput, conversationMediaKind, type GenerationKind } from "@/addons/conversation/composables/generation";
+import { listMediaModels } from "@/addons/conversation/api/media";
 
 const props = defineProps<{ id: string }>();
 const narrow = useNarrow();
@@ -50,6 +52,9 @@ const title = ref("");
 // AG1: the agent behind this conversation was deleted: history stays, sending is refused (server 409).
 const agentDeleted = ref(false);
 const status = ref<ConversationStatus | "">("");
+/** MT3: a mode=media carrier takes no input; the banner links to its generate page. */
+const acceptsInput = ref(true);
+const mediaKind = ref<GenerationKind>("image");
 /** The live controller speaks idle/running/…; the header shows the API vocabulary. */
 function onLiveStatus(next: "idle" | "running" | "completed" | "failed" | "cancelled"): void {
   if (next === "running") status.value = "executing";
@@ -104,6 +109,12 @@ watch(
       ]);
       if (!active) return;
       title.value = conversation.title ?? "";
+      acceptsInput.value = conversationAcceptsInput(conversation);
+      mediaKind.value = "image";
+      if (!acceptsInput.value) {
+        void listMediaModels("video").then((list) => list.map((m) => m.model)).catch(() => null)
+          .then((videos) => { if (active) mediaKind.value = conversationMediaKind(conversation.model, videos); });
+      }
       agentDeleted.value = false;
       if (conversation.agentId) {
         void (async () => {
@@ -190,7 +201,7 @@ function onError(error: Error): void {
 
 <template>
   <div class="view active view--scroll-hidden">
-    <div class="chat-view" :class="{ 'chat-view--narrow': narrow }">
+    <div class="chat-view" :class="{ 'chat-view--narrow': narrow, 'chat-view--media': !acceptsInput }">
       <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
       <header v-if="narrow" class="conv-head" data-testid="conv-head">
         <div class="conv-head-text">
@@ -238,11 +249,15 @@ function onError(error: Error): void {
           </div>
         </div>
       </div>
+      <p v-if="!acceptsInput" class="conv-media-banner" role="status" data-testid="conv-media-banner">
+        {{ t("generate.mediaConversation") }} →
+        <RouterLink :to="`/generate/${mediaKind}`" data-testid="conv-media-link">/generate/{{ mediaKind }}</RouterLink>
+      </p>
       <p v-if="agentDeleted" class="conv-agent-deleted" role="status" data-testid="conv-agent-deleted">{{ t("agents.deletedHint") }}</p>
       <TaskConversation
         :conversation-key="id"
         :adapter="adapter"
-        :capabilities="{ send: !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted, stop: true, attachments: true }"
+        :capabilities="{ send: acceptsInput && !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted, stop: true, attachments: true }"
         :renderers="renderers"
         :show-process="true"
         :locale="locale === 'en' ? 'en-US' : 'zh-CN'"

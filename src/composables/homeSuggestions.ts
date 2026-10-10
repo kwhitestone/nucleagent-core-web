@@ -171,6 +171,9 @@ export function resolveCards(data: unknown, locale: string): HomeCard[] {
     .slice(0, MAX_CARDS).map((i) => localize(i, locale));
 }
 
+/** MT3: generateImage / generateVideo open /generate/:kind (defined with the generate page's pure logic). */
+export { generationKind } from "../addons/conversation/composables/generation.ts";
+
 /** What a click puts in the composer. Never sends. */
 export function cardInput(card: HomeCard): string {
   return card.action === "prefill" && card.prompt ? card.prompt : `${card.title}：`;
