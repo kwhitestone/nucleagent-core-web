@@ -36,12 +36,9 @@ test("tool dialog follows create, edit and close transitions without stale form 
         } },
       };
       state.openEdit(tool);
-      assert.equal(state.formOpen.value, true);
-      assert.equal(state.isCreate.value, false);
-      assert.equal(state.editingId.value, 42);
-      assert.equal(state.form.name, "Fixture");
-      assert.equal(state.form.isActive, false);
-      state.closeForm();
+      assert.equal(state.formOpen.value, false);
+      assert.equal(state.toolId.value, 42);
+      state.toolId.value = undefined;
       state.openCreate();
       assert.equal(state.formOpen.value, true);
       assert.equal(state.form.name, "");

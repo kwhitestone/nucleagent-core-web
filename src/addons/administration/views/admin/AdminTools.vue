@@ -13,7 +13,9 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { probeMCPServer, type MCPProbeTool, type MCPTransport } from "../../api/admin";
-import { createTool, deleteTool, listTools, updateTool, type Tool, type ToolConfig } from "../../api/tool";
+import { createTool, listTools, type Tool, type ToolConfig } from "../../api/tool";
+import { agentDefinitions } from "../../api/agent";
+import ToolEditor from "../../agents/definition/ToolEditor.vue";
 import { toast } from "@/composables/useToast";
 
 const { t } = useI18n();
@@ -21,6 +23,7 @@ const { t } = useI18n();
 const loading = ref(false);
 const tools = ref<Tool[]>([]);
 const saving = ref(false);
+const toolId = ref<number>();
 
 // ---- 表单 ----
 const editingId = ref<number | null | undefined>(undefined); // null=新建 undefined=关
@@ -73,15 +76,7 @@ function openCreate(): void {
 }
 
 function openEdit(tool: Tool): void {
-  const cfg = mcpConfigOf(tool);
-  form.name = tool.name;
-  form.slug = tool.slug;
-  form.type = (cfg?.type === "builtin" ? "builtin" : "http") as "http" | "builtin";
-  form.url = cfg?.url ?? "";
-  form.description = cfg?.description ?? "";
-  form.schemaText = cfg?.input_schema ? JSON.stringify(cfg.input_schema, null, 2) : "";
-  form.isActive = tool.isActive;
-  editingId.value = tool.id;
+  toolId.value = tool.id;
 }
 
 function closeForm(): void {
@@ -117,23 +112,13 @@ async function submit(): Promise<void> {
   }
   saving.value = true;
   try {
-    if (isCreate.value) {
-      await createTool({
-        name: form.name.trim(),
-        slug: form.slug.trim(),
-        config: buildConfig(),
-        isActive: form.isActive,
-      });
-      toast.success(t("admin.tools.created"));
-    } else {
-      await updateTool(editingId.value as number, {
-        name: form.name.trim(),
-        slug: form.slug.trim(),
-        config: buildConfig(),
-        isActive: form.isActive,
-      });
-      toast.success(t("admin.tools.updated"));
-    }
+    await createTool({
+      name: form.name.trim(),
+      slug: form.slug.trim(),
+      config: buildConfig(),
+      isActive: form.isActive,
+    });
+    toast.success(t("admin.tools.created"));
     closeForm();
     await load();
   } catch (error) {
@@ -143,19 +128,15 @@ async function submit(): Promise<void> {
   }
 }
 
-async function toggleActive(tool: Tool): Promise<void> {
-  try {
-    await updateTool(tool.id, { isActive: !tool.isActive });
-    await load();
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : t("common.operationFailed"));
-  }
-}
-
 async function remove(tool: Tool): Promise<void> {
-  if (!window.confirm(t("admin.tools.confirmDelete", { name: tool.name }))) return;
   try {
-    await deleteTool(tool.id);
+    const current = await agentDefinitions.tool(tool.id);
+    if (!current.capabilities.write) {
+      toast.error(t("common.operationFailed"));
+      return;
+    }
+    if (!window.confirm(t("admin.tools.confirmDelete", { name: current.tool.name }))) return;
+    await agentDefinitions.deleteTool(current);
     toast.success(t("admin.tools.deleted"));
     await load();
   } catch (error) {
@@ -316,20 +297,17 @@ async function importChecked(): Promise<void> {
               {{ tool.isActive ? t("common.enabled") : t("common.disabled") }}
             </span>
           </div>
-          <div v-if="mcpConfigOf(tool)?.url" class="tool-url">{{ mcpConfigOf(tool)?.url }}</div>
           <div v-if="mcpConfigOf(tool)?.description" class="tool-desc">{{ mcpConfigOf(tool)?.description }}</div>
         </div>
         <div class="tool-actions">
-          <button class="btn-ghost" type="button" @click="toggleActive(tool)">
-            {{ tool.isActive ? t("common.disable") : t("common.enable") }}
-          </button>
           <button class="btn-ghost" type="button" @click="openEdit(tool)">{{ t("common.edit") }}</button>
           <button class="btn-ghost danger" type="button" @click="remove(tool)">{{ t("common.delete") }}</button>
         </div>
       </div>
     </div>
 
-    <!-- 新建/编辑弹层 -->
+    <ToolEditor v-if="toolId" :id="toolId" :api="agentDefinitions" @close="toolId = undefined" @changed="load" />
+    <!-- 新建弹层 -->
     <div v-if="formOpen" class="modal-mask" @click.self="closeForm">
       <div class="modal-card">
         <div class="modal-header">

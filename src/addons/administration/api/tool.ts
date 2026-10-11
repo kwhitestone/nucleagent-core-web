@@ -48,18 +48,3 @@ export async function createTool(body: {
   const response = await http().post<Envelope<Tool>>(BASE, body);
   return response.data?.data ?? null;
 }
-
-/**
- * PATCH —— 字段全可选。slug 唯一，改重会 500（后端提示「slug 可能重复」）。
- */
-export async function updateTool(
-  id: number,
-  body: { name?: string; slug?: string; config?: ToolConfig; isActive?: boolean },
-): Promise<Tool | null> {
-  const response = await http().patch<Envelope<Tool>>(`${BASE}/${id}`, body);
-  return response.data?.data ?? null;
-}
-
-export async function deleteTool(id: number): Promise<void> {
-  await http().delete(`${BASE}/${id}`);
-}

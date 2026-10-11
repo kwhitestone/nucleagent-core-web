@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
+import { definitionDetail } from "./agentDefinitionFixture.ts";
 
 let vite: ViteDevServer;
 let unregister: () => void;
@@ -18,7 +19,11 @@ const record = (method: string) => async (url: string, a?: any, b?: any) => {
 before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
-  unregister = registerPlatformRuntime({ http: { get: record("get"), post: record("post"), patch: record("patch") } });
+  unregister = registerPlatformRuntime({ getSessionVersion: () => 1, getAccessToken: () => "unit-test-session",
+    http: { get: record("get"), post: record("post"), patch: record("patch"), request: async (cfg: any) => {
+      calls.push({ method: cfg.method.toLowerCase(), url: cfg.url, body: cfg.data, options: cfg });
+      return { status: 200, headers: { etag: '"agent-3-2"' }, data: reply };
+    } } });
   userApi = await vite.ssrLoadModule("/src/addons/conversation/api/agent.ts");
   adminApi = await vite.ssrLoadModule("/src/addons/administration/api/agent.ts");
   convApi = await vite.ssrLoadModule("/src/addons/conversation/api/conversation.ts");
@@ -55,21 +60,23 @@ test("instance session list filters by agentId and creation sends agentTemplateI
 test("admin agents: CRUD and metadata-only usage", async () => {
   calls.length = 0;
   reply = { code: 0, data: [{ id: 3, name: "HR", isActive: true, instanceCount: 2, sessions7d: 5 }] };
-  assert.equal((await adminApi.listAgentDefinitions())[0].instanceCount, 2);
-  await adminApi.createAgentDefinition({ name: "HR", slug: "hr" });
-  await adminApi.updateAgentDefinition(3, { isActive: false });
+  assert.equal((await adminApi.agentDefinitions.list())[0].instanceCount, 2);
+  reply = { code: 0, data: definitionDetail };
+  await adminApi.agentDefinitions.create({ ...definitionDetail, capabilities: { ...definitionDetail.capabilities, create: true } }, "hr", { "/name": "HR" }, "request_key_123456");
+  await adminApi.agentDefinitions.lifecycle({ ...definitionDetail, etag: '"agent-3-2"' }, "disable");
   reply = { code: 0, data: [{ instanceId: 9, userId: 7, nickName: "A", firstUsedAt: "x", sessionCount: 1, lastSessionAt: null }], total: 41 };
-  const page = await adminApi.listAgentInstances(3, 20);
+  const page = await adminApi.agentDefinitions.instances(3, 20);
   assert.equal(page.total, 41);
   assert.deepEqual(Object.keys(page.items[0]).sort(), ["firstUsedAt", "instanceId", "lastSessionAt", "nickName", "sessionCount", "userId"]);
   assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), [
-    "get /api/v1/addons/admin/agents",
+    "get /api/v1/addons/admin/agents?include_deleted=1",
     "post /api/v1/addons/admin/agents",
     "patch /api/v1/addons/admin/agents/3",
-    "get /api/v1/addons/admin/agents/3/instances",
+    "get /api/v1/addons/admin/agents/3/instances?offset=20&limit=20",
   ]);
-  assert.deepEqual(calls[2].body, { isActive: false }, "disable is a single-field write");
-  assert.deepEqual(calls[3].options.params, { offset: 20, limit: 20 });
+  assert.deepEqual(calls[2].body, { changes: { "/isActive": false } });
+  assert.equal(calls[1].options.headers["idempotency-key"], "request_key_123456");
+  assert.equal(calls[2].options.headers["if-match"], '"agent-3-2"');
 });
 
 test("routes: instance page under /agents, admin tab gated by core:admin:read", () => {

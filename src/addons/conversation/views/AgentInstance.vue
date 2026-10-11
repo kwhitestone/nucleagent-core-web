@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * My agent: one definition seen through my personal instance. Persona, memory
+ * My agent: one definition seen through my personal instance. Effective sources, memory
  * (view / edit / clear), my sessions with it (each opens the normal /c/:id
  * replay), and a box that starts a new session in this instance.
  */
@@ -13,9 +13,12 @@ import { getMyAgent, updateAgentMemory, type MyAgent } from "../api/agent";
 import { listConversations } from "../api/conversation";
 import type { Conversation } from "../api/types";
 import { useConversationStore } from "../store/conversation";
+import AgentEffective from "../../administration/agents/definition/AgentEffective.vue";
+import { createEffectiveApi } from "../../administration/agents/definition/effective";
+import { definitionTransport } from "../../administration/api/agent";
 
 const props = defineProps<{ templateId: string }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const router = useRouter();
 const store = useConversationStore();
 const authorization = useEmbeddedAuthorization();
@@ -32,12 +35,14 @@ const editingMemory = ref(false);
 const memoryDraft = ref("");
 const savingMemory = ref(false);
 
-const persona = computed(() => String(agent.value?.config?.prompt ?? "").trim());
+const effective = createEffectiveApi(definitionTransport);
+const selectedSession = ref<number | null>(null);
 const memory = computed(() => (agent.value?.memory ?? "").trim());
 
 async function load(): Promise<void> {
   loading.value = true;
   missing.value = false;
+  selectedSession.value = null;
   try {
     agent.value = await getMyAgent(Number(props.templateId));
     missing.value = !agent.value;
@@ -131,12 +136,15 @@ function source(c: Conversation): string {
           </button>
         </form>
 
-        <section class="card">
-          <h2>{{ t("agents.persona") }}</h2>
-          <p v-if="persona" class="pre">{{ persona }}</p>
-          <p v-else class="muted">{{ t("agents.noPersona") }}</p>
-          <p class="hint">{{ t("agents.personaNewSessions") }}</p>
-        </section>
+        <template v-if="agent.instanceId">
+          <label class="effective-target">{{ locale.startsWith('zh') ? '版本范围' : 'Version scope' }}
+            <select v-model="selectedSession">
+              <option :value="null">{{ locale.startsWith('zh') ? '个人实例' : 'My instance' }}</option>
+              <option v-for="c in sessions" :key="c.id" :value="c.id">{{ c.title || `#${c.id}` }}</option>
+            </select>
+          </label>
+          <AgentEffective :api="effective" :kind="selectedSession ? 'conversation' : 'instance'" :id="selectedSession || agent.instanceId" />
+        </template>
 
         <section class="card" data-testid="agent-memory">
           <div class="card-head">
@@ -178,6 +186,8 @@ function source(c: Conversation): string {
 
 <style scoped>
 .agent-view { height: 100%; overflow-y: auto; max-width: 880px; margin: 0 auto; width: 100%; padding: 32px 24px 48px; display: flex; flex-direction: column; gap: 16px; }
+.effective-target { display: grid; gap: 8px; font-size: 13px; }
+.effective-target select { width: 100%; min-height: 44px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 8px; }
 .agent-head { display: flex; align-items: center; gap: 14px; }
 .agent-avatar { width: 48px; height: 48px; border-radius: var(--r-lg); background: var(--grad-brand-soft); color: var(--teal-600); display: grid; place-items: center; font-weight: 700; font-size: 20px; flex: none; }
 .agent-title h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
+import { definitionDetail } from "./agentDefinitionFixture.ts";
 
 let vite: ViteDevServer;
 let unregister: () => void;
@@ -23,7 +24,12 @@ const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url),
 before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
-  unregister = registerPlatformRuntime({ http: { get: record("get"), post: record("post"), patch: record("patch"), delete: record("delete") } });
+  unregister = registerPlatformRuntime({ getSessionVersion: () => 1, getAccessToken: () => "unit-test-session",
+    http: { get: record("get"), post: record("post"), patch: record("patch"), delete: record("delete"),
+      request: async (cfg: any) => {
+        calls.push({ method: cfg.method.toLowerCase(), url: cfg.url, body: cfg.data, options: cfg });
+        return { status: 200, headers: { etag: '"agent-3-2"' }, data: reply };
+      } } });
   adminApi = await vite.ssrLoadModule("/src/addons/administration/api/agent.ts");
   userApi = await vite.ssrLoadModule("/src/addons/conversation/api/agent.ts");
   lifecycle = await vite.ssrLoadModule("/src/addons/administration/agents/lifecycle.ts");
@@ -32,37 +38,37 @@ before(async () => {
 });
 after(async () => { unregister(); await vite.close(); });
 
-test("api: list with/without deleted, delete, restore, impact, audits hit the B1 contract", async () => {
+test("api: complete aggregate list, delete, restore, impact and audits use CAS contract", async () => {
   calls.length = 0;
   reply = { code: 0, data: [] };
-  await adminApi.listAgentDefinitions();
-  await adminApi.listAgentDefinitions({ includeDeleted: true });
-  reply = { code: 0, data: { id: 3, deletedAt: "2026-10-10T01:00:00+08:00" } };
-  await adminApi.deleteAgentDefinition(3);
-  await adminApi.restoreAgentDefinition(3);
+  await adminApi.agentDefinitions.list();
+  const snapshot = { ...definitionDetail, etag: '"agent-3-2"' };
+  reply = { code: 0, data: definitionDetail };
+  await adminApi.agentDefinitions.lifecycle(snapshot, "delete");
+  await adminApi.agentDefinitions.lifecycle(snapshot, "restore");
   reply = { code: 0, data: { instances: 2, conversations: 5, conversations_7d: 1, skill_bindings: 0, im_groups: null, deliverables: null, unavailable: ["im_groups", "deliverables"], counted_at: "x" } };
-  const impact = await adminApi.getAgentImpact(3);
+  const impact = await adminApi.agentDefinitions.impact(3);
   assert.equal(impact.conversations_7d, 1);
   reply = { code: 0, data: [{ id: 1, action: "delete", actorUserId: 5, fields: ["deletedAt"], promptSha256Before: "", promptSha256After: "", createdAt: "x" }], total: 1 };
-  const audits = await adminApi.listAgentAudits(3);
+  const audits = await adminApi.agentDefinitions.audits(3);
   assert.equal(audits.total, 1);
   assert.equal(audits.items[0].action, "delete");
   assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), [
-    "get /api/v1/addons/admin/agents",
-    "get /api/v1/addons/admin/agents",
+    "get /api/v1/addons/admin/agents?include_deleted=1",
     "delete /api/v1/addons/admin/agents/3",
     "post /api/v1/addons/admin/agents/3/restore",
     "get /api/v1/addons/admin/agents/3/impact",
-    "get /api/v1/addons/admin/agents/3/audits",
+    "get /api/v1/addons/admin/agents/3/audits?offset=0&limit=20",
   ]);
-  assert.equal(calls[0].options?.params?.include_deleted, undefined, "the default list hides deleted rows");
-  assert.equal(calls[1].options.params.include_deleted, 1);
+  assert.equal(calls[1].options.headers["if-match"], snapshot.etag);
+  assert.equal(calls[2].options.headers["if-match"], snapshot.etag);
 });
 
-test("api: avatar rides in the definition body (config.avatar on the server)", async () => {
+test("api: avatar uses one dirty leaf, never a flattened DTO or whole config", async () => {
   calls.length = 0;
-  await adminApi.updateAgentDefinition(3, { avatar: "https://cdn.example/a.png" });
-  assert.deepEqual(calls[0].body, { avatar: "https://cdn.example/a.png" });
+  reply = { code: 0, data: definitionDetail };
+  await adminApi.agentDefinitions.patch({ ...definitionDetail, etag: '"agent-3-2"' }, { "/config/avatar": "https://cdn.example/a.png" });
+  assert.deepEqual(calls[0].body, { changes: { "/config/avatar": "https://cdn.example/a.png" } });
 });
 
 test("delete is only offered for a disabled, not-yet-deleted definition; restore only for a deleted one", () => {
@@ -102,13 +108,18 @@ test("my agent detail and deleted state come from /agent/mine/{id}", async () =>
 
 test("views: delete/restore/impact/audit/filter in the admin page; avatar field; ?edit= opens the editor", () => {
   const page = src("addons/administration/views/admin/AdminAgents.vue");
-  for (const id of ["agent-delete", "agent-restore", "agent-show-deleted", "agent-audits", "agent-impact", "agent-delete-confirm", "agent-avatar"]) {
-    assert.match(page, new RegExp(`data-testid="${id}"`), id);
-  }
-  assert.match(page, /:disabled="!canDelete\(agent\)/, "delete button disabled unless the definition is disabled");
+  const drawer = src("addons/administration/agents/definition/DefinitionDrawer.vue");
+  const fields = src("addons/administration/agents/definition/draft.ts");
+  assert.match(page, /<AgentManagement/);
+  for (const action of ["delete", "restore"]) assert.ok(drawer.includes(`prepare('${action}')`));
+  assert.match(drawer, /editor\.dirty \|\| record\.definition\.isActive/);
+  assert.match(drawer, /sameImpact\(impact\.value, fresh\)/);
+  assert.match(drawer, /typedSlug\.value !== record\.value\.definition\.slug/);
+  assert.match(drawer, /api\.audits/);
+  assert.match(fields, /\/config\/avatar/);
   assert.match(page, /route\.query\.edit/, "/admin/agents?edit=id opens that definition");
-  assert.match(page, /agents\.admin\.effectTiming/, "the editor states when changes apply");
-  assert.match(page, /canWrite/, "write buttons hidden without core:admin:write");
+  assert.match(drawer, /label\('nextTurn'\)/);
+  assert.match(drawer, /record\.capabilities\.write/);
 });
 
 test("views: deleted banner on the agent page and the conversation page; admin edit link", () => {
@@ -137,7 +148,8 @@ test("i18n: every new key exists in zh and en", () => {
 });
 
 test("mobile (B12): dialogs fit a 390px screen", () => {
-  const page = src("addons/administration/views/admin/AdminAgents.vue");
-  assert.match(page, /@media \(max-width: 480px\) \{[\s\S]*?\.modal-card \{ width: 100%/, "full-width dialog on phones");
-  assert.match(page, /@media \(max-width: 480px\) \{[\s\S]*?\.tool-card \{ flex-direction: column/, "rows stack so the name keeps its width");
+  const drawer = src("addons/administration/agents/definition/DefinitionDrawer.vue");
+  assert.match(drawer, /@media \(max-width: 600px\) \{[\s\S]*?\.definition-drawer \{ width: 100%/);
+  assert.match(drawer, /100dvh/);
+  assert.match(drawer, /min-height: 44px/);
 });

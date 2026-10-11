@@ -166,14 +166,19 @@ test("W4 a 400 im_invalid_provider_model or model_type_mismatch on save becomes 
   assert.equal(errors.modelFieldError(new Error("net"), tOf("zh")), "");
 });
 
-test("W4 AdminAgents: defaults use the shared ModelPicker, save errors land in the form", () => {
-  const page = src("addons/administration/views/admin/AdminAgents.vue");
-  assert.match(page, /import ModelPicker from "@\/addons\/conversation\/components\/ModelPicker\.vue"/);
-  assert.match(page, /<ModelPicker[^>]*type="chat"[^>]*allow-default/);
+test("W4 AdminAgents: defaults use authorized chat catalog selectors, save errors land in the form", () => {
+  const page = src("addons/administration/agents/definition/DefinitionDrawer.vue");
+  const fields = src("addons/administration/agents/definition/DefinitionFields.vue");
+  const api = src("addons/administration/agents/definition/api.ts");
+  assert.match(api, /provider\/models\?type=chat/);
+  assert.match(api, /typesAvailable !== true/);
+  assert.match(fields, /<select/);
+  assert.match(page, /providerChoices/);
+  assert.match(page, /modelChoices/);
   assert.doesNotMatch(page, /v-model="form\.providerId"/, "no free-text provider id");
   assert.doesNotMatch(page, /v-model="form\.model"/, "no free-text model");
-  assert.match(page, /serverModelError\.value = modelFieldError\(error, t\)/);
-  assert.match(page, /data-testid="agent-model-error">\{\{ modelError \|\| serverModelError \}\}/);
+  assert.match(page, /editor\.error \|\| status/);
+  assert.match(page, /role="alert"/);
 });
 
 // ---- W5 gateway type labels
