@@ -24,8 +24,7 @@ for var in CORE_UPSTREAM SHELL_ORIGIN; do
     fi
 done
 
-# An unset list preserves the single-shell contract; an explicit empty list
-# is a configuration error. Parse commas without shell word splitting.
+# Validate all nginx input before writing either output file.
 remaining=${FRAME_ANCESTORS-$SHELL_ORIGIN}
 FRAME_ANCESTORS=
 while :; do
@@ -40,6 +39,43 @@ while :; do
         *) break ;;
     esac
 done
+
+# Only public browser keys are serialized; never enumerate the environment.
+# Validation makes JSON escaping unnecessary (quotes/backslashes are forbidden).
+runtime_keys='VITE_CORE_WEB_URL VITE_SHELL_URL VITE_CORE_BACKEND_URL VITE_STORAGE_URL VITE_AUTH_BACKEND_URL VITE_EMBED_HOST_ORIGINS'
+json='{'
+separator=
+for var in $runtime_keys; do
+    eval "value=\${$var-}"
+    if [ "$var" = VITE_EMBED_HOST_ORIGINS ]; then
+        eval "present=\${$var+x}"
+        if [ "$present" != x ]; then
+            printf '%s must be explicitly configured (empty disables host handoff).\n' "$var" >&2
+            exit 1
+        fi
+        remaining=$value
+        while [ -n "$remaining" ]; do
+            item=${remaining%%,*}
+            if ! valid_origin "$item"; then
+                printf '%s contains an invalid origin.\n' "$var" >&2
+                exit 1
+            fi
+            case "$remaining" in
+                *,) printf '%s contains an empty origin.\n' "$var" >&2; exit 1 ;;
+                *,*) remaining=${remaining#*,} ;;
+                *) break ;;
+            esac
+        done
+    elif ! valid_origin "$value"; then
+        printf '%s must be a single HTTP(S) origin.\n' "$var" >&2
+        exit 1
+    fi
+    json="$json$separator\"$var\":\"$value\""
+    separator=,
+done
+mkdir -p /etc/nucleagent
+printf '%s}\n' "$json" > /etc/nucleagent/runtime-config.json
+chmod 0644 /etc/nucleagent/runtime-config.json
 
 export CORE_UPSTREAM FRAME_ANCESTORS
 

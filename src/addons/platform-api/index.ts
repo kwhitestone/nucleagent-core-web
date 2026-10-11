@@ -5,12 +5,12 @@ import router from "@/router";
 import { platformRuntime } from "./runtime";
 import { coreShellPath, redirectToShellLogin } from "./shellLogin";
 import i18n from "@/i18n";
-import { outerAware } from "@/outerHost";
+import { configValue } from "@/runtimeConfig";
 
 let unregisterRuntime: (() => void) | undefined;
 let unregisterAuthGuard: (() => void) | undefined;
 
-const SHELL_URL = outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600");
+const SHELL_URL = configValue("VITE_SHELL_URL");
 
 const platformApi: PluginModule = {
   name: "platform-api",

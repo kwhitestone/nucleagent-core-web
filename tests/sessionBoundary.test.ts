@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { createSSRApp, defineComponent, h } from "vue";
@@ -16,6 +17,7 @@ before(async () => {
     getItem: () => currentToken, setItem: () => undefined, removeItem: () => undefined,
   } });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  await initializeRuntimeFixture(vite);
   ({ platformRuntime: runtime } = await vite.ssrLoadModule("/src/addons/platform-api/runtime.ts"));
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime(runtime);

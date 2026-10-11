@@ -14,7 +14,7 @@ import {
   mergeTasks, promptValid, statusView, submitErrorText, type GenerationKind, type GenerationTask, type MediaModel,
 } from "@/addons/conversation/composables/generation";
 import { deliverablesShellPath } from "@/addons/platform-api/shellLogin";
-import { outerAware } from "@/outerHost";
+import { configValue } from "@/runtimeConfig";
 import { toast } from "@/composables/useToast";
 
 const props = defineProps<{ kind: string }>();
@@ -38,7 +38,7 @@ const listError = ref(false);
 const previews = reactive<Record<number, string>>({});
 const openId = ref<number | null>(null);
 const openTask = computed(() => tasks.value.find((task) => task.id === openId.value) ?? null);
-const libraryHref = outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600").replace(/\/$/, "") + deliverablesShellPath("/deliverables");
+const libraryHref = configValue("VITE_SHELL_URL") + deliverablesShellPath("/deliverables");
 const view = (task: GenerationTask) => statusView(task, t);
 const isVideo = (task: GenerationTask) => task.kind === "video" || !!task.file?.mime.startsWith("video/");
 

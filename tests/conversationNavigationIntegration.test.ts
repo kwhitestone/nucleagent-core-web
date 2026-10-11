@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { before, after, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 
@@ -13,6 +14,7 @@ let get: (path: string, options?: any) => Promise<any>;
 
 before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  await initializeRuntimeFixture(vite);
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({
     http: { get: (path: string, options: any) => get(path, options) },

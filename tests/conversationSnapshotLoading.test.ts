@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, test } from "node:test";
 import { createSSRApp, h, type Component } from "vue";
 import { renderToString } from "vue/server-renderer";
@@ -14,6 +15,7 @@ before(async () => {
   Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0) });
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: clearTimeout });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  await initializeRuntimeFixture(vite);
   ({ useConversation } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/vue/useConversation.ts"));
   ({ default: TaskConversation } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/vue/TaskConversation.vue"));
 });

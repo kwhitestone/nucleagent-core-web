@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 
 import {
   allowedHostOrigins,
@@ -7,6 +7,14 @@ import {
   installEmbedHostHandshake,
 } from "../src/composables/useEmbedHostHandshake.ts";
 import * as token from "../src/utils/token.ts";
+import { loadRuntimeConfig } from "../src/runtimeConfig.ts";
+import { runtimeFixture } from "./fixtures/runtimeConfig.ts";
+
+before(async () => {
+  const fixture = runtimeFixture("sdp.ndaeweb.com");
+  await loadRuntimeConfig("https://nucleagent-core-web.new.ndhy.com",
+    (async () => new Response(JSON.stringify(fixture))) as typeof fetch);
+});
 
 const HOST = "http://localhost:19002";
 
@@ -149,6 +157,7 @@ test("a credential for the handshaked conversation is exchanged and releases the
     // UNI PR-7: auth's portal handoff, credential in the JSON body only, and
     // cookie-only so the refresh credential never reaches this iframe origin.
     assert.match(calls[0].url, /\/api\/v1\/addons\/auth\/portal\/credential$/);
+    assert.equal(new URL(calls[0].url).origin, "https://nucleagent-auth.new.ndhy.com");
     assert.equal(calls[0].init.body, JSON.stringify({ credential: "uc-secret" }));
     assert.equal(calls[0].init.credentials, "include");
     assert.equal((calls[0].init.headers as Record<string, string>)["X-Refresh-Cookie-Only"], "1");

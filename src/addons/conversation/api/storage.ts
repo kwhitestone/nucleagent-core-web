@@ -3,7 +3,7 @@ import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import type { MessageAttachment } from "./types";
 import { buildUploadRequestBody } from "./uploadPayload";
 import { assertSafeDownloadUrl } from "./downloadUrlPolicy";
-import { outerAware } from "@/outerHost";
+import { configValue } from "@/runtimeConfig";
 
 /**
  * nucleagent-storage (:26610) client — presign → 直传 → register 三步上传。
@@ -24,8 +24,8 @@ import { outerAware } from "@/outerHost";
 /** storage 的命名空间。与后端 storage config.yaml 的 namespaces 对应。 */
 const NAMESPACE = "core";
 
-/** storage 服务地址。未配置时回落到本机默认端口。 */
-const STORAGE_BASE = outerAware(import.meta.env.VITE_STORAGE_URL?.trim() || "http://localhost:26610");
+/** Validated browser origin; no build-time or loopback fallback. */
+const STORAGE_BASE = configValue("VITE_STORAGE_URL");
 
 /**
  * 单文件大小上限（100MB），与 storage 的 max-size 对齐。
