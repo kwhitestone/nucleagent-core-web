@@ -61,6 +61,8 @@ export default {
     attachmentTooMany: "最多 {max} 个附件",
     attachmentRemove: "移除附件",
     attachmentDownloadFailed: "获取下载地址失败",
+    attachmentVerificationFailed: "核验失败，附件待核验",
+    attachmentVerificationRetry: "重试附件核验",
     attachmentPreview: "预览 {name}",
     attachmentPreviewLoading: "正在加载图片预览",
     attachmentPreviewFailed: "图片预览加载失败",

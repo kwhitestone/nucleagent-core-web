@@ -239,6 +239,11 @@ export const ItemRemoveEventSchema = ConversationEventBaseSchema.extend({
   itemId: BoundedIdSchema,
 });
 
+export const ItemAttachmentsEventSchema = ConversationEventBaseSchema.extend({
+  type: z.literal("item.attachments"),
+  attachments: z.array(ConversationAttachmentSchema).max(MAX_ATTACHMENTS).readonly(),
+});
+
 export const ConversationStatusEventSchema = ConversationEventBaseSchema.extend(
   {
     type: z.literal("conversation.status"),
@@ -253,6 +258,7 @@ export const ConversationEventSchema = z.discriminatedUnion("type", [
   StreamAppendEventSchema,
   StreamCompleteEventSchema,
   ItemRemoveEventSchema,
+  ItemAttachmentsEventSchema,
   ConversationStatusEventSchema,
 ]);
 

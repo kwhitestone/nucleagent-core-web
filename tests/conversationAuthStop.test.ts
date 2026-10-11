@@ -119,6 +119,34 @@ test("an SSE authentication failure is terminal until a new session initializes"
   controller.dispose();
 });
 
+test("completed history with attachments reconnects after EOF to keep deletion revalidation active", async () => {
+  const connection = deferred<string>();
+  const snapshot = cancellationSnapshot(true);
+  const adapter = {
+    async loadSnapshot() {
+      return { ...snapshot, items: snapshot.items.map(item => ({ ...item, attachments: [
+        { id: "live", name: "report.pdf", metadata: { verification: "verified" } },
+      ] })) };
+    },
+    async *subscribe() {},
+  };
+  const controller = useConversation({
+    conversationKey: () => "history",
+    adapter: () => adapter,
+    onConnectionChange: (status: string) => {
+      if (status === "disconnected" || status === "reconnecting") connection.resolve(status);
+    },
+    onStatusChange: () => undefined,
+    onError: () => undefined,
+  });
+  try {
+    await controller.initialize();
+    assert.equal(await connection.promise, "reconnecting");
+  } finally {
+    controller.dispose();
+  }
+});
+
 test("answer settlement restarts the SSE epoch before reseeding snapshot versions", async () => {
   let snapshotCalls = 0;
   let subscribeCalls = 0;

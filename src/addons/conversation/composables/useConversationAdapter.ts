@@ -383,7 +383,7 @@ function mapAttachments(m: Message): ConversationAttachment[] | undefined {
     name: a.name,
     mimeType: a.mimeType,
     size: a.size,
-    metadata: a.kind ? { kind: a.kind } : undefined,
+    metadata: { ...(a.kind ? { kind: a.kind } : {}), verification: a.verification === "verified" ? "verified" : "unavailable" },
   }));
 }
 
@@ -590,6 +590,21 @@ export function createConversationAdapter(
         }
         if (!shouldEmit(msg)) continue;
         const id = `msg-${msg.id}`;
+        if (ev.event === "message-attachments") {
+          // Revalidation cannot settle a run or recreate a removed message.
+          if (!versionTracker.current(id)) continue;
+          for (const cache of [thinkingItemsByConversation.get(key()), executionPhaseItemsByConversation.get(key())]) {
+            const cached = cache?.get(msg.id);
+            if (cached) cache!.set(msg.id, { ...cached, metadata: { ...cached.metadata, attachments: msg.metadata?.attachments ?? [] } });
+          }
+          const item = { ...toItem(msg), ...versionTracker.next(id) };
+          yield {
+            ...baseEventFields(key(), item, cursorHighWater),
+            type: "item.attachments",
+            attachments: item.attachments ?? [],
+          };
+          continue;
+        }
         // 记录本轮 thinking 行（senderName 带 .thinking），答案终态时补发 complete。
         if (msg.msgType === "streaming" && msg.senderName.endsWith(".thinking")) {
           thinkingItemsFor(key()).set(msg.id, msg);

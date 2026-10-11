@@ -110,6 +110,11 @@ export interface ItemRemoveEvent extends ConversationEventBase {
   itemId: string;
 }
 
+export interface ItemAttachmentsEvent extends ConversationEventBase {
+  type: "item.attachments";
+  attachments: readonly ConversationAttachment[];
+}
+
 export interface ConversationStatusEvent extends ConversationEventBase {
   type: "conversation.status";
   status: ConversationStatus;
@@ -122,6 +127,7 @@ export type ConversationEvent =
   | StreamAppendEvent
   | StreamCompleteEvent
   | ItemRemoveEvent
+  | ItemAttachmentsEvent
   | ConversationStatusEvent;
 
 export interface SnapshotRequest {

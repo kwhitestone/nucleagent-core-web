@@ -9,13 +9,16 @@
  * 注入的 chip 点不动。必须是真实 Vue 节点。
  */
 import { useI18n } from "vue-i18n";
+import { inject } from "vue";
+import { RefreshCw } from "@lucide/vue";
 import { getDownloadUrl } from "@/addons/conversation/api/storage";
 import { toast } from "@/composables/useToast";
 import type { MessageAttachment } from "@/addons/conversation/api/types";
 import ImageAttachmentPreview from "./ImageAttachmentPreview.vue";
 import { formatAttachmentSize, isImageAttachment } from "./attachmentPresentation";
+import { revalidateAttachments } from "./attachmentRevalidation";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     attachments: MessageAttachment[];
     removable?: boolean;
@@ -26,11 +29,14 @@ withDefaults(
 const emit = defineEmits<{ remove: [fileId: string] }>();
 
 const { t } = useI18n();
+const revalidate = inject(revalidateAttachments, () => {});
+const available = (att: MessageAttachment) => props.removable || att.verification === "verified";
 
 /**
  * 点击下载时现取签名 URL（有效期 1800s），避免复用已经失效的缩略图地址。
  */
 async function download(att: MessageAttachment): Promise<void> {
+  if (!available(att)) return;
   try {
     const url = await getDownloadUrl(att.fileId);
     let objectUrl = "";
@@ -61,8 +67,15 @@ async function download(att: MessageAttachment): Promise<void> {
 <template>
   <div v-if="attachments.length > 0" class="attachment-chips">
     <template v-for="att in attachments" :key="att.fileId">
+      <div v-if="!available(att)" class="attachment-chip attachment-unavailable" data-attachment-verification="unavailable" :data-attachment-id="att.fileId">
+        <span class="att-pending-name" :title="att.name">{{ att.name }}</span>
+        <span role="status">{{ t("common.attachmentVerificationFailed") }}</span>
+        <button type="button" class="att-retry" :title="t('common.attachmentVerificationRetry')" :aria-label="t('common.attachmentVerificationRetry')" @click="revalidate">
+          <RefreshCw :size="14" aria-hidden="true" />
+        </button>
+      </div>
       <ImageAttachmentPreview
-        v-if="isImageAttachment(att)"
+        v-else-if="isImageAttachment(att)"
         :attachment="att"
         :removable="removable"
         @download="download(att)"
@@ -111,6 +124,10 @@ async function download(att: MessageAttachment): Promise<void> {
   font-size: 12.5px;
   font-family: var(--font-body);
 }
+
+.attachment-unavailable { flex-wrap: wrap; color: var(--text-tertiary); }
+.att-pending-name { overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.att-retry { display: inline-flex; border: 0; background: none; padding: 4px; color: var(--text-primary); cursor: pointer; }
 
 .att-icon {
   display: inline-flex;

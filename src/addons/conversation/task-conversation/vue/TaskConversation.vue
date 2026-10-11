@@ -5,6 +5,7 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   watch,
 } from "vue";
@@ -29,6 +30,7 @@ import {
 } from "../core";
 import ConversationContent from "./ConversationContent.vue";
 import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vue";
+import { revalidateAttachments } from "@/addons/conversation/components/attachmentRevalidation";
 import type { MessageAttachment } from "@/addons/conversation/api/types";
 import { resolveMessages } from "./messages";
 import {
@@ -172,6 +174,7 @@ const controller = useConversation({
   onError: (error) => emit("error", error),
 });
 const canExecute = computed(() => controller.authoritativeReady.value);
+provide(revalidateAttachments, controller.revalidate);
 
 const runTimings = computed(() => executionTimings(
   controller.state.value.loadedOrder.map((id) => controller.state.value.items[id]!).filter(Boolean),
@@ -635,6 +638,7 @@ const fallbackLegacy = () => {
   emit("fallback-legacy");
 };
 const openArtifact = (attachment: ConversationAttachment) => {
+  if (attachment.metadata?.verification === "unavailable") return;
   emit("open-artifact", attachment);
 };
 
@@ -1020,6 +1024,7 @@ onBeforeUnmount(() => {
                   :open="() => openArtifact(attachment)"
                 >
                   <button
+                    v-if="attachment.metadata?.verification !== 'unavailable'"
                     type="button"
                     class="atc-artifact-card"
                     @click="openArtifact(attachment)"
@@ -1032,6 +1037,10 @@ onBeforeUnmount(() => {
                       }}</small>
                     </span>
                   </button>
+                  <span v-else class="atc-artifact-copy">
+                    <strong>{{ attachment.name }}</strong>
+                    <button type="button" class="atc-action-button" @click="controller.revalidate()">{{ text.retry }}</button>
+                  </span>
                 </slot>
               </li>
             </ul>

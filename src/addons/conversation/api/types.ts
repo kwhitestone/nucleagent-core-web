@@ -74,6 +74,7 @@ export type MessageType =
  */
 export interface MessageAttachment {
   fileId: string;
+  verification?: "verified" | "unavailable";
   name: string;
   mimeType?: string;
   size?: number;
@@ -278,7 +279,7 @@ export interface AgentTemplate {
  * 即每个 SSE 事件携带的是整条消息（创建/更新/删除），不是增量 delta。
  * 前端按 event 类型 upsert 到消息列表即可。
  */
-export type SSEEventName = "message-created" | "message-updated" | "message-deleted";
+export type SSEEventName = "message-created" | "message-updated" | "message-deleted" | "message-attachments";
 
 export interface SSEMessageEvent {
   /** SSE 帧的 event: 字段。 */

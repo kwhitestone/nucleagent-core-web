@@ -61,6 +61,8 @@ export default {
     attachmentTooMany: "At most {max} attachments",
     attachmentRemove: "Remove attachment",
     attachmentDownloadFailed: "Failed to get download URL",
+    attachmentVerificationFailed: "Verification failed; attachment unavailable",
+    attachmentVerificationRetry: "Retry attachment verification",
     attachmentPreview: "Preview {name}",
     attachmentPreviewLoading: "Loading image preview",
     attachmentPreviewFailed: "Image preview failed to load",

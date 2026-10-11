@@ -161,6 +161,29 @@ test("history attachment revalidation updates only attachments without terminal 
   assert.equal(state.connection.needsSnapshot, false);
 });
 
+test("disconnect invalidates attachment authority without mutating the cached snapshot or body", async () => {
+  const row = message({ id: 8102, metadata: { attachments: [
+    { fileId: "live", name: "report.pdf", verification: "verified" },
+  ] } });
+  http.defaults.adapter = async (config: any) => ({
+    config, data: messageEnvelope(config, [row]), headers: {}, status: 200, statusText: "OK",
+  });
+  const snapshot = await createConversationAdapter(() => "811").loadSnapshot({
+    conversationKey: "811", signal: new AbortController().signal,
+  });
+  const original = reduceConversation(createConversationState("811"), { type: "event.received", event: {
+    protocolVersion: 2, type: "snapshot", conversationKey: "811", eventId: "snapshot-disconnect",
+    cursor: snapshot.cursor, turnId: "main", streamId: "msg-8102", lane: "answer",
+    revision: 1, seq: 1, timestamp: row.createdAt, snapshot,
+  } });
+  let state = reduceConversation(original, { type: "connection.changed", status: "disconnected" });
+  assert.equal(state.items["msg-8102"].attachments[0].metadata.verification, "unavailable");
+  assert.equal(original.items["msg-8102"].attachments[0].metadata.verification, "verified");
+  assert.equal(state.items["msg-8102"].content, row.content);
+  state = reduceConversation(state, { type: "connection.changed", status: "connected" });
+  assert.equal(state.items["msg-8102"].attachments[0].metadata.verification, "unavailable");
+});
+
 test("an accepted run without native messages remains running, and cancellation restores its endpoint", async () => {
   const rows = [message({ senderType: "user", senderName: "user", msgType: "text" })];
   for (const status of ["executing", "cancelled"]) {

@@ -70,6 +70,8 @@ function installI18n(app: ReturnType<typeof createSSRApp>): void {
             attachmentPreviewLoading: "正在加载图片预览",
             attachmentPreviewFailed: "图片预览加载失败",
             attachmentDownload: "下载",
+            attachmentVerificationFailed: "附件状态核验失败",
+            attachmentVerificationRetry: "重试核验",
             close: "关闭",
           },
         },
@@ -94,6 +96,7 @@ test("snapshot attachment metadata renders in the user message", async () => {
           mimeType: "image/jpeg",
           size: 1536,
           kind: "image",
+          verification: "verified",
         },
         {
           fileId: "file-1",
@@ -101,6 +104,7 @@ test("snapshot attachment metadata renders in the user message", async () => {
           mimeType: "application/pdf",
           size: 2048,
           kind: "pdf",
+          verification: "verified",
         },
       ],
     },
@@ -124,14 +128,14 @@ test("snapshot attachment metadata renders in the user message", async () => {
       name: "界面截图.jpg",
       mimeType: "image/jpeg",
       size: 1536,
-      metadata: { kind: "image" },
+      metadata: { kind: "image", verification: "verified" },
     },
     {
       id: "file-1",
       name: "产品说明.pdf",
       mimeType: "application/pdf",
       size: 2048,
-      metadata: { kind: "pdf" },
+      metadata: { kind: "pdf", verification: "verified" },
     },
   ]);
   // Keep SSR on the plain-text branch; DOMPurify is browser-only. Attachments
@@ -208,6 +212,7 @@ test("generated assistant attachments survive the API snapshot mapping", async (
                   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 size: 2124,
                 kind: "file",
+                verification: "verified",
               },
             ],
           },
@@ -231,7 +236,7 @@ test("generated assistant attachments survive the API snapshot mapping", async (
       mimeType:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       size: 2124,
-      metadata: { kind: "file" },
+      metadata: { kind: "file", verification: "verified" },
     },
   ]);
 

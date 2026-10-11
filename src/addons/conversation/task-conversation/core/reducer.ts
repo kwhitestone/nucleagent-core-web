@@ -265,6 +265,10 @@ const applyEvent = (
   switch (event.type) {
     case "item.upsert":
       return upsertItem(next, event.item, eventVersion(event));
+    case "item.attachments":
+      return itemForEvent
+        ? upsertItem(next, { ...itemForEvent, attachments: event.attachments }, eventVersion(event))
+        : next;
     case "stream.append": {
       if (!itemForEvent) return requestSnapshot(state, "event-gap");
       const content = itemForEvent.content + event.delta;
@@ -428,6 +432,15 @@ export const reduceConversation = (
     case "connection.changed":
       return {
         ...state,
+        items: action.status === "connected" ? state.items : Object.fromEntries(
+          Object.entries(state.items).map(([id, item]) => [id, {
+            ...item,
+            attachments: item.attachments?.map(attachment => ({
+              ...attachment,
+              metadata: { ...attachment.metadata, verification: "unavailable" },
+            })),
+          }]),
+        ),
         connection: {
           ...state.connection,
           status: action.status,

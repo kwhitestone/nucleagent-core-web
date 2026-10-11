@@ -15,6 +15,7 @@ export function toMessageAttachment(
     name: attachment.name,
     mimeType: attachment.mimeType,
     size: attachment.size,
+    verification: attachment.metadata?.verification === "verified" ? "verified" : "unavailable",
     ...(kind ? { kind } : {}),
   };
 }

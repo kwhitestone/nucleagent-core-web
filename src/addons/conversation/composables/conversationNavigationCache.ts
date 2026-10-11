@@ -66,7 +66,13 @@ export function createConversationNavigationCache(
         if (entry.expires <= now()) { remove(id); return; }
         snapshots.delete(id);
         snapshots.set(id, entry);
-        return JSON.parse(entry.json) as ConversationSnapshot;
+        const snapshot = JSON.parse(entry.json) as ConversationSnapshot;
+        return { ...snapshot, items: snapshot.items.map(item => ({
+          ...item,
+          attachments: item.attachments?.map(attachment => ({
+            ...attachment, metadata: { ...attachment.metadata, verification: "unavailable" },
+          })),
+        })) };
       },
       write(snapshot: ConversationSnapshot): void {
         if (!isCurrent() || !session?.token) return;

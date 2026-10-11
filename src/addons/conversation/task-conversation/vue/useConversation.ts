@@ -244,7 +244,8 @@ export const useConversation = (options: ConversationControllerOptions) => {
         }
         batcher.flush();
         if (signal.aborted) return;
-        if (["completed", "failed", "cancelled"].includes(state.value.status)) {
+        if (["completed", "failed", "cancelled"].includes(state.value.status) &&
+            !Object.values(state.value.items).some(item => item.attachments?.length)) {
           dispatch({ type: "connection.changed", status: "disconnected" });
           if (subscription?.generation === generation) subscription = undefined;
           return;
@@ -621,6 +622,7 @@ export const useConversation = (options: ConversationControllerOptions) => {
     authoritativeReady: computed(() => authoritativeReady.value),
     turns: computed(() => selectTurns(state.value)),
     initialize,
+    revalidate: () => restartSubscription(true),
     loadOlder,
     send,
     stop,

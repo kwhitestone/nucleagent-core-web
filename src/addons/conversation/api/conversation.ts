@@ -215,7 +215,7 @@ function parseFrame(block: string): SSEMessageEvent | undefined {
       id = Number(line.slice(3).trim()) || 0;
     } else if (line.startsWith("event:")) {
       const v = line.slice(6).trim() as SSEEventName;
-      if (v === "message-created" || v === "message-updated" || v === "message-deleted") {
+      if (v === "message-created" || v === "message-updated" || v === "message-deleted" || v === "message-attachments") {
         eventName = v;
       }
     }
