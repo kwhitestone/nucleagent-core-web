@@ -617,8 +617,8 @@ export default {
       unknown: "结果不明：为避免重复扣费未自动重试，请到用量明细核对",
     },
     errors: {
-      insufficient_balance: "余额不足，请充值后再试",
-      content_rejected: "内容未通过审核，请修改描述后重试",
+      insufficient_balance: "账户额度不足，请联系管理员",
+      content_rejected: "提示词或结果未通过内容安全审核，请修改后重试",
       upstream_timeout: "生成超时，未拿到结果",
       upstream_error: "生成服务出错，请稍后重试",
       unknown_submit: "提交结果不明，为避免重复扣费未自动重试，请到用量明细核对",

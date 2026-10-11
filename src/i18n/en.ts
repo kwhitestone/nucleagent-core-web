@@ -617,8 +617,8 @@ export default {
       unknown: "Outcome unknown: not retried to avoid a double charge — check your usage details",
     },
     errors: {
-      insufficient_balance: "Insufficient balance — please top up and try again",
-      content_rejected: "Content was rejected by moderation — please revise the prompt",
+      insufficient_balance: "Account quota is insufficient — please contact your administrator",
+      content_rejected: "The prompt or result did not pass content safety review — please revise and try again",
       upstream_timeout: "Generation timed out without a result",
       upstream_error: "The generation service failed — please try again later",
       unknown_submit: "Submission outcome unknown; not retried to avoid a double charge — check your usage details",

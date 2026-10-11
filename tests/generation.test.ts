@@ -72,7 +72,7 @@ test("W2 seven states map to the right text and buttons", () => {
   const ok = gen.statusView({ kind: "image", status: "succeeded", file }, t);
   assert.deepEqual([ok.label, ok.pending, ok.preview, ok.download, ok.regenerate], ["已完成", false, true, true, true]);
   const failed = gen.statusView({ kind: "image", status: "failed", errorCode: "content_rejected", file }, t);
-  assert.match(failed.label, /^失败：内容未通过审核/);
+  assert.equal(failed.label, "失败：提示词或结果未通过内容安全审核，请修改后重试");
   assert.deepEqual([failed.preview, failed.download, failed.regenerate], [false, false, true]);
   const unknown = gen.statusView({ kind: "video", status: "unknown", errorCode: "unknown_submit" }, t);
   assert.match(unknown.label, /^结果不明：.*未自动重试.*用量明细/);
@@ -96,6 +96,19 @@ test("W3 eight error codes have zh and en text; 429 names the in-flight count", 
   assert.match(gen.errorText("media_busy", tOf("en"), "", 2), /2 .*in progress/);
   assert.equal(gen.errorText("video_tasks_limit", zhT(), "上游视频任务并发已满"), "上游视频任务并发已满");
   assert.equal(gen.errorText("weird", zhT()), zh.generate.errors.upstream_error);
+});
+
+// CW1: copy matches core media/messages.go errorTexts (G1 f820573), zh and en
+test("W3c refusal copy matches the backend classification (CW1)", () => {
+  const want = {
+    zh: ["提示词或结果未通过内容安全审核，请修改后重试", "账户额度不足，请联系管理员"],
+    en: ["The prompt or result did not pass content safety review — please revise and try again",
+      "Account quota is insufficient — please contact your administrator"],
+  };
+  for (const loc of ["zh", "en"] as const) {
+    const t = tOf(loc);
+    assert.deepEqual([gen.errorText("content_rejected", t), gen.errorText("insufficient_balance", t)], want[loc], loc);
+  }
 });
 
 test("W3b submit errors: 400 model_type_mismatch via modelErrorMessage, 429 with count, others by code", () => {
