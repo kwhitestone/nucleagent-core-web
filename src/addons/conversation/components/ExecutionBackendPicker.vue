@@ -16,6 +16,7 @@ import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
 
 const props = withDefaults(defineProps<{
   modelValue: string | null;
+  deviceId?: string;
   disabled?: boolean;
   compact?: boolean;
   autoSelect?: boolean;
@@ -83,8 +84,9 @@ defineExpose({ openSheet: () => { sheetOpen.value = true; } });
 async function loadOptions(warn = true): Promise<void> {
 	const request = requestGate.begin();
   loading.value = true;
+  options.value = [];
   const [backendResult, providerResult] = await Promise.allSettled([
-    listExecutionBackends(),
+    listExecutionBackends(props.deviceId),
     listProviders(),
   ]);
 	if (!request.isCurrent()) return;
@@ -119,6 +121,8 @@ watch(
   ([value]) => emit("validation-change", value),
   { immediate: true },
 );
+
+watch(() => props.deviceId, () => { void loadOptions(); });
 
 onMounted(() => {
   window.addEventListener(SESSION_CHANGE_EVENT, onSessionChange);

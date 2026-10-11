@@ -22,6 +22,7 @@ import AttachmentPicker from "@/addons/conversation/components/AttachmentPicker.
 import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vue";
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
+import DevicePicker from "@/addons/conversation/components/DevicePicker.vue";
 import SkillPicker from "@/addons/conversation/components/SkillPicker.vue";
 import { useNarrow } from "@/composables/useNarrow";
 import { clearDraft, readDraft, saveDraft, type TaskDraft } from "@/addons/conversation/composables/taskDraft";
@@ -85,15 +86,24 @@ function templateToTask(tpl: AgentTemplate, index: number): TaskTemplate {
  * neither: an explicit hand-over is the newer intent.
  */
 function applyEntry(): void {
+  if (typeof route.query.device === "string") targetDeviceId.value = route.query.device.trim();
+  if (typeof route.query.backend === "string") executionBackend.value = route.query.backend.trim();
   const name = typeof route.query.template === "string" ? route.query.template : "";
   const index = name ? templates.value.findIndex((tpl) => tpl.name === name) : -1;
   if (index >= 0) selectTemplate(index);
   const input = typeof route.query.input === "string" ? route.query.input : "";
   if (input) form.desc = input;
+  if (route.query.skillIds !== undefined) {
+    const values = [route.query.skillIds].flat().flatMap((value) => (value ?? "").split(","));
+    skillIds.value = [...new Set(values.filter((value) => /^\d+$/.test(value)).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  }
 }
 
+watch(() => route.query, applyEntry);
+
 onMounted(async () => {
-  const draft = !route.query.template && !route.query.input ? readDraft(localStorage) : null;
+  const entryQuery = route.query;
+  const draft = !route.query.template && !route.query.input && route.query.skillIds === undefined && route.query.device === undefined && route.query.backend === undefined ? readDraft(localStorage) : null;
   applyEntry(); // before the template request too, so the handed-over text never flickers
   try {
     const tpls = await listAgentTemplates();
@@ -106,7 +116,7 @@ onMounted(async () => {
     console.warn("[TaskSetup] agent/templates 接口不可用，降级到前端常量", e);
   }
   applyEntry();
-  if (draft) restoreDraft(draft);
+  if (draft && route.query === entryQuery) restoreDraft(draft);
 });
 
 const selected = ref(0);
@@ -116,6 +126,8 @@ const attachments = ref<MessageAttachment[]>([]);
 const modelChoice = ref<ModelChoice | null>(null);
 const executionBackend = ref<string | null>(null);
 const backendCompatible = ref(false);
+const targetDeviceId = ref("");
+watch(targetDeviceId, () => { backendCompatible.value = false; attachments.value = []; });
 /**
  * 创建时预选的技能 ID。空数组 = 不下发 skillIds，后端走自动语义匹配兜底
  * （见 types.ts 的 CreateConversationRequest.skillIds 注释）。
@@ -155,7 +167,7 @@ const backendPicker = ref<{ openSheet: () => void } | null>(null);
 // --- Q5: 保存草稿 (desktop). Local, one draft per browser; launching clears it. ---
 const draftSaved = ref(false);
 function currentDraft(): TaskDraft {
-  return { ...form, templateName: templates.value[selected.value]?.name ?? "", skillIds: [...skillIds.value] };
+  return { ...form, templateName: templates.value[selected.value]?.name ?? "", skillIds: [...skillIds.value], targetDeviceId: targetDeviceId.value || undefined, executionBackend: executionBackend.value || undefined };
 }
 function onSaveDraft(): void {
   saveDraft(localStorage, currentDraft());
@@ -167,12 +179,15 @@ function restoreDraft(draft: TaskDraft): void {
   if (index >= 0) selected.value = index;
   Object.assign(form, { name: draft.name, desc: draft.desc, execMode: draft.execMode, outputFormat: draft.outputFormat });
   skillIds.value = draft.skillIds;
+  targetDeviceId.value = draft.targetDeviceId || "";
+  executionBackend.value = draft.executionBackend || null;
   void nextTick(() => { draftSaved.value = true; });
 }
 watch(form, () => { draftSaved.value = false; });
 
 async function launch(): Promise<void> {
   if (submitting.value) return;
+  if (targetDeviceId.value.length > 64) { toast.error("设备编号无效"); return; }
   launchError.value = "";
   if (!backendCompatible.value) {
     if (narrow.value) backendPicker.value?.openSheet();
@@ -210,6 +225,7 @@ async function launch(): Promise<void> {
       model: modelChoice.value?.model ?? "",
       providerId: modelChoice.value?.providerId,
       executionBackend: executionBackend.value ?? undefined,
+      targetDeviceId: targetDeviceId.value || undefined,
       // 没选技能时必须整个字段缺省，不能传空数组：后端据此决定是否走自动匹配。
       skillIds: skillIds.value.length > 0 ? skillIds.value : undefined,
     });
@@ -273,11 +289,13 @@ async function launch(): Promise<void> {
 
         <p class="task-m-glabel">{{ t('task.runSettings') }}</p>
         <div class="picker-group">
+          <DevicePicker v-model="targetDeviceId" :disabled="submitting" />
           <ModelPicker v-model="modelChoice" :disabled="submitting" row />
           <ExecutionBackendPicker
             ref="backendPicker"
             v-model="executionBackend"
             :model-choice="modelChoice"
+            :device-id="targetDeviceId"
             :disabled="submitting"
             row
             @validation-change="(value) => (backendCompatible = value.allowed)"
@@ -293,7 +311,7 @@ async function launch(): Promise<void> {
             removable
             @remove="(id: string) => (attachments = attachments.filter((a) => a.fileId !== id))"
           />
-          <AttachmentPicker v-model="attachments" :disabled="submitting" show-label />
+          <AttachmentPicker v-model="attachments" :disabled="submitting || !!targetDeviceId" show-label />
         </div>
       </div>
 
@@ -348,6 +366,7 @@ async function launch(): Promise<void> {
           <textarea v-model="form.desc" class="form-textarea" :placeholder="t('task.form.descPlaceholder')" />
         </div>
 
+        <DevicePicker v-model="targetDeviceId" :disabled="submitting" />
         <div class="form-group">
           <label>{{ t('common.model') }}</label>
           <ModelPicker v-model="modelChoice" :disabled="submitting" />
@@ -358,6 +377,7 @@ async function launch(): Promise<void> {
           <ExecutionBackendPicker
             v-model="executionBackend"
             :model-choice="modelChoice"
+            :device-id="targetDeviceId"
             :disabled="submitting"
             @validation-change="(value) => (backendCompatible = value.allowed)"
           />
@@ -371,7 +391,7 @@ async function launch(): Promise<void> {
         <div class="form-group">
           <label>{{ t('common.attachment') }}</label>
           <div>
-            <AttachmentPicker v-model="attachments" :disabled="submitting" show-label />
+            <AttachmentPicker v-model="attachments" :disabled="submitting || !!targetDeviceId" show-label />
             <AttachmentChips
               :attachments="attachments"
               removable

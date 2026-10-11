@@ -16,6 +16,7 @@ WORKDIR /build
 # Baked into the bundle at build time: Vite inlines `import.meta.env.*`, so
 # these cannot be changed at container start and must be passed to the build.
 ARG VITE_SHELL_URL=http://localhost:26600
+ARG VITE_SHELL_ALLOWED_ORIGINS=
 ARG VITE_CORE_BACKEND_URL=
 ARG VITE_STORAGE_URL=http://localhost:26610
 # Embed host credential handoff (UNI PR-7): browser-reachable auth origin and
@@ -29,6 +30,7 @@ RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN VITE_SHELL_URL="${VITE_SHELL_URL}" \
+    VITE_SHELL_ALLOWED_ORIGINS="${VITE_SHELL_ALLOWED_ORIGINS}" \
     VITE_CORE_BACKEND_URL="${VITE_CORE_BACKEND_URL}" \
     VITE_STORAGE_URL="${VITE_STORAGE_URL}" \
     VITE_AUTH_BACKEND_URL="${VITE_AUTH_BACKEND_URL}" \

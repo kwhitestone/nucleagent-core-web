@@ -12,6 +12,8 @@ export interface TaskDraft {
   outputFormat: string;
   templateName: string;
   skillIds: number[];
+  targetDeviceId?: string;
+  executionBackend?: string;
 }
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : "");
@@ -38,6 +40,8 @@ export function readDraft(storage: Storage): TaskDraft | null {
     templateName: text(d.templateName, 200),
     skillIds: Array.isArray(d.skillIds) ? d.skillIds.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : [],
   };
+  if (typeof d.targetDeviceId === "string" && d.targetDeviceId) draft.targetDeviceId = text(d.targetDeviceId, 64);
+  if (typeof d.executionBackend === "string" && d.executionBackend) draft.executionBackend = text(d.executionBackend, 64);
   return draft.name || draft.desc ? draft : null;
 }
 
