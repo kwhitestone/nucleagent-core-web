@@ -133,6 +133,12 @@ test("views: deleted banner on the agent page and the conversation page; admin e
   assert.match(conv, /agents\.deletedHint/);
 });
 
+test("conflict locking retains the server field policy without implying permission loss", () => {
+  const drawer = src("addons/administration/agents/definition/DefinitionDrawer.vue");
+  assert.match(drawer, /:editable-paths="record\.capabilities\.write && !editor\.denied \? record\.fieldPolicy\.editablePaths : \[\]"/);
+  assert.match(drawer, /:busy="locked"/);
+});
+
 test("i18n: every new key exists in zh and en", () => {
   const admin = ["delete", "restore", "showDeleted", "deleted", "deleteTitle", "deleteImpact", "deleteKeeps", "deleteTypeSlug",
     "deleteConfirm", "deletedToast", "restoredToast", "impactUnavailable", "audits", "auditsTitle", "noAudits", "effectTiming",
