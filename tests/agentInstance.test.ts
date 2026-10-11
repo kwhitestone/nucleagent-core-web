@@ -17,7 +17,7 @@ const record = (method: string) => async (url: string, a?: any, b?: any) => {
 };
 
 before(async () => {
-  vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  vite = await createServer({ configFile: false, envFile: false, resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } }, appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({ getSessionVersion: () => 1, getAccessToken: () => "unit-test-session",
     http: { get: record("get"), post: record("post"), patch: record("patch"), request: async (cfg: any) => {

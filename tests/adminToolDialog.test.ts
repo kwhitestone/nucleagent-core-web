@@ -4,12 +4,17 @@ import { createSSRApp, defineComponent, h } from "vue";
 import { renderToString } from "vue/server-renderer";
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
+import vue from "@vitejs/plugin-vue";
 
 let vite: ViteDevServer;
 let component: any;
 
 before(async () => {
   vite = await createServer({
+    configFile: false,
+    envFile: false,
+    plugins: [vue()],
+    resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } },
     appType: "custom",
     optimizeDeps: { noDiscovery: true, entries: [] },
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },

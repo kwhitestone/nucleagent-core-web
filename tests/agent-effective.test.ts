@@ -14,6 +14,17 @@ const data = { definitionId: 4, definitionRevision: "9007199254740993", instance
   admitted: { ...materials, definitionRevision: "2", effectiveRevision: "opaque-admitted" } };
 const ok = (value: unknown = data) => ({ status: 200, headers: {}, body: { code: 0, data: value } });
 
+test("UID lookup preserves the returned definition and instance identifiers", async () => {
+  const paths: string[] = [];
+  const api = createEffectiveApi(async (path) => { paths.push(path); return ok(); });
+  const record = await api.uid(77);
+  assert.deepEqual(paths, ["/api/v1/addons/conversation/agent-uid/77/effective-definition"]);
+  assert.equal(record.definitionId, 4);
+  assert.equal(record.instanceId, 5);
+  for (const id of [0, -1, NaN, Number.MAX_SAFE_INTEGER + 1]) await assert.rejects(api.uid(id), /ID/);
+  assert.equal(paths.length, 1);
+});
+
 test("owner effective reads use explicit instance/conversation IDs, never admin detail", async () => {
   const calls: any[] = [];
   const api = createEffectiveApi(async (path, init) => { calls.push({ path, init }); return ok(); });

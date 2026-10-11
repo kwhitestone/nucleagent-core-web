@@ -22,7 +22,7 @@ const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url),
 const tOf = (locale: "zh" | "en") => createI18n({ legacy: false, locale, messages: { zh, en } }).global.t;
 
 before(async () => {
-  vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  vite = await createServer({ configFile: false, envFile: false, resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } }, appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   catalog = await vite.ssrLoadModule("/src/addons/model-catalog/api/catalog.ts");
   ({ ApiError: ViteApiError } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts"));
   ({ default: zh } = await vite.ssrLoadModule("/src/i18n/zh.ts"));
