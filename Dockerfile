@@ -13,36 +13,15 @@ ARG NGINX_IMAGE=nginx:1.27-alpine
 FROM ${NODE_IMAGE} AS web-build
 WORKDIR /build
 
-# Baked into the bundle at build time: Vite inlines `import.meta.env.*`, so
-# these cannot be changed at container start and must be passed to the build.
-ARG VITE_SHELL_URL=http://localhost:26600
-ARG VITE_CORE_BACKEND_URL=
-ARG VITE_STORAGE_URL=http://localhost:26610
-# Embed host credential handoff (UNI PR-7): browser-reachable auth origin and
-# the exact host origins allowed to handshake. Empty host list = handshake off.
-ARG VITE_AUTH_BACKEND_URL=
-ARG VITE_EMBED_HOST_ORIGINS=
-
 # Dependency layer first so source edits do not invalidate the npm install.
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
-RUN VITE_SHELL_URL="${VITE_SHELL_URL}" \
-    VITE_CORE_BACKEND_URL="${VITE_CORE_BACKEND_URL}" \
-    VITE_STORAGE_URL="${VITE_STORAGE_URL}" \
-    VITE_AUTH_BACKEND_URL="${VITE_AUTH_BACKEND_URL}" \
-    VITE_EMBED_HOST_ORIGINS="${VITE_EMBED_HOST_ORIGINS}" \
-    npm run build
+RUN npm run build
 
 FROM ${NGINX_IMAGE} AS final
-ARG VITE_SHELL_URL=http://localhost:26600
-
-# Backend and CSP settings are resolved at container start.
-# Changing the shell origin also requires rebuilding the baked Vite origin.
-ARG CORE_UPSTREAM=http://localhost:26680
-ENV CORE_UPSTREAM=${CORE_UPSTREAM} \
-    SHELL_ORIGIN=${VITE_SHELL_URL}
+# Browser endpoints, backend and CSP are required at container start.
 
 # Only our validated runtime hook renders this template.
 COPY nginx.conf.template /etc/nginx/runtime.conf.template

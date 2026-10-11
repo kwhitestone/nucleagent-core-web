@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 
-import { AxiosError, isCancel } from "axios";
+import axios, { AxiosError, isCancel } from "axios";
 import { createServer, type ViteDevServer } from "vite";
+import { runtimeFixture } from "./fixtures/runtimeConfig.ts";
 
 const ACCESS_TOKEN_KEY = "nucleagent_access_token";
 
@@ -41,6 +42,8 @@ let http: HttpClient;
 let handleEmbeddedUnauthorized: (reason: "missing" | "rejected") => void;
 let applyShellSession: (token: string | null, version: number) => unknown;
 let setAuthRequiredNotifier: (notifier: ((payload: unknown) => boolean) | undefined) => void;
+let apiBase: () => string;
+let authHeaders: () => Record<string, string>;
 
 before(async () => {
   Object.defineProperty(globalThis, "localStorage", {
@@ -51,10 +54,73 @@ before(async () => {
     appType: "custom",
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   });
-  ({ default: http } = await vite.ssrLoadModule("/src/addons/platform-api/api/http.ts"));
+  const runtime = await vite.ssrLoadModule("/src/runtimeConfig.ts");
+  const fixture = runtimeFixture("sdp.ndaeweb.com");
+  await runtime.loadRuntimeConfig("https://nucleagent-core-web.new.ndhy.com",
+    async () => new Response(JSON.stringify(fixture)));
+  ({ default: http, apiBase, authHeaders } = await vite.ssrLoadModule("/src/addons/platform-api/api/http.ts"));
   ({ handleEmbeddedUnauthorized, applyShellSession, setAuthRequiredNotifier } = await vite.ssrLoadModule(
     "/src/addons/platform-api/session/embeddedSession.ts",
   ));
+});
+
+test("outer Core API keeps the current user's identity on the existing transport", async () => {
+  localStorage.setItem(ACCESS_TOKEN_KEY, "synthetic-current-user");
+  http.defaults.adapter = async (config: any) => {
+    assert.equal(config.baseURL, "https://nucleagent-core-web.new.ndhy.com");
+    assert.equal(config.headers.get("Authorization"), "synthetic-current-user");
+    assert.equal(config.headers.get("X-API-Key"), undefined);
+    return { config, data: { userId: "fixture-user" }, headers: {}, status: 200, statusText: "OK" };
+  };
+  assert.deepEqual((await http.get("/api/v1/addons/auth/user-info")).data, { userId: "fixture-user" });
+  assert.equal(apiBase(), "https://nucleagent-core-web.new.ndhy.com");
+  assert.equal(authHeaders().Authorization, "synthetic-current-user");
+});
+
+test("outer Storage uses the current identity without leaking it to presigned byte uploads", async () => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const unregister = registerPlatformRuntime({ getAccessToken: () => localStorage.getItem(ACCESS_TOKEN_KEY) });
+  const previousAdapter = axios.defaults.adapter;
+  const requests: string[] = [];
+  const byteHeaders: Record<string, string> = {};
+  localStorage.setItem(ACCESS_TOKEN_KEY, "synthetic-storage-user");
+  axios.defaults.adapter = async config => {
+    assert.equal(config.baseURL, "https://nucleagent-storage.new.ndhy.com");
+    assert.equal(config.headers.get("Authorization"), "synthetic-storage-user");
+    assert.equal(config.headers.get("X-Namespace"), "core");
+    assert.equal(config.headers.get("X-API-Key"), undefined);
+    requests.push(config.url!);
+    const data = config.url!.endsWith("/download") ? { url: "https://files.example.test/file" } :
+      config.url!.endsWith("/presign") ? {
+        fileId: "fixture-file", method: "PUT", uploadUrl: "https://files.example.test/upload",
+        headers: { "Content-Type": "text/plain" }, expiresAt: 1,
+      } : { fileId: "fixture-file", status: "active" };
+    return { config, data: { data }, headers: {}, status: 200, statusText: "OK" };
+  };
+  class UploadRequest {
+    status = 200;
+    responseText = "{}";
+    onload = () => {};
+    open(method: string, url: string) {
+      assert.equal(method, "PUT");
+      assert.equal(url, "https://files.example.test/upload");
+    }
+    setRequestHeader(key: string, value: string) { byteHeaders[key] = value; }
+    send() { this.onload(); }
+  }
+  Object.defineProperty(globalThis, "XMLHttpRequest", { configurable: true, value: UploadRequest });
+  try {
+    const storage = await vite.ssrLoadModule("/src/addons/conversation/api/storage.ts");
+    assert.equal(await storage.getDownloadUrl("fixture-file"), "https://files.example.test/file");
+    await storage.uploadFile(new File(["fixture"], "file.txt", { type: "text/plain" }));
+    assert.equal(requests.length, 3);
+    assert.deepEqual(byteHeaders, { "Content-Type": "text/plain" });
+    assert.doesNotMatch(JSON.stringify(byteHeaders), /synthetic-storage-user|Authorization/);
+  } finally {
+    axios.defaults.adapter = previousAdapter;
+    unregister();
+    Reflect.deleteProperty(globalThis, "XMLHttpRequest");
+  }
 });
 
 beforeEach(() => {

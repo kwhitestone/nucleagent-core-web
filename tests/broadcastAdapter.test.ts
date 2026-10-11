@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, beforeEach, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import type { BroadcastFollowUpResult, Message } from "../src/addons/conversation/api/types.ts";
@@ -51,6 +52,7 @@ before(async () => {
     appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] },
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   });
+  await initializeRuntimeFixture(vite);
   const platform = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   ApiError = platform.ApiError;
   unregister = platform.registerPlatformRuntime({

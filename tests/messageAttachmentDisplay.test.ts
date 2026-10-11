@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, test } from "node:test";
 
 import { renderToString } from "@vue/server-renderer";
@@ -30,6 +31,7 @@ before(async () => {
     appType: "custom",
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   });
+  await initializeRuntimeFixture(vite);
   ({ default: MessageItem } = await vite.ssrLoadModule(
     "/src/addons/conversation/components/conversation/MessageItem.vue",
   ));
