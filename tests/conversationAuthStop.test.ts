@@ -119,14 +119,14 @@ test("an SSE authentication failure is terminal until a new session initializes"
   controller.dispose();
 });
 
-test("completed history with attachments reconnects after EOF to keep deletion revalidation active", async () => {
+for (const visible of [true, false]) test(`completed history reconnects after EOF with visible attachments=${visible}`, async () => {
   const connection = deferred<string>();
   const snapshot = cancellationSnapshot(true);
   const adapter = {
     async loadSnapshot() {
-      return { ...snapshot, items: snapshot.items.map(item => ({ ...item, attachments: [
+      return { ...snapshot, items: snapshot.items.map(item => ({ ...item, attachments: visible ? [
         { id: "live", name: "report.pdf", metadata: { verification: "verified" } },
-      ] })) };
+      ] : [] })) };
     },
     async *subscribe() {},
   };
