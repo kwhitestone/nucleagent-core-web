@@ -63,6 +63,5 @@ const w = globalThis as Record<string, unknown>;
 if (w.__MICRO_APP_ENVIRONMENT__) {
   w.mount = mount;
   w.unmount = unmount;
-} else {
-  void mount();
 }
+export const startup = w.__MICRO_APP_ENVIRONMENT__ ? Promise.resolve() : mount();

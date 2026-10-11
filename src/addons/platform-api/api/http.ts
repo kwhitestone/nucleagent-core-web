@@ -6,14 +6,13 @@ import { shouldHandleUnauthorized } from "./authFailurePolicy";
 import { handleEmbeddedUnauthorized, isInShell, sessionRequestSignal } from "@/addons/platform-api/session/embeddedSession";
 import type { ApiErrorBody } from "./types";
 import { coreShellPath, redirectToShellLogin } from "../shellLogin";
-import { outerAware } from "@/outerHost";
+import { configValue } from "@/runtimeConfig";
 
 /**
  * Shared axios instance for the core backend (:26680).
  *
- * - baseURL comes from VITE_CORE_BACKEND_URL when set (e.g. cross-origin in a
- *   iframe shell), otherwise it is empty and requests use relative
- *   `/api/...` URLs that the Vite dev server proxies to :26680.
+ * - baseURL is validated runtime configuration. Set it to this site's origin
+ *   to keep `/api/...` requests on the existing nginx proxy.
  * - Leave endpoint-specific response envelopes intact for the API adapters.
  *   HTTP-level errors are normalized into `ApiError`; cancellation remains
  *   an Axios cancellation rather than a user-facing network failure.
@@ -21,7 +20,7 @@ import { outerAware } from "@/outerHost";
  *   credential. Stale/pre-auth responses cannot erase a newly synchronized
  *   iframe token.
  */
-const baseURL = outerAware(import.meta.env.VITE_CORE_BACKEND_URL?.trim() || "");
+const baseURL = configValue("VITE_CORE_BACKEND_URL");
 
 const http = axios.create({
   baseURL,
@@ -62,7 +61,7 @@ function redirectToAuth(reason: "missing" | "rejected"): void {
   }
   clearAccessToken();
   // Standalone: interstitial, then the shell's /login (this site has no login route).
-  const shellUrl = outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600");
+  const shellUrl = configValue("VITE_SHELL_URL");
   const shellPath = coreShellPath(window.location.pathname + window.location.search);
   // Lazy: i18n touches `document` at load, and this module is also loaded by SSR tests.
   void import("@/i18n").then(({ default: i18n }) => redirectToShellLogin(shellUrl, shellPath, {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, test } from "node:test";
 
 import { createServer, type ViteDevServer } from "vite";
@@ -33,6 +34,7 @@ before(async () => {
     appType: "custom",
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null },
   });
+  await initializeRuntimeFixture(vite);
   ({ useConversation } = await vite.ssrLoadModule(
     "/src/addons/conversation/task-conversation/vue/useConversation.ts",
   ));

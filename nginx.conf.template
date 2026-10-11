@@ -26,6 +26,11 @@ server {
         return 200 "ok\n";
     }
 
+    location = /runtime-config.json {
+        alias /etc/nucleagent/runtime-config.json;
+        default_type application/json;
+    }
+
     # The app calls the core backend with relative `/api/...` URLs, so this
     # proxy — not a cross-origin fetch — is what reaches the backend. Keeping
     # it same-origin means no CORS preflight and no backend allowlist to keep

@@ -24,12 +24,10 @@ import {
   SESSION_CHANGE_EVENT,
   getPlatformRuntime,
 } from "@/contracts/platform-runtime";
-import { outerAware } from "@/outerHost";
+import { configValue } from "@/runtimeConfig";
 import { listMyAgents, type MyAgent } from "../api/agent";
 
-const SHELL_ORIGIN = new URL(
-  outerAware(import.meta.env.VITE_SHELL_URL ?? "http://localhost:26600"),
-).origin;
+const SHELL_ORIGIN = configValue("VITE_SHELL_URL");
 
 /** core 是否被主壳以 iframe 嵌入。 */
 export function isInShell(): boolean {
@@ -80,7 +78,7 @@ export function installShellBridge(router: Router): () => void {
   const channel = createRemoteChildChannel({
     appId: "core",
     hostOrigin: SHELL_ORIGIN,
-    allowedHostOrigins: import.meta.env?.VITE_SHELL_ALLOWED_ORIGINS,
+    allowedHostOrigins: configValue("VITE_SHELL_ALLOWED_ORIGINS"),
     parent: window.parent,
     messages: {
       toChild: ["auth", "view", "locale", "load-more"],
