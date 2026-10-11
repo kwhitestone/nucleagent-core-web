@@ -5,6 +5,18 @@ import { createConversationNavigationCache } from "../src/addons/conversation/co
 const snapshot = (text = "hello") => ({ items: [{ id: "msg-1", turnId: "main", streamId: "msg-1", lane: "answer" as const, role: "user" as const, kind: "text", content: text, status: "complete" as const, revision: 1, seq: 1, timestamp: "2026-09-08T00:00:00Z" }], status: "running" as const, hasOlder: false });
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(accept => { resolve = accept; }); return { promise, resolve }; };
 
+test("cached attachment authority expires on every restoration without losing content", () => {
+  const cache = createConversationNavigationCache(() => ({ token: "a", version: 1 }));
+  const source: any = snapshot("body file-id stays");
+  source.items[0].attachments = [{ id: "file-id", name: "report.pdf", metadata: { kind: "pdf", verification: "verified" } }];
+  const entry = cache.forConversation("1");
+  entry.write(source);
+  const restored = entry.read()!;
+  assert.equal(restored.items[0]!.attachments![0]!.metadata!.verification, "unavailable");
+  assert.equal(restored.items[0]!.content, source.items[0].content);
+  assert.equal(source.items[0].attachments[0].metadata.verification, "verified");
+});
+
 test("concurrent detail consumers share only the in-flight request", async () => {
   const cache = createConversationNavigationCache(() => ({ token: "a", version: 1 }));
   const request = deferred<any>(); let calls = 0;

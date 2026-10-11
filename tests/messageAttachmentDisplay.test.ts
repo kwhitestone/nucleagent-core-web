@@ -282,3 +282,34 @@ test("removable composer images keep preview, download, and remove controls", as
   assert.match(html, /待发送截图\.jpg/);
   assert.match(html, /待发送文档\.pdf/);
 });
+
+test("unknown history attachments have no preview or download and expose retry", async () => {
+  const attachments = [
+    { fileId: "unknown-image", name: "image.png", kind: "image", verification: "unavailable" },
+    { fileId: "unknown-file", name: "file.pdf", verification: "unavailable" },
+  ];
+  const app = createSSRApp({ render: () => h(AttachmentChips, { attachments }) });
+  installI18n(app);
+  const html = await renderToString(app);
+  assert.doesNotMatch(html, /image-attachment-thumb|aria-haspopup="dialog"|class="att-name"/);
+  assert.equal((html.match(/data-attachment-verification="unavailable"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="att-retry"/g) ?? []).length, 2);
+  assert.match(html, /image\.png/);
+  assert.match(html, /file\.pdf/);
+});
+
+test("attachment verification survives both presentation mappings", async () => {
+  http.defaults.adapter = async (config: any) => ({
+    config, data: { code: 0, data: [{
+      id: 90, conversationId: 90, senderType: "agent", senderName: "agent", msgType: "result",
+      content: "unchanged", createdAt: "2026-10-11T00:00:00Z",
+      metadata: { attachments: [{ fileId: "unknown", name: "file.pdf", verification: "unavailable" }] },
+    }] }, headers: {}, status: 200, statusText: "OK",
+  });
+  const snapshot = await createConversationAdapter(() => "90").loadSnapshot({
+    conversationKey: "90", signal: new AbortController().signal,
+  });
+  assert.equal(snapshot.items[0].attachments[0].metadata.verification, "unavailable");
+  assert.equal(toMessageAttachment(snapshot.items[0].attachments[0]).verification, "unavailable");
+  assert.equal(snapshot.items[0].content, "unchanged");
+});

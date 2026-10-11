@@ -132,6 +132,35 @@ const messageEnvelope = (config: any, rows: any[]) => ({
   },
 });
 
+test("history attachment revalidation updates only attachments without terminal events", async () => {
+  const row = message({ id: 8101, metadata: { attachments: [
+    { fileId: "deleted", name: "report.pdf", verification: "verified" },
+  ] } });
+  http.defaults.adapter = async (config: any) => ({
+    config, data: messageEnvelope(config, [row]), headers: {}, status: 200, statusText: "OK",
+  });
+  globalThis.fetch = (async () => new Response(
+    `id: 8101\nevent: message-attachments\ndata: ${JSON.stringify({ ...row, content: "must not replace body", metadata: { attachments: [] } })}\n\n`,
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  )) as typeof fetch;
+  const adapter = createConversationAdapter(() => "810");
+  const snapshot = await adapter.loadSnapshot({ conversationKey: "810", signal: new AbortController().signal });
+  const events = [];
+  for await (const event of adapter.subscribe({ conversationKey: "810", cursor: snapshot.cursor, signal: new AbortController().signal })) events.push(event);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "item.attachments");
+  let state = reduceConversation(createConversationState("810"), { type: "event.received", event: {
+    protocolVersion: 2, type: "snapshot", conversationKey: "810", eventId: "snapshot-history",
+    cursor: snapshot.cursor, turnId: "main", streamId: "msg-8101", lane: "answer",
+    revision: 1, seq: 1, timestamp: row.createdAt, snapshot,
+  } });
+  state = reduceConversation(state, { type: "event.received", event: events[0] });
+  assert.deepEqual(state.items["msg-8101"].attachments, []);
+  assert.equal(state.items["msg-8101"].content, row.content);
+  assert.equal(state.status, snapshot.status);
+  assert.equal(state.connection.needsSnapshot, false);
+});
+
 test("an accepted run without native messages remains running, and cancellation restores its endpoint", async () => {
   const rows = [message({ senderType: "user", senderName: "user", msgType: "text" })];
   for (const status of ["executing", "cancelled"]) {
