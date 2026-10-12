@@ -11,14 +11,22 @@ import type { Detail } from "../src/addons/administration/agents/definition/api.
 // object. That must not erase the user's conflict choice or disable Apply.
 let vite: ViteDevServer;
 let comparison: Component;
+let drawer: Component;
 before(async () => {
   vite = await createServer({ configFile: false, envFile: false, plugins: [vue()], appType: "custom",
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { default: loaded } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/ConflictComparison.vue");
   // Real setup, computed values and watchers; only rendering is replaced (no DOM needed).
   comparison = { ...loaded, render: () => null };
+  const { default: loadedDrawer } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/DefinitionDrawer.vue");
+  drawer = { ...loadedDrawer, render: () => null };
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null } });
 });
-after(async () => { await vite.close(); });
+after(async () => {
+  await vite.close();
+  Reflect.deleteProperty(globalThis, "window"); Reflect.deleteProperty(globalThis, "document");
+});
 
 const renderer = createRenderer<object, object>({
   patchProp() {}, insert() {}, remove() {}, setText() {}, setElementText() {},
@@ -80,11 +88,6 @@ test("real content change still clears the choice; older revision is still ignor
   const { app, state } = mount(editor);
   try {
     state().choices["/name"] = "current";
-    editor.acceptRefresh(record("1", "stale"));
-    await nextTick();
-    assert.equal(editor.current?.definition.revision, "2", "older revision still dropped");
-    assert.equal(state().choices["/name"], "current");
-
     editor.acceptRefresh(record("3", "theirs"));
     await nextTick();
     assert.equal(editor.current?.definition.revision, "3");
@@ -92,6 +95,11 @@ test("real content change still clears the choice; older revision is still ignor
     assert.equal(state().resolved, false);
 
     state().choices["/name"] = "mine";
+    editor.acceptRefresh(record("2", "stale"));
+    await nextTick();
+    assert.equal(editor.current?.definition.revision, "3", "older revision still dropped");
+    assert.equal(state().choices["/name"], "mine");
+
     editor.acceptRefresh(record("3", "theirs-again"));
     await nextTick();
     assert.equal(state().choices["/name"], undefined, "changed conflicting value must clear choices");
@@ -110,4 +118,33 @@ test("same-revision refresh keeps the skill-binding conflict resolvable", () => 
   assert.equal(editor.bindingConflict, true, "binding conflict panel stays rendered");
   editor.resolve({ "/name": "mine" }, "mine");
   assert.deepEqual(editor.bindings, [{ skillId: 1, installPath: "" }]);
+});
+
+// Drives DefinitionDrawer's real `watch(() => props.detail, acceptRefresh)` path, as the
+// 2s poll / focus refresh in AgentManagement does, and checks the skill-binding choice.
+test("drawer: same-revision detail refresh keeps the skill-binding choice", async () => {
+  const theirs = [{ skillId: 2, installPath: "" }];
+  const props = reactive({ detail: record("1", "original"),
+    api: { models: async () => [], backends: async () => [] } as unknown });
+  let instance: ComponentInternalInstance | null = null;
+  const app = renderer.createApp({ render: () => h(drawer, { ...props,
+    onVnodeMounted: (vnode: { component: ComponentInternalInstance | null }) => { instance = vnode.component; } }) });
+  app.use(createI18n({ legacy: false, locale: "en", messages: { en: {} } }));
+  app.provide(ssrContextKey, {});
+  app.mount({});
+  try {
+    const state = instance!.setupState as { editor: DefinitionEditor; bindingChoice: string | undefined };
+    state.editor.change("/name", "mine");
+    state.editor.bindings = [{ skillId: 1, installPath: "" }];
+    props.detail = record("2", "theirs", theirs);
+    await nextTick();
+    assert.equal(state.editor.error, "conflict");
+    assert.equal(state.editor.bindingConflict, true);
+    state.bindingChoice = "mine";
+    props.detail = record("2", "theirs", [...theirs]);
+    await nextTick();
+    assert.equal(state.bindingChoice, "mine", "same revision re-read must keep the binding choice");
+    assert.equal(state.editor.bindingConflict, true);
+    assert.equal(state.editor.current?.definition.revision, "2");
+  } finally { app.unmount(); }
 });
