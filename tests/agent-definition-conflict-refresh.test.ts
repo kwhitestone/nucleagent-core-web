@@ -148,3 +148,34 @@ test("drawer: same-revision detail refresh keeps the skill-binding choice", asyn
     assert.equal(state.editor.current?.definition.revision, "2");
   } finally { app.unmount(); }
 });
+
+// Review (M07): when the conflict changes, ALL choices must be cleared, including those of
+// rows that are no longer conflicting. A stale "current" would make rebaseChanges silently
+// drop the user's edit on that row.
+test("conflict change clears choices of rows that stopped conflicting (no silent edit loss)", async () => {
+  const at = (revision: string, name: string, slug: string) => {
+    const detail = record(revision, name);
+    detail.definition.slug = slug;
+    detail.fieldPolicy.editablePaths = ["/name", "/slug"];
+    return detail;
+  };
+  const editor = reactive(new DefinitionEditor()) as DefinitionEditor;
+  editor.open(at("1", "original", "one"));
+  editor.change("/name", "mine"); editor.change("/slug", "slug-mine");
+  editor.acceptRefresh(at("2", "theirs", "slug-theirs"));
+  const { app, state } = mount(editor);
+  try {
+    state().choices["/name"] = "mine"; state().choices["/slug"] = "current";
+    await nextTick();
+    editor.acceptRefresh(at("3", "theirs", "one")); // /slug reverted upstream: no longer conflicting
+    await nextTick();
+    assert.equal(state().choices["/slug"], undefined, "stale choice on a no-longer-conflicting row must be cleared");
+    assert.equal(state().resolved, false);
+    state().choices["/name"] = "mine";
+    await nextTick();
+    assert.equal(state().resolved, true);
+    editor.resolve({ ...state().choices } as Record<string, "mine" | "current">);
+    assert.equal(editor.changes["/slug"], "slug-mine", "user's /slug edit must survive");
+    assert.equal(editor.changes["/name"], "mine");
+  } finally { app.unmount(); }
+});
