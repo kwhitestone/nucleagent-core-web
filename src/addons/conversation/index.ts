@@ -3,6 +3,7 @@ import type { PluginModule } from "@prism-fusion/plugin-runtime";
 import router from "@/router";
 import { authenticatedRoute } from "@/contracts/platform-runtime";
 import { installShellBridge } from "./composables/useShellBridge";
+import { bindDeleteRouter } from "./composables/useConversationDelete";
 
 let removeShellBridge: (() => void) | undefined;
 
@@ -15,7 +16,7 @@ const conversation: PluginModule = {
     id: "conversation",
     version: "0.1.0",
     requires: [{ id: "platform-api" }, { id: "model-catalog" }],
-    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b", "/agents", "/generate"],
+    routeScopes: ["/chat", "/creation", "/tasks", "/c", "/b", "/agents", "/generate", "/deleted"],
   },
   routes: [
     {
@@ -60,6 +61,12 @@ const conversation: PluginModule = {
       props: (route) => ({ kind: route.params.kind as string }),
     },
     {
+      path: "/deleted",
+      name: "recently-deleted",
+      component: authenticatedRoute(() => import("./views/RecentlyDeleted.vue")),
+      meta: { requiresAuth: true },
+    },
+    {
       path: "/c/:id",
       name: "conversation",
       component: authenticatedRoute(() => import("./views/Conversation.vue")),
@@ -68,6 +75,7 @@ const conversation: PluginModule = {
     },
   ],
   setup() {
+    bindDeleteRouter(router);
     removeShellBridge = installShellBridge(router);
   },
   destroy() {

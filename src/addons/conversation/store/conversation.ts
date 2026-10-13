@@ -156,6 +156,15 @@ export const useConversationStore = defineStore("conversation", () => {
     removed.forEach(row => conversationNavigation.forConversation(String(row.id)).forget());
   }
 
+  /** UI-IMPL-5: drop a deleted conversation and its compare group (Core soft-deletes the group). */
+  function remove(id: number): void {
+    const group = conversations.value.find((c) => c.id === id)?.state?.broadcastGroupId;
+    const gone = conversations.value.filter((c) => c.id === id || (!!group && c.state?.broadcastGroupId === group));
+    if (!gone.length) return;
+    conversations.value = conversations.value.filter((c) => !gone.includes(c));
+    gone.forEach((c) => conversationNavigation.forConversation(String(c.id)).forget());
+  }
+
   function reset(): void {
     conversationNavigation.clear();
     generation += 1;
@@ -187,6 +196,7 @@ export const useConversationStore = defineStore("conversation", () => {
     setBroadcastNotices,
     upsert,
     reconcileBroadcastMembers,
+    remove,
     reset,
   };
 });
