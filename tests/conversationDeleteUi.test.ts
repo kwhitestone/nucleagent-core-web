@@ -90,3 +90,20 @@ test("zh/en carry the new copy", async () => {
     for (const k of ["groupNote", "notFound", "daysLeft", "back", "loadFailed"]) assert.ok(d[k], `${lang}.${k}`);
   }
 });
+
+// 第6棒 gaps: ⑨ direct link to a deleted / someone else's conversation, ② compare-group page delete, ⑦ mobile undo bar.
+test("opening a deleted or foreign conversation (404) says so and lands on a fresh chat", () => {
+  const view = src("addons/conversation/views/Conversation.vue");
+  assert.match(view, /error\.status === 404\) \{\s*toast\.error\(t\("conversation\.delete\.notFound"\)\);\s*void router\.replace\("\/chat"\);/);
+});
+
+test("compare-group page header offers delete for the whole group", () => {
+  const view = src("addons/conversation/views/BroadcastConversation.vue");
+  assert.match(view, /data-testid="broadcast-delete"/);
+  assert.match(view, /requestDelete\(activeId\)/);
+});
+
+test("on phones the undo bar sits at the top, clear of the composer", () => {
+  const host = src("addons/conversation/components/ConversationDeleteHost.vue");
+  assert.match(host, /\.cdel-undo \{ top: calc\(12px \+ env\(safe-area-inset-top\)\); bottom: auto;/);
+});

@@ -16,6 +16,7 @@ import MessageItem from "../components/conversation/MessageItem.vue";
 import AttachmentChips from "../components/AttachmentChips.vue";
 import { toMessageAttachment } from "../components/attachmentPresentation";
 import { toast } from "@/composables/useToast";
+import { requestDelete } from "../composables/useConversationDelete";
 import "../task-conversation/styles.css";
 import "./conversation.css";
 
@@ -174,6 +175,9 @@ async function stopAll(): Promise<void> {
           <strong>{{ t('broadcast.title') }}</strong>
           <p>{{ t('broadcast.followUpHint') }}</p>
         </div>
+        <button v-if="activeId !== null" class="broadcast-stop broadcast-delete" type="button" data-testid="broadcast-delete" @click="requestDelete(activeId)">
+          {{ t('conversation.delete.menu') }}
+        </button>
         <button v-if="busyCount" class="broadcast-stop" type="button" :disabled="cancelling" @click="stopAll">
           <span class="broadcast-stop-long">{{ t('broadcast.stopAll', { count: busyCount }) }}</span>
           <span class="broadcast-stop-short">{{ t('broadcast.stopAllShort') }}</span>
@@ -231,6 +235,7 @@ async function stopAll(): Promise<void> {
 .broadcast-header p { margin: 4px 0 0; color: var(--text-tertiary); font-size: 12px; }
 .broadcast-stop { padding: 6px 10px; white-space: nowrap; border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--rose-500); background: var(--bg-card); cursor: pointer; }
 .broadcast-stop:disabled { opacity: .5; cursor: wait; }
+.broadcast-delete { margin-left: auto; }
 .broadcast-tabs { display: flex; overflow-x: auto; gap: 6px; padding: 8px 16px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .broadcast-tabs button { display: flex; align-items: center; gap: 6px; padding: 7px 10px; white-space: nowrap; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
 .broadcast-tabs button[aria-selected="true"] { border-color: var(--indigo-500); color: var(--indigo-600); background: var(--bg-hover); }

@@ -238,6 +238,12 @@ watch(
       }
     } catch (error) {
       if (!active) return;
+      // UI-IMPL-5 ⑨: deleted or someone else's conversation — Core answers 404 for both.
+      if (error instanceof ApiError && error.status === 404) {
+        toast.error(t("conversation.delete.notFound"));
+        void router.replace("/chat");
+        return;
+      }
       toast.error(error instanceof ApiError ? error.message : t("common.modelRestoreFailed"));
     } finally {
       if (active) {

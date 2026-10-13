@@ -57,6 +57,7 @@ onBeforeUnmount(() => clearTimeout(timer));
   .cdel-scrim { place-items: end center; }
   .cdel-dialog { width: 100vw; border-radius: var(--r-md) var(--r-md) 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
   .cdel-actions button { flex: 1; padding: 10px; }
-  .cdel-undo { bottom: calc(16px + env(safe-area-inset-bottom)); width: calc(100vw - 32px); justify-content: space-between; }
+  /* E2E⑨: keep clear of the composer at the bottom. */
+  .cdel-undo { top: calc(12px + env(safe-area-inset-top)); bottom: auto; width: calc(100vw - 32px); justify-content: space-between; }
 }
 </style>
