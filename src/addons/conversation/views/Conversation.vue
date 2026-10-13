@@ -44,7 +44,7 @@ import type { ConversationStatus } from "@/addons/conversation/api/types";
 import { errorText, isPending, type GenerationTask, type MediaModel } from "@/addons/conversation/composables/generation";
 import { cancelGeneration, createGeneration, getGeneration, listGenerations } from "@/addons/conversation/api/media";
 import { followUp, getMessages } from "@/addons/conversation/api/conversation";
-import { DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, unsignedDone, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import { ASPECTS, DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, unsignedDone, type Aspect } from "@/addons/conversation/composables/chatGeneration";
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 import { requestDelete } from "@/addons/conversation/composables/useConversationDelete";
@@ -86,6 +86,7 @@ const genCount = ref(DEFAULT_PARAMS.count);
 const genModel = ref<MediaModel | null>(null);
 const genTasks = ref(new Map<number, GenerationTask>());
 const genGroups = ref(new Map<number, number[]>());
+const genSubmitted = ref(new Map<number, boolean>());
 /** Media messages do not stream over SSE: a finished task remounts the list. */
 const remount = ref(0);
 const conversationView = ref<{ setDraft(text: string): void } | null>(null);
@@ -138,14 +139,22 @@ async function generate(prompt: string, aspect: string, count: number): Promise<
 const genHost: ChatGenHost = {
   get tasks() { return genTasks.value; },
   get groups() { return genGroups.value; },
+  get submitted() { return genSubmitted.value; },
   cancel(ids) {
     void Promise.all(ids.map((id) => cancelGeneration(id))).then((res) => {
+      genSubmitted.value = new Map([...genSubmitted.value, ...res.map((r) => [r.id, r.submitted] as const)]);
       toast.info(`${t("chatGen.cancelledTitle")}：${t(cancelNoteKey(res.some((r) => r.submitted)))}`);
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => void refreshGen(props.id));
   },
   regenerate(prompt, aspect, count) {
     void generate(prompt, aspect, count).catch((error: Error) => toast.error(error.message));
+  },
+  prefill(prompt, aspect, count) {
+    genOn.value = true;
+    if ((ASPECTS as readonly string[]).includes(aspect)) genAspect.value = aspect as Aspect;
+    genCount.value = count;
+    conversationView.value?.setDraft(prompt);
   },
   refine(_item, prompt) {
     // ponytail: front-end-only reference — prefill the prompt; image-to-image is not in this phase.

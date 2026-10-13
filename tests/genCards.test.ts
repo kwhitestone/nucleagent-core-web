@@ -194,7 +194,7 @@ describe("GenErrorCard", () => {
       ["content_rejected", [/内容没有通过安全审核/, /提示词或结果未通过内容安全审核，请修改后重试。/, /修改提示词/]],
       ["insufficient_balance", [/贝壳不够了/, /账户额度不足，请联系管理员。/, /扣费：不扣/, /查看用量/]],
       ["media_busy", [/你已有 3 个生成任务在进行（图片最多 4 个、视频最多 2 个），等其中一个完成后再试。/, /查看进行中/]],
-      ["cancelled", [/已取消/, /你取消了这次生成。/, /不会扣费/, /重新生成/]],
+      ["cancelled", [/已取消/, /未产出结果/, /重新生成/]],
     ];
     for (const [code, patterns] of cases) {
       const html = await render(Err, { code, n: 3 });
@@ -210,7 +210,13 @@ describe("GenErrorCard", () => {
   });
 
   test("cancelled after submission says it is charged", async () => {
-    assert.match(await render(Err, { code: "cancelled", submitted: true }), /已提交：按实际扣费，以用量明细为准/);
+    assert.match(await render(Err, { code: "cancelled", submitted: true }), /已提交的部分按实际扣费，以用量明细为准/);
+  });
+
+  test("cancelled with unknown submission (reopened) claims nothing about charge", async () => {
+    const html = await render(Err, { code: "cancelled" });
+    assert.doesNotMatch(html, /扣费|不会扣/);
+    assert.match(await render(Err, { code: "cancelled", submitted: false }), /不会扣费/);
   });
 
   test("backend message overrides the default body", async () => {
@@ -224,5 +230,62 @@ describe("GenErrorCard", () => {
     assert.deepEqual(state.buttons.value.map((b: any) => b.kind), ["retry", "switchModel"]);
     for (const b of state.buttons.value) state.press(b.kind);
     assert.deepEqual(emitted, [["retry"], ["action", "switchModel"]]);
+  });
+});
+
+describe("GenMessage cancelled batch", () => {
+  let Msg: any;
+  before(async () => { Msg = await load("GenMessage"); });
+  const item = { id: "u1", role: "user", lane: "chat", content: "一只猫", data: { media: { kind: "image", aspect: "3:4", count: 2, taskIds: [5, 6] } } };
+  const task = (id: number, status: string) => ({ id, kind: "image", model: "m", prompt: "一只猫", status, conversationId: 184, createdAt: "2026-10-14T00:00:00Z" });
+  function host(statuses: string[], submitted = new Map<number, boolean>()) {
+    const calls: unknown[][] = [];
+    const h = {
+      tasks: new Map(statuses.map((s, i) => [5 + i, task(5 + i, s)])),
+      groups: new Map(), submitted,
+      cancel: () => {}, regenerate: (...a: unknown[]) => calls.push(["regenerate", ...a]),
+      refine: () => {}, prefill: (...a: unknown[]) => calls.push(["prefill", ...a]),
+    };
+    return { h, calls };
+  }
+  const html = async (hst: unknown) => {
+    const app = createSSRApp({ render: () => h(Msg, { item }) });
+    app.provide("chatGen", hst);
+    app.use(i18n());
+    return renderToString(app);
+  };
+
+  test("after cancel (this session) the user message keeps a 已取消 card with the charge note", async () => {
+    const out = await html(host(["cancelled", "cancelled"], new Map([[5, true], [6, true]])).h);
+    assert.match(out, /已取消/);
+    assert.match(out, /未产出结果/);
+    assert.match(out, /已提交的部分按实际扣费，以用量明细为准/);
+    assert.match(out, /重新生成/);
+    assert.doesNotMatch(out, /gen-pending/);
+  });
+
+  test("reopened conversation (task status only) still shows the 已取消 card", async () => {
+    const out = await html(host(["cancelled", "cancelled"]).h);
+    assert.match(out, /已取消/);
+    assert.match(out, /未产出结果/);
+    assert.doesNotMatch(out, /扣费/);
+  });
+
+  test("still running shows the pending card, not 已取消", async () => {
+    const out = await html(host(["running", "queued"]).h);
+    assert.match(out, /gen-pending/);
+    assert.doesNotMatch(out, /已取消/);
+  });
+
+  test("重新生成 prefills the original prompt and params instead of generating", async () => {
+    const { h: hst, calls } = host(["cancelled", "cancelled"]);
+    let state: any;
+    const probe = defineComponent({ setup() { state = Msg.setup({ item }, { emit() {}, expose() {}, attrs: {}, slots: {} }); return () => h("i"); } });
+    const app = createSSRApp(probe);
+    app.provide("chatGen", hst);
+    app.use(i18n());
+    await renderToString(app);
+    state.redo();
+    assert.deepEqual(calls, [["prefill", "一只猫", "3:4", 2]]);
   });
 });

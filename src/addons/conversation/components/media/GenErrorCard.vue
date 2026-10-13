@@ -10,14 +10,15 @@ import { AlertCircle, AlertTriangle, Ban } from "@lucide/vue";
 type ErrorCode = "content_rejected" | "insufficient_balance" | "media_busy" | "timeout" | "failed" | "cancelled";
 type ButtonKind = "retry" | "switchModel" | "editPrompt" | "viewUsage" | "viewRunning";
 
-const props = defineProps<{
+// submitted defaults to undefined (unknown), not Vue's absent-Boolean false.
+const props = withDefaults(defineProps<{
   code: ErrorCode;
   message?: string;
   /** media_busy: number of running jobs. */
   n?: number;
   /** cancelled: whether the job had already reached the model (charged). */
   submitted?: boolean;
-}>();
+}>(), { submitted: undefined });
 
 // `retry` covers retry/regenerate; every other button reports its kind via `action`.
 const emit = defineEmits<{ retry: []; action: [kind: ButtonKind] }>();
@@ -34,9 +35,9 @@ const FALLBACK: Record<string, string> = {
   "chatGen.errors.insufficient_balance.body": "账户额度不足，请联系管理员。",
   "chatGen.busy": "你已有 {n} 个生成任务在进行（图片最多 4 个、视频最多 2 个），等其中一个完成后再试。",
   "chatGen.cancelledTitle": "已取消",
-  "chatGen.cancelledBody": "你取消了这次生成。",
+  "chatGen.cancelledBody": "未产出结果",
   "chatGen.cancelledFree": "不会扣费",
-  "chatGen.cancelledCharged": "已提交：按实际扣费，以用量明细为准",
+  "chatGen.cancelledCharged": "已提交的部分按实际扣费，以用量明细为准",
   "chatGen.charge.label": "扣费：{s}",
   "chatGen.charge.mostlyFree": "一般不扣（以用量明细为准）",
   "chatGen.charge.byLedger": "以用量明细为准",
@@ -70,7 +71,8 @@ const spec = computed(() => SPECS[props.code] ?? SPECS.failed);
 const title = computed(() => (spec.value.titleKey ? tr(spec.value.titleKey) : ""));
 const body = computed(() => props.message || tr(spec.value.bodyKey, { n: props.n ?? 1 }));
 const charge = computed(() => {
-  if (props.code === "cancelled") return tr(props.submitted ? "chatGen.cancelledCharged" : "chatGen.cancelledFree");
+  // Unknown (reopened conversation): never guess the charge.
+  if (props.code === "cancelled") return props.submitted === undefined ? "" : tr(props.submitted ? "chatGen.cancelledCharged" : "chatGen.cancelledFree");
   return spec.value.charge ? tr("chatGen.charge.label", { s: tr(spec.value.charge) }) : "";
 });
 const buttons = computed(() => spec.value.buttons);

@@ -125,3 +125,17 @@ export const mediaGuard = (src: string) => /function mapAttachments[\s\S]{0,200}
 test("C11 media messages carry no attachment chips", () => {
   assert.ok(mediaGuard(readFileSync(new URL("../src/addons/conversation/composables/useConversationAdapter.ts", import.meta.url), "utf8")));
 });
+
+test("C9 cancelled batch keeps a card: nothing pending, nothing produced", () => {
+  assert.equal(cg.cancelledBatch([{ status: "cancelled" }]), true);
+  assert.equal(cg.cancelledBatch([{ status: "cancelled" }, { status: "failed" }]), true);
+  assert.equal(cg.cancelledBatch([{ status: "cancelled" }, { status: "queued" }]), false);
+  assert.equal(cg.cancelledBatch([{ status: "cancelled" }, { status: "succeeded" }]), false);
+  assert.equal(cg.cancelledBatch([]), false);
+});
+
+test("C10 submitted is known only from this session's cancel replies", () => {
+  assert.equal(cg.cancelSubmitted([5, 6], new Map([[5, false], [6, true]])), true);
+  assert.equal(cg.cancelSubmitted([5], new Map([[5, false]])), false);
+  assert.equal(cg.cancelSubmitted([5], new Map()), undefined);
+});
