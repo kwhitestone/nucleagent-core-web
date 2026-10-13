@@ -93,3 +93,10 @@ export function promptOf(content: string): string {
 
 /** A legacy carrier takes no chat follow-up server-side: its composer is image-only. */
 export const forcedImageMode = (conv: { mode?: string } | null | undefined): boolean => conv?.mode === "media";
+
+/**
+ * Succeeded tasks the list returned without a signed link (Core signs
+ * downloadUrl only on GET /generations/{id}); the result card needs one.
+ */
+export const unsignedDone = (tasks: readonly { id: number; status: string; downloadUrl?: string }[]): number[] =>
+  tasks.filter((x) => x.status === "succeeded" && !x.downloadUrl).map((x) => x.id);

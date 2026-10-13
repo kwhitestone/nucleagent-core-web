@@ -46,11 +46,16 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.cg-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.cg-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; flex: 1 1 auto; min-width: 0; max-width: 100%; }
 .cg-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; animation: fade-in 0.2s var(--ease-out) both; }
 .cg-chip--on { border-color: var(--atc-accent, #6366f1); color: var(--atc-accent, #6366f1); cursor: default; }
 .cg-x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
-.cg-field { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); }
-.cg-field select { font-size: 12px; border: 1px solid var(--border); border-radius: var(--r-sm, 6px); background: var(--bg-card); color: var(--text-primary); padding: 2px 4px; }
+.cg-field { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); min-width: 0; max-width: 100%; }
+.cg-field select { font-size: 12px; border: 1px solid var(--border); border-radius: var(--r-sm, 6px); background: var(--bg-card); color: var(--text-primary); padding: 2px 4px; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
 .cg-cost { color: var(--text-tertiary, var(--text-secondary)); }
+/* ⑧ 390-wide screens: long model ids must not push the bar past the viewport. */
+@media (max-width: 600px) {
+  .cg-field select[data-testid="chat-gen-model"] { max-width: 150px; }
+  .cg-cost { flex-basis: 100%; }
+}
 </style>

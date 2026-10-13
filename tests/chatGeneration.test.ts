@@ -83,3 +83,17 @@ test("C8 carrier conversations accept input (image only) and the banner is plain
   const home = src("addons/conversation/views/Home.vue");
   assert.ok(/conversationId: 0/.test(home) && /genOn\.value = true/.test(home), "home card turns on image mode; send creates a new chat");
 });
+
+// 第9棒 ROOT: GET /media/generations (list) never signs downloadUrl; only GET /generations/{id} does.
+// GenMessage leads with succeeded&&downloadUrl tasks, so a list-only task map rendered no result card.
+test("C9 succeeded list tasks without downloadUrl are re-fetched for a signed link", () => {
+  // DEV conv 522 list item, verbatim fields (no downloadUrl in list responses).
+  const task6 = { id: 6, kind: "image", model: "doubao-seedream-4-0-250828", prompt: "p", status: "succeeded", conversationId: 522,
+    file: { id: "54523a59-cd89-40aa-bd2c-bd3b3d661109", name: "image-6.jpg", mime: "image/jpeg", size: 575607 },
+    createdAt: "2026-10-13T12:33:10.495Z", finishedAt: "2026-10-13T12:33:29.147Z" };
+  const signed = { ...task6, id: 7, downloadUrl: "https://x/y" };
+  const running = { ...task6, id: 8, status: "running", file: undefined };
+  const failed = { ...task6, id: 9, status: "failed", file: undefined };
+  assert.deepEqual(cg.unsignedDone([task6, signed, running, failed]), [6]);
+  assert.match(src("addons/conversation/views/Conversation.vue"), /unsignedDone\(/);
+});

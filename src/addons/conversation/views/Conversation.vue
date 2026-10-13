@@ -42,9 +42,9 @@ import { broadcastRoute } from "../composables/broadcastViewPolicy";
 import { useNarrow } from "@/composables/useNarrow";
 import type { ConversationStatus } from "@/addons/conversation/api/types";
 import { errorText, isPending, type GenerationTask, type MediaModel } from "@/addons/conversation/composables/generation";
-import { cancelGeneration, createGeneration, listGenerations } from "@/addons/conversation/api/media";
+import { cancelGeneration, createGeneration, getGeneration, listGenerations } from "@/addons/conversation/api/media";
 import { followUp, getMessages } from "@/addons/conversation/api/conversation";
-import { DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import { DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, unsignedDone, type Aspect } from "@/addons/conversation/composables/chatGeneration";
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 
@@ -85,6 +85,13 @@ async function refreshGen(id: string): Promise<void> {
   if (id !== props.id) return;
   if (tasks && messages) {
     const mine = new Map(tasks.filter((x) => String(x.conversationId) === id).map((x) => [x.id, x]));
+    // The list never carries downloadUrl; reuse a link we already signed, else fetch the one task.
+    for (const tid of unsignedDone([...mine.values()])) {
+      const known = genTasks.value.get(tid)?.downloadUrl;
+      const full = known ? { ...mine.get(tid)!, downloadUrl: known } : await getGeneration(tid).catch(() => null);
+      if (full) mine.set(tid, full);
+    }
+    if (id !== props.id) return;
     const settled = [...genTasks.value.values()].some((x) => isPending(x.status) && !isPending(mine.get(x.id)?.status ?? "succeeded"));
     const groups = new Map<number, number[]>();
     for (const m of messages) {
