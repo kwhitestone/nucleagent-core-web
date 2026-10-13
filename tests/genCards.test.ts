@@ -111,3 +111,74 @@ describe("GenPendingCard", () => {
     assert.match(html, /Working/);
   });
 });
+
+describe("GenResultCard", () => {
+  let Result: any;
+  before(async () => { Result = await load("GenResultCard"); });
+  const img = (n: number, w = 1024, h = 1024) => ({ url: `/u/${n}.png`, thumbUrl: `/t/${n}.png`, width: w, height: h, name: `img-${n}.png` });
+  const params = { aspect: "1:1", count: 4, model: "xx-image", size: "1024×1024" };
+  const base = { items: [img(1), img(2), img(3), img(4)], prompt: "一只橘猫，水彩风格", params, saved: false };
+
+  test("four images render as a 2x2 grid using thumbnails", async () => {
+    const html = await render(Result, base);
+    assert.match(html, /gen-result__grid n-4/);
+    assert.equal(count(html, "gen-result__cell"), 4);
+    assert.match(html, /src="\/t\/1.png"/);
+  });
+
+  test("a single image keeps its own ratio with max height 520", async () => {
+    const html = await render(Result, { ...base, items: [img(1, 768, 1365)] });
+    assert.match(html, /gen-result__grid n-1/);
+    assert.match(html, /aspect-ratio:\s*768 \/ 1365/);
+    assert.match(html, /is-portrait/);
+    const wide = await render(Result, { ...base, items: [img(1, 1365, 768)] });
+    assert.match(wide, /is-landscape/);
+  });
+
+  test("echoes the prompt and parameter badges", async () => {
+    const html = await render(Result, base);
+    assert.match(html, /「一只橘猫，水彩风格」/);
+    for (const b of ["1:1", "4 张", "xx-image", "1024×1024"]) assert.match(html, new RegExp(`gen-result__badge[^>]*>${b}<`));
+  });
+
+  test("saved flips the library action to a saved state with link", async () => {
+    const unsaved = await render(Result, base);
+    assert.match(unsaved, /保存到成果库/);
+    const saved = await render(Result, { ...base, saved: true, libraryUrl: "/deliverables/9" });
+    assert.match(saved, /已存 ✓/);
+    assert.match(saved, /href="\/deliverables\/9"/);
+    assert.match(saved, /在成果库查看/);
+    assert.doesNotMatch(saved, /保存到成果库/);
+  });
+
+  test("actions emit download/regenerate/refine/save with the item", async () => {
+    const { state, emitted } = await bindings(Result, base);
+    state.emit("download", base.items[1]);
+    state.emit("regenerate");
+    state.emit("refine", base.items[0]);
+    state.emit("save");
+    assert.deepEqual(emitted.map((e) => e[0]), ["download", "regenerate", "refine", "save"]);
+    assert.equal(emitted[0][1], base.items[1]);
+  });
+
+  test("lightbox opens on an image and closes on Escape only", async () => {
+    const { state } = await bindings(Result, base);
+    assert.equal(state.active.value, null);
+    state.open(2);
+    assert.equal(state.active.value, 2);
+    assert.equal(state.current.value.url, "/u/3.png");
+    state.onKey({ key: "Enter" });
+    assert.equal(state.active.value, 2);
+    state.onKey({ key: "Escape" });
+    assert.equal(state.active.value, null);
+  });
+
+  test("copy prompt writes to the clipboard", async () => {
+    const { state } = await bindings(Result, base);
+    let written = "";
+    Object.defineProperty(globalThis, "navigator", { value: { clipboard: { writeText: async (s: string) => { written = s; } } }, configurable: true });
+    await state.copyPrompt();
+    assert.equal(written, "一只橘猫，水彩风格");
+    assert.equal(state.copied.value, true);
+  });
+});
