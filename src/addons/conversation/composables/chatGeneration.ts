@@ -100,3 +100,37 @@ export const forcedImageMode = (conv: { mode?: string } | null | undefined): boo
  */
 export const unsignedDone = (tasks: readonly { id: number; status: string; downloadUrl?: string }[]): number[] =>
   tasks.filter((x) => x.status === "succeeded" && !x.downloadUrl).map((x) => x.id);
+
+type SaveEnv = {
+  fetch: (url: string) => Promise<Response>;
+  createObjectURL: (b: Blob) => string;
+  revokeObjectURL: (u: string) => void;
+  click: (href: string, download: string) => void;
+  open: (url: string) => void;
+};
+const browserEnv = (): SaveEnv => ({
+  fetch: (u) => fetch(u),
+  createObjectURL: (b) => URL.createObjectURL(b),
+  revokeObjectURL: (u) => URL.revokeObjectURL(u),
+  click: (href, download) => { const a = document.createElement("a"); a.href = href; a.download = download; a.click(); },
+  open: (u) => { window.open(u, "_blank", "noopener,noreferrer"); },
+});
+
+/**
+ * `<a download>` is ignored for cross-origin links, so a direct anchor to the signed CDN
+ * URL navigates the (iframe) page to the raw image. Save via a same-origin blob instead;
+ * without CORS fall back to a new tab (same as AttachmentChips).
+ */
+export async function saveImage(url: string, name: string, env: SaveEnv = browserEnv()): Promise<void> {
+  let blob: Blob;
+  try {
+    const res = await env.fetch(url);
+    if (!res.ok) throw new Error(`download returned ${res.status}`);
+    blob = await res.blob();
+  } catch {
+    env.open(url);
+    return;
+  }
+  const href = env.createObjectURL(blob);
+  try { env.click(href, name); } finally { setTimeout(() => env.revokeObjectURL(href), 0); }
+}

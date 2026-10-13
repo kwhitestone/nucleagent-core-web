@@ -9,7 +9,7 @@ import { computed, inject } from "vue";
 import type { ConversationItem } from "@/addons/conversation/task-conversation/core";
 import type { GenerationTask } from "@/addons/conversation/composables/generation";
 import { isPending } from "@/addons/conversation/composables/generation";
-import { mediaOf, promptOf, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import { mediaOf, promptOf, saveImage, type Aspect } from "@/addons/conversation/composables/chatGeneration";
 import GenPendingCard from "./GenPendingCard.vue";
 import GenResultCard, { type GenResultItem } from "./GenResultCard.vue";
 import GenErrorCard from "./GenErrorCard.vue";
@@ -45,8 +45,7 @@ const errCode = computed(() => {
 const prompt = computed(() => promptOf(props.item.content ?? "") || batchTasks.value[0]?.prompt || "");
 
 function download(item: GenResultItem): void {
-  const a = document.createElement("a");
-  a.href = item.url; a.download = item.name; a.rel = "noopener"; a.click();
+  void saveImage(item.url, item.name);
 }
 </script>
 

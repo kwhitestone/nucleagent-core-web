@@ -97,3 +97,25 @@ test("C9 succeeded list tasks without downloadUrl are re-fetched for a signed li
   assert.deepEqual(cg.unsignedDone([task6, signed, running, failed]), [6]);
   assert.match(src("addons/conversation/views/Conversation.vue"), /unsignedDone\(/);
 });
+
+test("C10 download saves via same-origin blob, never navigates the frame to the cross-origin link", async () => {
+  const url = "https://betacs.cn.ndhy.com/x/image-8.jpg?token=t";
+  const clicked: { href: string; download: string }[] = [];
+  const opened: string[] = [];
+  const env = {
+    fetch: async () => new Response(new Blob(["img"])),
+    createObjectURL: () => "blob:local/1",
+    revokeObjectURL: () => {},
+    click: (href: string, download: string) => { clicked.push({ href, download }); },
+    open: (u: string) => { opened.push(u); },
+  };
+  await cg.saveImage(url, "image-8.jpg", env);
+  assert.deepEqual(clicked, [{ href: "blob:local/1", download: "image-8.jpg" }]);
+  assert.deepEqual(opened, []);
+  // No CORS → new tab (as AttachmentChips does), never the current frame.
+  clicked.length = 0;
+  await cg.saveImage(url, "image-8.jpg", { ...env, fetch: async () => { throw new TypeError("cors"); } });
+  assert.deepEqual(clicked, []);
+  assert.deepEqual(opened, [url]);
+  assert.match(src("addons/conversation/components/media/GenMessage.vue"), /saveImage\(/);
+});
