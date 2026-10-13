@@ -13,8 +13,21 @@ export async function listMediaModels(kind: GenerationKind): Promise<MediaModel[
   return res.data?.data ?? [];
 }
 
-export async function createGeneration(body: { kind: GenerationKind; providerId: number; model: string; prompt: string }): Promise<{ id: number; status: string }> {
-  const res = await http().post<{ id: number; status: string }>(`${BASE}/generations`, body);
+/** UI-IMPL-3: conversationId (0 = new ordinary conversation) writes into that chat; aspect/count only then. */
+export interface CreateGenerationBody {
+  kind: GenerationKind; providerId: number; model: string; prompt: string;
+  conversationId?: number; aspect?: string; count?: number;
+}
+export interface CreatedGeneration { id: number; status: string; ids?: number[]; conversationId?: number }
+
+export async function createGeneration(body: CreateGenerationBody): Promise<CreatedGeneration> {
+  const res = await http().post<CreatedGeneration>(`${BASE}/generations`, body);
+  return res.data;
+}
+
+/** Cancel at any stage; submitted=true means the gateway call already happened (charged). */
+export async function cancelGeneration(id: number): Promise<{ id: number; status: string; submitted: boolean }> {
+  const res = await http().post<{ id: number; status: string; submitted: boolean }>(`${BASE}/generations/${id}/cancel`);
   return res.data;
 }
 

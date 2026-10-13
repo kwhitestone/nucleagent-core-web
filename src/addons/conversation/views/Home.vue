@@ -110,8 +110,12 @@ function moreSettings(): void {
 }
 
 function fillSuggestion(card: HomeCard): void {
-  // MT3: the two generate cards open the generate page; every other card prefills.
+  // MT3: video opens the generate page; UI-IMPL-3 (6B): image opens a new chat in image mode.
   const kind = generationKind(card);
+  if (kind === "image") {
+    void router.push({ name: "chat", query: { gen: "image" } });
+    return;
+  }
   if (kind) {
     void router.push({ name: "generate", params: { kind } });
     return;

@@ -17,7 +17,7 @@ export function generationKind(card: { id: string }): GenerationKind | null {
 
 export const PROMPT_MAX = 2000;
 export const PENDING = ["queued", "submitting", "running", "ingesting"] as const;
-export const STATUSES = [...PENDING, "succeeded", "failed", "unknown"] as const;
+export const STATUSES = [...PENDING, "succeeded", "failed", "unknown", "cancelled"] as const;
 export const ERROR_CODES = [
   "insufficient_balance", "content_rejected", "upstream_timeout", "upstream_error",
   "unknown_submit", "ingest_failed", "gateway_unavailable", "media_busy",
@@ -85,6 +85,7 @@ export function statusView(task: Pick<GenerationTask, "kind" | "status" | "error
     const reason = errorText(task.errorCode ?? "", t, task.errorMessage);
     return { label: t("generate.status.failed", { reason }), pending: false, preview: false, download: false, regenerate: true };
   }
+  if (task.status === "cancelled") return { label: t("generate.status.cancelled"), pending: false, preview: false, download: false, regenerate: true };
   return { label: t("generate.status.unknown"), pending: false, preview: false, download: false, regenerate: false };
 }
 
@@ -111,9 +112,9 @@ export const promptValid = (prompt: string): boolean => {
   return n >= 1 && n <= PROMPT_MAX;
 };
 
-/** A `mode=media` carrier conversation takes no follow-ups: the page owns regeneration. */
-export function conversationAcceptsInput(conv: { mode?: string } | null | undefined): boolean {
-  return conv?.mode !== "media";
+/** UI-IMPL-3 (6B): every conversation takes input; a carrier's composer is image-only (chatGeneration.forcedImageMode). */
+export function conversationAcceptsInput(_conv: { mode?: string } | null | undefined): boolean {
+  return true;
 }
 
 /** Kind of a carrier conversation by its model; video only when the video list knows it. */

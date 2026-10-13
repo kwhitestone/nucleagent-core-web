@@ -1,0 +1,85 @@
+// UI-IMPL-3: in-conversation image generation — pure logic.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+import * as cg from "../src/addons/conversation/composables/chatGeneration.ts";
+import * as gen from "../src/addons/conversation/composables/generation.ts";
+
+const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
+
+test("C1 aspect/count options and defaults", () => {
+  assert.deepEqual(cg.ASPECTS, ["1:1", "3:4", "4:3", "9:16", "16:9"]);
+  assert.deepEqual(cg.COUNTS, [1, 2, 3, 4]);
+  assert.deepEqual(cg.DEFAULT_PARAMS, { aspect: "1:1", count: 1 });
+  assert.equal(cg.aspectRatio("9:16"), "9 / 16");
+  assert.equal(cg.aspectRatio("bad"), "1 / 1");
+});
+
+test("C2 grid layout by image count", () => {
+  assert.equal(cg.gridLayout(1), "single");
+  assert.equal(cg.gridLayout(2), "pair");
+  assert.equal(cg.gridLayout(3), "trio");
+  assert.equal(cg.gridLayout(4), "quad");
+  assert.equal(cg.gridLayout(7), "quad");
+});
+
+test("C3 stage key per status, elapsed mm:ss, slow after 2× expected", () => {
+  assert.equal(cg.stageKey("queued"), "queued");
+  assert.equal(cg.stageKey("submitting"), "submitting");
+  assert.equal(cg.stageKey("running"), "submitting");
+  assert.equal(cg.stageKey("ingesting"), "ingesting");
+  assert.equal(cg.formatElapsed(0), "0:00");
+  assert.equal(cg.formatElapsed(72_400), "1:12");
+  assert.equal(cg.isSlow(39_000), false);
+  assert.equal(cg.isSlow(41_000), true);
+});
+
+test("C4 cancel copy distinguishes submitted from queued", () => {
+  assert.equal(cg.cancelNoteKey(false), "chatGen.cancelledFree");
+  assert.equal(cg.cancelNoteKey(true), "chatGen.cancelledCharged");
+  assert.equal(cg.cancellable("ingesting"), true);
+  assert.equal(cg.cancellable("succeeded"), false);
+});
+
+test("C5 error card per code: title, copy, action", () => {
+  assert.deepEqual(cg.errorCard("content_rejected"), { code: "content_rejected", tone: "fail", action: "edit" });
+  assert.deepEqual(cg.errorCard("unknown_submit"), { code: "unknown_submit", tone: "warn", action: "usage" });
+  assert.deepEqual(cg.errorCard("insufficient_balance"), { code: "insufficient_balance", tone: "warn", action: "usage" });
+  assert.deepEqual(cg.errorCard("ingest_failed"), { code: "ingest_failed", tone: "fail", action: "retry" });
+  assert.deepEqual(cg.errorCard("weird"), { code: "upstream_error", tone: "fail", action: "retry" });
+});
+
+test("C6 media metadata parsing and batch grouping", () => {
+  assert.equal(cg.mediaOf(undefined), null);
+  assert.equal(cg.mediaOf({ media: "x" }), null);
+  const req = cg.mediaOf({ media: { kind: "image", taskIds: [3, 4], aspect: "3:4", count: 2, model: "m", size: "864x1152" } });
+  assert.deepEqual(req?.taskIds, [3, 4]);
+  const res = cg.mediaOf({ media: { taskId: 3, batch: 9, index: 1, count: 2, aspect: "3:4", size: "864x1152", model: "m" } });
+  assert.equal(res?.batch, 9);
+  const items = [
+    { id: "a", data: { media: { taskId: 3, batch: 9, index: 1, count: 2 } } },
+    { id: "b", data: { media: { taskId: 4, batch: 9, index: 2, count: 2 } } },
+    { id: "c", data: { media: { taskId: 5, batch: 10, index: 1, count: 1 } } },
+    { id: "d" },
+  ];
+  assert.deepEqual(cg.batchLead(items, "a"), ["a", "b"]);
+  assert.deepEqual(cg.batchLead(items, "b"), []);
+  assert.deepEqual(cg.batchLead(items, "c"), ["c"]);
+  assert.deepEqual(cg.batchLead(items, "d"), []);
+});
+
+test("C7 prompt from a result message body", () => {
+  assert.equal(cg.promptOf("已为你生成 1 张图片。\n提示词：「一只猫」\n参数：1:1"), "一只猫");
+  assert.equal(cg.promptOf("x"), "");
+});
+
+test("C8 carrier conversations accept input (image only) and the banner is plain words", () => {
+  assert.equal(gen.conversationAcceptsInput({ mode: "media" }), true);
+  assert.equal(cg.forcedImageMode({ mode: "media" }), true);
+  assert.equal(cg.forcedImageMode({ mode: "a2a" }), false);
+  const zh = src("i18n/zh.ts");
+  assert.ok(zh.includes("这是一次图片生成，可以在下方继续描述修改"));
+  assert.ok(zh.includes("取消后不会出结果。尚未提交给模型的不扣费；已提交的按实际扣费。"));
+  const home = src("addons/conversation/views/Home.vue");
+  assert.ok(/gen: "image"/.test(home), "home card opens chat in image mode");
+});
