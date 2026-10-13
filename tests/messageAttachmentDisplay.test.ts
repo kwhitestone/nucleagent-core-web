@@ -320,3 +320,24 @@ test("attachment verification survives both presentation mappings", async () => 
   assert.equal(toMessageAttachment(snapshot.items[0].attachments[0]).verification, "unavailable");
   assert.equal(snapshot.items[0].content, "unchanged");
 });
+
+test("UI-IMPL-3: media messages without errorCode still form a valid snapshot", async () => {
+  const { parseConversationSnapshot } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/schema.ts");
+  http.defaults.adapter = async (config: any) => ({
+    config,
+    data: /\/messages$/.test(config.url) ? { code: 0, data: [
+      { id: 1, conversationId: 518, senderType: "user", senderName: "user", msgType: "text", content: "橘猫",
+        metadata: { media: { kind: "image", aspect: "1:1", count: 1, taskIds: [3] } }, createdAt: "2026-10-13T12:08:40Z" },
+      { id: 2, conversationId: 518, senderType: "agent", senderName: "media", msgType: "result", content: "图片已生成",
+        metadata: { media: { kind: "image", taskId: 3, batch: 1, index: 1 }, step_id: "media-3" }, createdAt: "2026-10-13T12:08:50Z" },
+    ] } : { code: 0, data: { id: 518, mode: "a2a", status: "completed", createdAt: "2026-10-13T12:08:40Z", updatedAt: "2026-10-13T12:08:40Z" } },
+    headers: {}, status: 200, statusText: "OK",
+  });
+  const snapshot = await createConversationAdapter(() => "518").loadSnapshot({
+    conversationKey: "518", signal: new AbortController().signal,
+  });
+  const parsed = parseConversationSnapshot(snapshot);
+  assert.equal(parsed.items.length, 2);
+  assert.deepEqual(parsed.items[0].data?.media, { kind: "image", aspect: "1:1", count: 1, taskIds: [3] });
+  assert.equal("errorCode" in (parsed.items[1].data ?? {}), false);
+});

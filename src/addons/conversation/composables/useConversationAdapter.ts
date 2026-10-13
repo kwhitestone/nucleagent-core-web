@@ -291,7 +291,9 @@ function conversationItemData(
     ...messageTimingData(msg),
     ...(msg.senderName.endsWith(".thinking") ? { thinking: true } : {}),
     // UI-IMPL-3: media generation messages render as gen cards.
-    ...(msg.metadata?.media ? { media: msg.metadata.media, errorCode: msg.metadata.errorCode } : {}),
+    // errorCode only when present: an undefined value fails snapshot schema validation.
+    ...(msg.metadata?.media ? { media: msg.metadata.media } : {}),
+    ...(msg.metadata?.media && msg.metadata.errorCode !== undefined ? { errorCode: msg.metadata.errorCode } : {}),
   };
 }
 
