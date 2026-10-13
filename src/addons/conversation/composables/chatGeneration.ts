@@ -1,6 +1,6 @@
 // UI-IMPL-3: pure logic of in-conversation image generation (design §3).
 // Relative imports only: loaded natively by node --test (coverage-gated).
-import { PENDING } from "./generation.ts";
+import { PENDING, isPending } from "./generation.ts";
 
 export const ASPECTS = ["1:1", "3:4", "4:3", "9:16", "16:9"] as const;
 export type Aspect = (typeof ASPECTS)[number];
@@ -36,6 +36,19 @@ export const isSlow = (elapsedMs: number): boolean => elapsedMs > 2 * EXPECTED_M
 export const cancellable = (status: string): boolean => (PENDING as readonly string[]).includes(status);
 export const cancelNoteKey = (submitted: boolean): string =>
   submitted ? "chatGen.cancelledCharged" : "chatGen.cancelledFree";
+
+/** Every task of the batch ended and at least one was cancelled with nothing produced: keep a 已取消 card. */
+export const cancelledBatch = (tasks: readonly { status: string }[]): boolean =>
+  tasks.some((x) => x.status === "cancelled") && !tasks.some((x) => isPending(x.status) || x.status === "succeeded");
+
+/**
+ * Whether the cancelled batch had reached the model. Known only from this session's
+ * cancel replies (the task view has no submitted flag): undefined → say nothing about charge.
+ */
+export function cancelSubmitted(ids: readonly number[], replies: ReadonlyMap<number, boolean>): boolean | undefined {
+  const known = ids.filter((id) => replies.has(id));
+  return known.length ? known.some((id) => replies.get(id)) : undefined;
+}
 
 export interface ErrorCard {
   code: string;

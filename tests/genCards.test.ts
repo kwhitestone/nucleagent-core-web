@@ -248,17 +248,12 @@ describe("GenMessage cancelled batch", () => {
     };
     return { h, calls };
   }
-  async function renderMsg(h: unknown) {
-    const app = createSSRApp({ render: () => h(Msg, { item }) } as any);
-    return app;
-  }
   const html = async (hst: unknown) => {
     const app = createSSRApp({ render: () => h(Msg, { item }) });
     app.provide("chatGen", hst);
     app.use(i18n());
     return renderToString(app);
   };
-  void renderMsg;
 
   test("after cancel (this session) the user message keeps a 已取消 card with the charge note", async () => {
     const out = await html(host(["cancelled", "cancelled"], new Map([[5, true], [6, true]])).h);
