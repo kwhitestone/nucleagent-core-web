@@ -71,8 +71,56 @@ export const messages = {
   unknownReason: ["当前版本未定义此字段的编辑策略，原值保留。", "No editing policy exists for this field in this version. The original value is retained."],
   invalidContract: ["服务端定义合同不可用，请稍后重试。", "The server definition contract is unavailable. Try again later."],
   saved: ["已保存", "Saved"], confirmSlug: ["输入唯一标识以确认删除", "Enter the slug to confirm deletion"],
+  basic: ["基本信息", "Basics"], persona: ["人设与指令", "Persona & prompt"], groupModel: ["模型与能力", "Model & capabilities"],
+  groupSkills: ["技能与工具", "Skills & tools"], visibility: ["可见范围", "Visibility"], history: ["使用与历史", "Usage & history"],
+  advanced: ["高级", "Advanced"], unsaved: ["未保存", "Unsaved"], unsavedHint: ["请先保存或放弃修改", "Save or discard your changes first"],
+  savedToast: ["已保存 · 下一轮 IM 对话生效", "Saved · applies from the next IM turn"],
+  shortcuts: ["Ctrl/⌘ + S 保存 · Esc 关闭", "Ctrl/⌘ + S to save · Esc to close"],
+  discardCount: ["还有未保存的修改", "You have unsaved changes"],
+  conflictTitle: ["别处刚更新了这个智能体", "This agent was just updated elsewhere"],
+  conflictKeep: ["你的修改还在，请逐项选择保留哪一版。", "Your changes are kept. Choose which version to keep for each field."],
+  addSkill: ["添加技能", "Add skill"], searchSkills: ["搜索技能", "Search skills"], removeSkill: ["移除", "Remove"],
+  noSkills: ["还没有绑定技能", "No skills bound yet"], skillDisabled: ["已停用，不可新增", "Disabled; cannot be added"],
+  preview: ["预览", "Preview"], previewIm: ["IM 中的样子", "How it looks in IM"],
+  previewNote: ["预览不调用模型，仅示意名片与语气位置。", "Preview does not call the model; it only shows the card and reply placement."],
+  previewUser: ["你好，介绍一下你自己？", "Hi, could you introduce yourself?"],
+  previewReply: ["（这里是智能体的回复示意）", "(The agent's reply appears here)"],
+  visibilityNote: ["谁能看、谁能改由服务端权限决定，本页只读展示。", "Who can view or edit is decided by server permissions; shown read-only here."],
+  canRead: ["可查看", "Can view"], canWrite: ["可编辑定义", "Can edit definition"], canSkills: ["可改技能绑定", "Can edit skill bindings"],
+  canDelete: ["可删除", "Can delete"], yes: ["是", "Yes"], no: ["否", "No"], updated: ["最近修改", "Updated"],
+  noAgents: ["还没有智能体", "No agents yet"], changesUnit: [" 处", ""], technical: ["技术信息", "Technical details"], viewOnly: ["你只有查看权限", "You have view-only access"],
+  modelRequired: ["请先选择模型，再启用这个智能体。", "Choose a model before enabling this agent."],
+  selectModelFirst: ["请先选择模型", "Choose a model first"],
+  identityNotReady: ["IM 身份还没开通好，请稍后刷新再试，或点“重试开通”。", "The IM identity is not ready yet. Refresh later or retry provisioning."],
+  identityRevoked: ["IM 身份授权已被撤销，需要在账号管理中恢复后才能操作。", "The IM identity authorization was revoked; restore it in account management first."],
+  identityFailed: ["IM 身份同步失败，本次修改没有生效，请稍后重试。", "IM identity sync failed; nothing was changed. Try again later."],
+  mustDisable: ["请先停用这个智能体，再删除。", "Disable this agent before deleting it."],
+  deletedLocked: ["这个智能体已删除，请先恢复再修改。", "This agent is deleted; restore it before editing."],
+  invalidPatch: ["填写的内容不符合要求，请检查后再保存。", "Some values are invalid; check them and save again."],
+  modelMismatch: ["所选模型类型不适合当前用途，请换一个模型。", "The selected model type does not fit; choose another model."],
+  recycle: ["回收站", "Recycle bin"], allLive: ["全部", "All"],
+  importRecommended: ["导入推荐智能体", "Import recommended agents"],
+  importNote: ["导入后为停用状态，选好模型后再启用；已存在的不会被覆盖。", "Imported agents start disabled; choose a model, then enable. Existing ones are never overwritten."],
+  willImport: ["将导入", "Will import"], skippedExists: ["已存在，跳过", "Already exists, skipped"],
+  skippedDeleted: ["已存在（在回收站），跳过", "Exists in recycle bin, skipped"], imported: ["已导入", "Imported"],
+  confirmImport: ["确认导入", "Import"], nothingToImport: ["全部已存在，没有需要导入的", "Everything already exists; nothing to import"],
 } as const;
 export type MessageKey = keyof typeof messages;
 export function text(key: MessageKey, locale: string): string {
   return messages[key][locale.startsWith("zh") ? 0 : 1];
+}
+
+const errorKeys: Record<string, MessageKey> = {
+  agent_definition_im_requires_model: "modelRequired", agent_identity_not_ready: "identityNotReady",
+  agent_identity_revoked: "identityRevoked", agent_identity_projection_failed: "identityFailed",
+  agent_identity_unavailable: "identityFailed", agent_identity_binding_conflict: "identityFailed",
+  agent_identity_update_failed: "identityFailed", agent_definition_active: "mustDisable",
+  agent_definition_deleted: "deletedLocked", invalid_definition_patch: "invalidPatch", model_type_mismatch: "modelMismatch",
+};
+/** Maps a failed request to a user-facing reason; unknown failures keep the generic message. */
+export function errorKey(error: unknown): MessageKey {
+  const e = error as { status?: unknown; code?: unknown } | null;
+  if (typeof e?.status !== "number") return "error";
+  if (e.status === 401 || e.status === 403) return "denied";
+  return (typeof e.code === "string" && errorKeys[e.code]) || "error";
 }
