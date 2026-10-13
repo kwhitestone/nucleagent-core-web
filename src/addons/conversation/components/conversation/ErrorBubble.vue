@@ -5,6 +5,7 @@
  */
 import type { ConversationItem } from "@/addons/conversation/task-conversation/core";
 import { useI18n } from "vue-i18n";
+import GenMessage from "@/addons/conversation/components/media/GenMessage.vue";
 
 defineProps<{ item: ConversationItem }>();
 const { t } = useI18n();
@@ -19,7 +20,8 @@ function formatTime(iso: string): string {
 </script>
 
 <template>
-  <div class="error-bubble">
+  <GenMessage v-if="item.data?.media" :item="item" />
+  <div v-else class="error-bubble">
     <span class="error-icon">⚠</span>
     <div class="error-body">
       <div class="error-title">{{ t('conversation.failed') }}</div>

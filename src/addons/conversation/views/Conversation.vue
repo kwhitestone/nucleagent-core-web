@@ -13,8 +13,8 @@
  *     （标题取 senderName），不需要自定义 renderer。
  *   - 附件上传复用组件的 uploadAttachment 边界 → api/storage.uploadFile。
  */
-import { computed, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
@@ -41,8 +41,12 @@ import { toMessageAttachment } from "@/addons/conversation/components/attachment
 import { broadcastRoute } from "../composables/broadcastViewPolicy";
 import { useNarrow } from "@/composables/useNarrow";
 import type { ConversationStatus } from "@/addons/conversation/api/types";
-import { conversationAcceptsInput, conversationMediaKind, type GenerationKind } from "@/addons/conversation/composables/generation";
-import { listMediaModels } from "@/addons/conversation/api/media";
+import { errorText, isPending, type GenerationTask, type MediaModel } from "@/addons/conversation/composables/generation";
+import { cancelGeneration, createGeneration, listGenerations } from "@/addons/conversation/api/media";
+import { followUp, getMessages } from "@/addons/conversation/api/conversation";
+import { DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
+import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 
 const props = defineProps<{ id: string }>();
 const narrow = useNarrow();
@@ -52,9 +56,8 @@ const title = ref("");
 // AG1: the agent behind this conversation was deleted: history stays, sending is refused (server 409).
 const agentDeleted = ref(false);
 const status = ref<ConversationStatus | "">("");
-/** MT3: a mode=media carrier takes no input; the banner links to its generate page. */
-const acceptsInput = ref(true);
-const mediaKind = ref<GenerationKind>("image");
+/** UI-IMPL-3 (6B): a legacy mode=media carrier takes input, image mode only. */
+const carrier = ref(false);
 /** The live controller speaks idle/running/…; the header shows the API vocabulary. */
 function onLiveStatus(next: "idle" | "running" | "completed" | "failed" | "cancelled"): void {
   if (next === "running") status.value = "executing";
@@ -62,9 +65,89 @@ function onLiveStatus(next: "idle" | "running" | "completed" | "failed" | "cance
 }
 const { t, locale } = useI18n();
 const router = useRouter();
+const route = useRoute();
+
+// ── UI-IMPL-3: in-chat image generation ────────────────────────────────
+const genOn = ref(route.query.gen === "image");
+const genAspect = ref<Aspect>(DEFAULT_PARAMS.aspect);
+const genCount = ref(DEFAULT_PARAMS.count);
+const genModel = ref<MediaModel | null>(null);
+const genTasks = ref(new Map<number, GenerationTask>());
+const genGroups = ref(new Map<number, number[]>());
+/** Media messages do not stream over SSE: a finished task remounts the list. */
+const remount = ref(0);
+const conversationView = ref<{ setDraft(text: string): void } | null>(null);
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function refreshGen(id: string): Promise<void> {
+  clearTimeout(pollTimer);
+  const [tasks, messages] = await Promise.all([listGenerations("image"), getMessages(id)]).catch(() => [null, null] as const);
+  if (id !== props.id) return;
+  if (tasks && messages) {
+    const mine = new Map(tasks.filter((x) => String(x.conversationId) === id).map((x) => [x.id, x]));
+    const settled = [...genTasks.value.values()].some((x) => isPending(x.status) && !isPending(mine.get(x.id)?.status ?? "succeeded"));
+    const groups = new Map<number, number[]>();
+    for (const m of messages) {
+      const ids = (m.metadata?.media as { taskIds?: number[] } | undefined)?.taskIds;
+      ids?.forEach((tid) => groups.set(tid, ids));
+    }
+    genTasks.value = mine;
+    genGroups.value = groups;
+    if (settled) remount.value += 1;
+  }
+  if ([...genTasks.value.values()].some((x) => isPending(x.status))) pollTimer = setTimeout(() => void refreshGen(id), 3000);
+}
+onBeforeUnmount(() => clearTimeout(pollTimer));
+
+async function generate(prompt: string, aspect: string, count: number): Promise<void> {
+  if (!genModel.value) throw new Error(t("chatGen.noModels"));
+  try {
+    await createGeneration({ kind: "image", providerId: genModel.value.providerId, model: genModel.value.model, prompt,
+      conversationId: Number(props.id), aspect, count });
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : "";
+    const busy = [...genTasks.value.values()].filter((x) => isPending(x.status)).length;
+    const msg = code === "media_busy" ? t("chatGen.busy", { n: busy })
+      : code === "conversation_busy" ? t("chatGen.convBusy")
+      : errorText(code, t, error instanceof Error ? error.message : "");
+    throw new Error(msg);
+  }
+  remount.value += 1;
+  await refreshGen(props.id);
+}
+
+const genHost: ChatGenHost = {
+  get tasks() { return genTasks.value; },
+  get groups() { return genGroups.value; },
+  cancel(ids) {
+    void Promise.all(ids.map((id) => cancelGeneration(id))).then((res) => {
+      toast.info(`${t("chatGen.cancelledTitle")}：${t(cancelNoteKey(res.some((r) => r.submitted)))}`);
+    }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
+      .finally(() => void refreshGen(props.id));
+  },
+  regenerate(prompt, aspect, count) {
+    void generate(prompt, aspect, count).catch((error: Error) => toast.error(error.message));
+  },
+  refine(_item, prompt) {
+    // ponytail: front-end-only reference — prefill the prompt; image-to-image is not in this phase.
+    genOn.value = true;
+    conversationView.value?.setDraft(prompt);
+  },
+};
+provide("chatGen", genHost);
 
 /** conversationKey 变化时组件 controller 会自动重新 initialize。 */
-const adapter = computed<ConversationAdapter>(() => createConversationAdapter(() => props.id));
+// A remount gets a fresh adapter (its cursor cache would skip the reload).
+const adapter = computed<ConversationAdapter>(() => (void remount.value, createConversationAdapter(() => props.id, {
+  send: async (input, _atts, _options) => {
+    if (!genOn.value) {
+      await followUp(props.id, input, _atts);
+      return { accepted: true };
+    }
+    await generate(input, genAspect.value, genCount.value);
+    return { accepted: true };
+  },
+})));
 
 const modelChoice = ref<ModelChoice | null>(null);
 const executionBackend = ref<string | null>(null);
@@ -109,12 +192,9 @@ watch(
       ]);
       if (!active) return;
       title.value = conversation.title ?? "";
-      acceptsInput.value = conversationAcceptsInput(conversation);
-      mediaKind.value = "image";
-      if (!acceptsInput.value) {
-        void listMediaModels("video").then((list) => list.map((m) => m.model)).catch(() => null)
-          .then((videos) => { if (active) mediaKind.value = conversationMediaKind(conversation.model, videos); });
-      }
+      carrier.value = forcedImageMode(conversation);
+      if (carrier.value) genOn.value = true;
+      void refreshGen(conversationId);
       agentDeleted.value = false;
       if (conversation.agentId) {
         void (async () => {
@@ -201,7 +281,7 @@ function onError(error: Error): void {
 
 <template>
   <div class="view active view--scroll-hidden">
-    <div class="chat-view" :class="{ 'chat-view--narrow': narrow, 'chat-view--media': !acceptsInput }">
+    <div class="chat-view" :class="{ 'chat-view--narrow': narrow }">
       <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
       <header v-if="narrow" class="conv-head" data-testid="conv-head">
         <div class="conv-head-text">
@@ -249,15 +329,14 @@ function onError(error: Error): void {
           </div>
         </div>
       </div>
-      <p v-if="!acceptsInput" class="conv-media-banner" role="status" data-testid="conv-media-banner">
-        {{ t("generate.mediaConversation") }} →
-        <RouterLink :to="`/generate/${mediaKind}`" data-testid="conv-media-link">/generate/{{ mediaKind }}</RouterLink>
-      </p>
+      <p v-if="carrier" class="conv-media-banner" role="status" data-testid="conv-media-banner">{{ t("generate.mediaConversation") }}</p>
       <p v-if="agentDeleted" class="conv-agent-deleted" role="status" data-testid="conv-agent-deleted">{{ t("agents.deletedHint") }}</p>
       <TaskConversation
+        ref="conversationView"
+        :key="`${id}#${remount}`"
         :conversation-key="id"
         :adapter="adapter"
-        :capabilities="{ send: !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted && acceptsInput, stop: true, attachments: true }"
+        :capabilities="{ send: genOn ? !!genModel && !agentDeleted : !modelLoading && !backendLoading && !settingsSaving && !settingsDirty && backendCompatible && !agentDeleted, stop: true, attachments: !genOn }"
         :renderers="renderers"
         :show-process="true"
         :locale="locale === 'en' ? 'en-US' : 'zh-CN'"
@@ -265,13 +344,18 @@ function onError(error: Error): void {
         @status-change="onLiveStatus"
       >
         <template #user-item="{ item }">
-          <MessageItem :item="item" role="user" />
+          <GenMessage v-if="item.data?.media" :item="item"><MessageItem :item="item" role="user" /></GenMessage>
+          <MessageItem v-else :item="item" role="user" />
         </template>
         <template #assistant-item="{ item, respond }">
-          <MessageItem :item="item" role="assistant" @respond="respond" />
+          <GenMessage v-if="item.data?.media" :item="item" />
+          <MessageItem v-else :item="item" role="assistant" @respond="respond" />
         </template>
-        <template #artifact="{ attachment }">
-          <AttachmentChips :attachments="[toMessageAttachment(attachment)]" />
+        <template #artifact="{ attachment, item }">
+          <AttachmentChips v-if="!item.data?.media" :attachments="[toMessageAttachment(attachment)]" />
+        </template>
+        <template #composer-toolbar-trailing>
+          <ChatGenBar v-model:on="genOn" v-model:aspect="genAspect" v-model:count="genCount" v-model:model="genModel" :locked="carrier" />
         </template>
         <template v-if="!narrow" #composer-toolbar-leading="{ status }">
           <ModelPicker

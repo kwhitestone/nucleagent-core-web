@@ -79,7 +79,7 @@ test("W2 seven states map to the right text and buttons", () => {
   assert.doesNotMatch(unknown.label, /失败/);
   assert.deepEqual([unknown.pending, unknown.preview, unknown.download, unknown.regenerate], [false, false, false, false]);
   assert.match(gen.statusView({ kind: "image", status: "unknown" }, tOf("en")).label, /not retried/i);
-  assert.equal(gen.STATUSES.length, 7);
+  assert.equal(gen.STATUSES.length, 8); // UI-IMPL-3 added cancelled
 });
 
 // ---- W3
@@ -295,17 +295,15 @@ test("W6 generate.* keys exist and zh/en key sets stay identical", () => {
 });
 
 // ---- W7
-test("W7 a mode=media conversation hides the composer and links to /generate/<kind>", () => {
-  assert.equal(gen.conversationAcceptsInput({ mode: "media" }), false);
-  assert.equal(gen.conversationAcceptsInput({ mode: "a2a" }), true);
+test("W7 (UI-IMPL-3 6B) a mode=media carrier takes input in image mode, banner is plain copy", () => {
+  assert.equal(gen.conversationAcceptsInput({ mode: "media" }), true);
   assert.equal(gen.conversationAcceptsInput(null), true);
   assert.equal(gen.conversationMediaKind("doubao-seedance-2-0-fast-260128", ["doubao-seedance-2-0-fast-260128"]), "video");
-  assert.equal(gen.conversationMediaKind("doubao-seedream-4-0-250828", ["doubao-seedance-2-0-fast-260128"]), "image");
   assert.equal(gen.conversationMediaKind("x", null), "image");
-  assert.equal(gen.conversationMediaKind(undefined, []), "image");
   const conv = src("addons/conversation/views/Conversation.vue");
-  assert.ok(/conversationAcceptsInput\(/.test(conv), 'conv /conversationAcceptsInput\\(/');
-  assert.ok(/\/generate\/\$\{mediaKind\}/.test(conv), 'conv /\\/generate\\/\\$\\{mediaKind\\}/');
+  assert.ok(/forcedImageMode\(conversation\)/.test(conv));
+  assert.ok(/data-testid="conv-media-banner">\{\{ t\("generate.mediaConversation"\) \}\}<\/p>/.test(conv));
+  assert.ok(!/\/generate\/\$\{mediaKind\}/.test(conv));
 });
 
 test("429 count: pending plus recent unknown", () => {

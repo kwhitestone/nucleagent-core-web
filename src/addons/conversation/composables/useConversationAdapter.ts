@@ -290,6 +290,8 @@ function conversationItemData(
     ...existing,
     ...messageTimingData(msg),
     ...(msg.senderName.endsWith(".thinking") ? { thinking: true } : {}),
+    // UI-IMPL-3: media generation messages render as gen cards.
+    ...(msg.metadata?.media ? { media: msg.metadata.media, errorCode: msg.metadata.errorCode } : {}),
   };
 }
 

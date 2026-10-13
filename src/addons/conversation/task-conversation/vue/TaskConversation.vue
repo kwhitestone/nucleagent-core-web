@@ -133,6 +133,8 @@ defineSlots<{
 
 const text = computed(() => resolveMessages(props.locale, props.messages));
 const composer = ref("");
+/** Host prefill (UI-IMPL-3 「继续修改」). */
+defineExpose({ setDraft: (text: string) => { composer.value = text; } });
 /** Phone layout below 1024px (board §13). */
 const narrow = useNarrow();
 const attachments = ref<ConversationAttachment[]>([]);
