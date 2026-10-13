@@ -375,6 +375,8 @@ function shouldEmit(msg: Message): boolean {
 }
 
 function mapAttachments(m: Message): ConversationAttachment[] | undefined {
+  // UI-IMPL-3: a media message is rendered by GenMessage; an attachment chip would duplicate the image.
+  if (m.metadata?.media) return undefined;
   const raw = m.metadata?.attachments;
   if (!Array.isArray(raw)) return undefined;
   const list = raw.filter(

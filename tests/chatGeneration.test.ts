@@ -119,3 +119,9 @@ test("C10 download saves via same-origin blob, never navigates the frame to the 
   assert.deepEqual(opened, [url]);
   assert.match(src("addons/conversation/components/media/GenMessage.vue"), /saveImage\(/);
 });
+
+// C11: a media message is drawn by GenMessage; an attachment chip under it duplicates the image.
+export const mediaGuard = (src: string) => /function mapAttachments[\s\S]{0,200}if \(m\.metadata\?\.media\) return undefined;/.test(src);
+test("C11 media messages carry no attachment chips", () => {
+  assert.ok(mediaGuard(readFileSync(new URL("../src/addons/conversation/composables/useConversationAdapter.ts", import.meta.url), "utf8")));
+});
