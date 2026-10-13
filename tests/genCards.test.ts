@@ -102,11 +102,11 @@ describe("GenPendingCard", () => {
     state.confirmCancel();
     assert.equal(state.confirming.value, false);
     assert.deepEqual(emitted, [["cancel"]]);
-    assert.match(state.tr("gen.cancelConfirm"), /扣费/);
+    assert.match(state.tr("chatGen.cancelConfirm"), /扣费/);
   });
 
   test("prefers i18n messages over the built-in Chinese fallback", async () => {
-    const html = await render(Pending, base, { gen: { generating: "Generating {n} images", stage: { running: "Working" } } });
+    const html = await render(Pending, base, { chatGen: { generating: "Generating {n} images", stage: { running: "Working" } } });
     assert.match(html, /Generating 4 images/);
     assert.match(html, /Working/);
   });
@@ -180,5 +180,49 @@ describe("GenResultCard", () => {
     await state.copyPrompt();
     assert.equal(written, "一只橘猫，水彩风格");
     assert.equal(state.copied.value, true);
+  });
+});
+
+describe("GenErrorCard", () => {
+  let Err: any;
+  before(async () => { Err = await load("GenErrorCard"); });
+
+  test("each code renders the §3.3 title, body and charge note", async () => {
+    const cases: [string, RegExp[]][] = [
+      ["failed", [/生成没有成功/, /生成服务出错，请稍后重试。/, /一般不扣（以用量明细为准）/, /重试/]],
+      ["timeout", [/等太久了，没拿到结果/, /生成超时，未拿到结果。可以换个模型或简化描述再试。/, /扣费：以用量明细为准/, /换个模型/]],
+      ["content_rejected", [/内容没有通过安全审核/, /提示词或结果未通过内容安全审核，请修改后重试。/, /修改提示词/]],
+      ["insufficient_balance", [/贝壳不够了/, /账户额度不足，请联系管理员。/, /扣费：不扣/, /查看用量/]],
+      ["media_busy", [/你已有 3 个生成任务在进行（图片最多 4 个、视频最多 2 个），等其中一个完成后再试。/, /查看进行中/]],
+      ["cancelled", [/已取消/, /你取消了这次生成。/, /不会扣费/, /重新生成/]],
+    ];
+    for (const [code, patterns] of cases) {
+      const html = await render(Err, { code, n: 3 });
+      for (const p of patterns) assert.match(html, p, `${code} should match ${p}`);
+    }
+  });
+
+  test("content_rejected never claims it is free; busy/balance use the amber tone", async () => {
+    assert.doesNotMatch(await render(Err, { code: "content_rejected" }), /不扣|扣费/);
+    assert.match(await render(Err, { code: "media_busy", n: 1 }), /is-warn/);
+    assert.match(await render(Err, { code: "insufficient_balance" }), /is-warn/);
+    assert.match(await render(Err, { code: "failed" }), /is-error/);
+  });
+
+  test("cancelled after submission says it is charged", async () => {
+    assert.match(await render(Err, { code: "cancelled", submitted: true }), /已提交：按实际扣费，以用量明细为准/);
+  });
+
+  test("backend message overrides the default body", async () => {
+    const html = await render(Err, { code: "failed", message: "上游 500" });
+    assert.match(html, /上游 500/);
+    assert.doesNotMatch(html, /生成服务出错/);
+  });
+
+  test("retry-type buttons emit retry, others emit action", async () => {
+    const { state, emitted } = await bindings(Err, { code: "timeout" });
+    assert.deepEqual(state.buttons.value.map((b: any) => b.kind), ["retry", "switchModel"]);
+    for (const b of state.buttons.value) state.press(b.kind);
+    assert.deepEqual(emitted, [["retry"], ["action", "switchModel"]]);
   });
 });

@@ -22,18 +22,18 @@ const emit = defineEmits<{ cancel: [] }>();
 
 // Chinese originals (UI-DESIGN-3 §3.1②); used only when the host i18n lacks the key.
 const FALLBACK: Record<string, string> = {
-  "gen.generating": "正在生成 {n} 张图片",
-  "gen.stage.queued": "排队中",
-  "gen.stage.submitting": "正在提交给模型…",
-  "gen.stage.running": "生成中",
-  "gen.stage.ingesting": "马上就好，正在取回结果…",
-  "gen.elapsed": "已用 {t}",
-  "gen.expectedSec": "预计约 {n} 秒",
-  "gen.slow": "比平时慢一些，仍在生成…",
-  "gen.cancel": "取消",
-  "gen.cancelConfirm": "取消后不会出结果。尚未提交给模型的不扣费；已提交的按实际扣费。",
-  "gen.cancelYes": "取消生成",
-  "gen.cancelNo": "继续等",
+  "chatGen.generating": "正在生成 {n} 张图片",
+  "chatGen.stage.queued": "排队中",
+  "chatGen.stage.submitting": "正在提交给模型…",
+  "chatGen.stage.running": "生成中",
+  "chatGen.stage.ingesting": "马上就好，正在取回结果…",
+  "chatGen.elapsed": "已用 {t}",
+  "chatGen.expectedSec": "预计约 {n} 秒",
+  "chatGen.slow": "比平时慢一些，仍在生成…",
+  "chatGen.cancel": "取消",
+  "chatGen.cancelConfirm": "取消后不会出结果。尚未提交给模型的不扣费；已提交的按实际扣费。",
+  "chatGen.cancelYes": "取消生成",
+  "chatGen.cancelNo": "继续等",
 };
 const { t, te } = useI18n();
 function tr(key: string, params: Record<string, unknown> = {}): string {
@@ -88,7 +88,7 @@ function confirmCancel() {
 <template>
   <div class="gen-pending" :class="`is-${state}`" role="status" aria-live="polite">
     <div class="gen-pending__head">
-      <span>{{ tr("gen.generating", { n: cells }) }}</span>
+      <span>{{ tr("chatGen.generating", { n: cells }) }}</span>
       <i class="gen-pending__dot" aria-hidden="true" />
     </div>
     <div
@@ -101,18 +101,18 @@ function confirmCancel() {
     <div class="gen-pending__bar" aria-hidden="true" />
     <div class="gen-pending__meta">
       <span class="gen-pending__text">
-        {{ tr(`gen.stage.${state}`) }} · {{ tr("gen.elapsed", { t: elapsedText }) }} ·
-        {{ slow ? tr("gen.slow") : tr("gen.expectedSec", { n: expectedSec }) }}
+        {{ tr(`chatGen.stage.${state}`) }} · {{ tr("chatGen.elapsed", { t: elapsedText }) }} ·
+        {{ slow ? tr("chatGen.slow") : tr("chatGen.expectedSec", { n: expectedSec }) }}
       </span>
       <button v-if="showCancel && !confirming" type="button" class="gen-pending__cancel gen-btn" @click="askCancel">
-        {{ tr("gen.cancel") }}
+        {{ tr("chatGen.cancel") }}
       </button>
     </div>
-    <div v-if="showCancel && confirming" class="gen-pending__confirm" role="alertdialog" :aria-label="tr('gen.cancelConfirm')">
-      <p>{{ tr("gen.cancelConfirm") }}</p>
+    <div v-if="showCancel && confirming" class="gen-pending__confirm" role="alertdialog" :aria-label="tr('chatGen.cancelConfirm')">
+      <p>{{ tr("chatGen.cancelConfirm") }}</p>
       <div class="gen-pending__confirm-actions">
-        <button type="button" class="gen-btn is-danger" @click="confirmCancel">{{ tr("gen.cancelYes") }}</button>
-        <button type="button" class="gen-btn" @click="keepWaiting">{{ tr("gen.cancelNo") }}</button>
+        <button type="button" class="gen-btn is-danger" @click="confirmCancel">{{ tr("chatGen.cancelYes") }}</button>
+        <button type="button" class="gen-btn" @click="keepWaiting">{{ tr("chatGen.cancelNo") }}</button>
       </div>
     </div>
   </div>

@@ -26,18 +26,18 @@ const emit = defineEmits<{
 
 // Chinese originals; used only when the host i18n lacks the key.
 const FALLBACK: Record<string, string> = {
-  "gen.countN": "{n} 张",
-  "gen.copyPrompt": "复制提示词",
-  "gen.copied": "已复制",
-  "gen.download": "下载",
-  "gen.regenerate": "重新生成",
-  "gen.continueEdit": "继续修改",
-  "gen.saveToLibrary": "保存到成果库",
-  "gen.saved": "已存 ✓",
-  "gen.openLibrary": "在成果库查看",
-  "gen.loadFailed": "图片加载失败",
-  "gen.reload": "重新加载",
-  "gen.close": "关闭",
+  "chatGen.countN": "{n} 张",
+  "chatGen.copyPrompt": "复制提示词",
+  "chatGen.copied": "已复制",
+  "chatGen.download": "下载",
+  "chatGen.regenerate": "重新生成",
+  "chatGen.continueEdit": "继续修改",
+  "chatGen.saveToLibrary": "保存到成果库",
+  "chatGen.saved": "已存 ✓",
+  "chatGen.openLibrary": "在成果库查看",
+  "chatGen.loadFailed": "图片加载失败",
+  "chatGen.reload": "重新加载",
+  "chatGen.close": "关闭",
 };
 const { t, te } = useI18n();
 function tr(key: string, params: Record<string, unknown> = {}): string {
@@ -67,7 +67,7 @@ const cellRatio = computed(() => {
 
 const badges = computed(() => [
   props.params.aspect,
-  tr("gen.countN", { n: props.params.count }),
+  tr("chatGen.countN", { n: props.params.count }),
   props.params.model,
   props.params.size,
 ].filter(Boolean));
@@ -121,18 +121,18 @@ onBeforeUnmount(() => { if (typeof window !== "undefined") window.removeEventLis
         :style="{ aspectRatio: cellRatio }"
       >
         <div v-if="failed.has(i)" class="gen-result__failed">
-          <span>{{ tr("gen.loadFailed") }}</span>
-          <button type="button" class="gen-btn" @click="reload(i)">{{ tr("gen.reload") }}</button>
+          <span>{{ tr("chatGen.loadFailed") }}</span>
+          <button type="button" class="gen-btn" @click="reload(i)">{{ tr("chatGen.reload") }}</button>
         </div>
         <template v-else>
           <button type="button" class="gen-result__open" :aria-label="item.name" @click="open(i)">
             <img :src="item.thumbUrl || item.url" :alt="item.name" loading="lazy" @error="onImgError(i)" />
           </button>
           <div class="gen-result__corner">
-            <button type="button" :title="tr('gen.download')" :aria-label="tr('gen.download')" @click="emit('download', item)">
+            <button type="button" :title="tr('chatGen.download')" :aria-label="tr('chatGen.download')" @click="emit('download', item)">
               <Download :size="14" />
             </button>
-            <button type="button" :title="tr('gen.continueEdit')" :aria-label="tr('gen.continueEdit')" @click="emit('refine', item)">
+            <button type="button" :title="tr('chatGen.continueEdit')" :aria-label="tr('chatGen.continueEdit')" @click="emit('refine', item)">
               <PenLine :size="14" />
             </button>
           </div>
@@ -142,9 +142,9 @@ onBeforeUnmount(() => { if (typeof window !== "undefined") window.removeEventLis
 
     <div class="gen-result__prompt">
       <span class="gen-result__prompt-text">「{{ prompt }}」</span>
-      <button type="button" class="gen-result__copy" :title="tr('gen.copyPrompt')" :aria-label="tr('gen.copyPrompt')" @click="copyPrompt">
+      <button type="button" class="gen-result__copy" :title="tr('chatGen.copyPrompt')" :aria-label="tr('chatGen.copyPrompt')" @click="copyPrompt">
         <Check v-if="copied" :size="13" /><Copy v-else :size="13" />
-        <span v-if="copied">{{ tr("gen.copied") }}</span>
+        <span v-if="copied">{{ tr("chatGen.copied") }}</span>
       </button>
     </div>
     <div class="gen-result__badges">
@@ -153,20 +153,20 @@ onBeforeUnmount(() => { if (typeof window !== "undefined") window.removeEventLis
 
     <div class="gen-result__actions">
       <button type="button" class="gen-btn" @click="single ? emit('download', shown[0]) : downloadAll()">
-        <Download :size="14" />{{ tr("gen.download") }}
+        <Download :size="14" />{{ tr("chatGen.download") }}
       </button>
       <template v-if="saved">
-        <span class="gen-btn is-opt is-done"><Check :size="14" />{{ tr("gen.saved") }}</span>
-        <a v-if="libraryUrl" class="gen-btn is-opt" :href="libraryUrl">{{ tr("gen.openLibrary") }}</a>
+        <span class="gen-btn is-opt is-done">{{ tr("chatGen.saved") }}</span>
+        <a v-if="libraryUrl" class="gen-btn is-opt" :href="libraryUrl">{{ tr("chatGen.openLibrary") }}</a>
       </template>
       <button v-else type="button" class="gen-btn is-opt" @click="emit('save')">
-        <Star :size="14" />{{ tr("gen.saveToLibrary") }}
+        <Star :size="14" />{{ tr("chatGen.saveToLibrary") }}
       </button>
       <button type="button" class="gen-btn is-opt" @click="emit('regenerate')">
-        <RefreshCw :size="14" />{{ tr("gen.regenerate") }}
+        <RefreshCw :size="14" />{{ tr("chatGen.regenerate") }}
       </button>
       <button type="button" class="gen-btn" @click="emit('refine', shown[0])">
-        <PenLine :size="14" />{{ tr("gen.continueEdit") }}
+        <PenLine :size="14" />{{ tr("chatGen.continueEdit") }}
       </button>
     </div>
 
@@ -174,8 +174,8 @@ onBeforeUnmount(() => { if (typeof window !== "undefined") window.removeEventLis
       <div v-if="current" class="gen-lightbox" role="dialog" aria-modal="true" :aria-label="current.name" @click.self="close">
         <img :src="current.url" :alt="current.name" />
         <div class="gen-lightbox__bar">
-          <button type="button" class="gen-btn" @click="emit('download', current)"><Download :size="14" />{{ tr("gen.download") }}</button>
-          <button type="button" class="gen-btn" :aria-label="tr('gen.close')" @click="close"><X :size="14" /></button>
+          <button type="button" class="gen-btn" @click="emit('download', current)"><Download :size="14" />{{ tr("chatGen.download") }}</button>
+          <button type="button" class="gen-btn" :aria-label="tr('chatGen.close')" @click="close"><X :size="14" /></button>
         </div>
       </div>
     </Teleport>
