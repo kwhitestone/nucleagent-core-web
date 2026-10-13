@@ -4,13 +4,15 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { MyAgent } from "../api/agent";
 import { relativeTime } from "../composables/taskDesk";
+import { avatarUrl } from "../../administration/agents/definition/groups";
 import { agentModel, agentStatus, avatarGradient } from "./agentCard";
 
 const props = defineProps<{ agent: MyAgent; admin: boolean; hasModelField: boolean; delay: number }>();
 const { t, locale } = useI18n();
 const avatarOk = ref(true);
 watch(() => props.agent.config?.avatar, () => { avatarOk.value = true; });
-const avatar = computed(() => (avatarOk.value ? props.agent.config?.avatar || "" : ""));
+// Same https-only, no-credentials rule as the definition editor.
+const avatar = computed(() => (avatarOk.value ? avatarUrl(props.agent.config?.avatar) : ""));
 const model = computed(() => agentModel(props.agent));
 const status = computed(() => agentStatus(props.agent, props.hasModelField));
 const used = computed(() => props.agent.sessionCount > 0

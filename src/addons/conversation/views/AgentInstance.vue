@@ -4,7 +4,7 @@
  * (view / edit / clear), my sessions with it (each opens the normal /c/:id
  * replay), and a box that starts a new session in this instance.
  */
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError, isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
@@ -30,6 +30,7 @@ const sessions = ref<Conversation[]>([]);
 const loading = ref(true);
 const missing = ref(false);
 const input = ref("");
+const inputEl = ref<HTMLTextAreaElement | null>(null);
 const submitting = ref(false);
 const editingMemory = ref(false);
 const memoryDraft = ref("");
@@ -55,6 +56,9 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false;
   }
+  // Card "start chat" lands here: put the cursor in the new-session box (absent when disabled/deleted).
+  await nextTick();
+  inputEl.value?.focus({ preventScroll: true });
 }
 watch(() => props.templateId, load, { immediate: true });
 
@@ -129,7 +133,7 @@ function source(c: Conversation): string {
         <p v-if="agent.deleted" class="notice" role="status" data-testid="agent-deleted-banner">{{ t("agents.deletedHint") }}</p>
         <p v-else-if="agent.disabled" class="notice" role="status">{{ t("agents.disabledHint") }}</p>
         <form v-else class="agent-compose" @submit.prevent="startSession">
-          <textarea v-model="input" rows="3" :placeholder="t('agents.newSessionPlaceholder', { name: agent.name })"
+          <textarea ref="inputEl" v-model="input" rows="3" :placeholder="t('agents.newSessionPlaceholder', { name: agent.name })"
             data-testid="agent-new-input" @keydown.enter.exact.prevent="startSession" />
           <button class="btn-primary" type="submit" :disabled="!input.trim() || submitting" data-testid="agent-new-session">
             {{ t("agents.newSession") }}

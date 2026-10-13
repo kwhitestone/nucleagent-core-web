@@ -1,54 +1,167 @@
 <script setup lang="ts">
-/** All of my agents: every enabled definition, plus disabled ones I have used. */
-import { onMounted, ref } from "vue";
+/** All of my agents: every enabled definition (chat-ready), plus disabled ones I have used (collapsed). */
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import { listMyAgents, type MyAgent } from "../api/agent";
+import AgentCard from "../components/AgentCard.vue";
+import { groupAgents } from "../components/agentCard";
 
 const { t } = useI18n();
+const authorization = useEmbeddedAuthorization();
+// Same capability that gates the admin console; regular users never see manage/import/edit.
+const admin = computed(() => isInShell() && authorization.can("core:admin:read"));
+
 const agents = ref<MyAgent[]>([]);
 const loading = ref(true);
+const failed = ref(false);
+const query = ref("");
+const applied = ref("");
+const showInactive = ref(false);
+const showHelp = ref(false);
 
-onMounted(async () => {
+let timer: ReturnType<typeof setTimeout> | undefined;
+watch(query, (q) => { clearTimeout(timer); timer = setTimeout(() => { applied.value = q; }, 150); });
+
+const groups = computed(() => groupAgents(agents.value, applied.value));
+// Older Core omits config.model entirely; then "needs config" can't be told apart from "disabled".
+const hasModelField = computed(() => agents.value.some((a) => a.config && "model" in a.config));
+const searchable = computed(() => agents.value.length >= 6);
+const searching = computed(() => !!applied.value.trim());
+const noMatch = computed(() => searching.value && !groups.value.active.length && !groups.value.inactive.length);
+
+async function load(): Promise<void> {
+  loading.value = true;
+  failed.value = false;
   try {
     agents.value = await listMyAgents();
   } catch {
+    failed.value = true;
     toast.error(t("agents.loadFailed"));
   } finally {
     loading.value = false;
   }
-});
+}
+onMounted(load);
 </script>
 
 <template>
   <div class="view active">
     <div class="agent-list" data-testid="agent-list">
-      <h1>{{ t("agents.title") }}</h1>
-      <p class="hint">{{ t("agents.listHint") }}</p>
-      <p v-if="loading" class="hint">{{ t("common.loading") }}</p>
-      <p v-else-if="!agents.length" class="hint">{{ t("agents.none") }}</p>
-      <router-link v-for="a in agents" :key="a.templateId" :to="`/agents/${a.templateId}`" class="row" :class="{ off: a.disabled }" data-testid="agent-list-row">
-        <span class="avatar" aria-hidden="true">{{ a.name.slice(0, 1) }}</span>
-        <span class="main">
-          <span class="name">{{ a.name }}<span v-if="a.disabled" class="tag">{{ t("agents.disabled") }}</span></span>
-          <span class="desc">{{ a.description || t("agents.sessionsCount", { n: a.sessionCount }) }}</span>
-        </span>
-      </router-link>
+      <header class="agent-list-head">
+        <div>
+          <p class="agent-list-eyebrow">{{ t("agents.eyebrow") }}</p>
+          <h1>
+            {{ t("agents.title") }}
+            <span class="agent-list-help-wrap">
+              <button type="button" class="agent-list-q" :aria-expanded="showHelp" :aria-label="t('agents.helpLabel')"
+                data-testid="agent-list-help" @click="showHelp = !showHelp" @blur="showHelp = false">?</button>
+              <span v-if="showHelp" class="agent-list-pop" role="tooltip">{{ t("agents.help") }}</span>
+            </span>
+          </h1>
+          <p class="agent-list-hint">{{ t("agents.listHint") }}</p>
+        </div>
+        <div class="agent-list-tools">
+          <input v-if="searchable" v-model="query" type="search" :placeholder="t('agents.searchPlaceholder')"
+            :aria-label="t('agents.searchPlaceholder')" data-testid="agent-list-search">
+          <router-link v-if="admin" to="/admin/agents" class="btn-ghost" data-testid="agent-list-admin">{{ t("agents.manage") }}</router-link>
+        </div>
+      </header>
+
+      <div v-if="loading" class="agent-grid" data-testid="agent-list-skeleton" aria-busy="true">
+        <div v-for="i in 6" :key="i" class="agent-skel"><i /><b /><b /><b class="short" /></div>
+      </div>
+
+      <div v-else-if="failed" class="agent-list-error" role="alert" data-testid="agent-list-error">
+        <span>{{ t("agents.loadError") }}</span>
+        <button type="button" class="btn-ghost" data-testid="agent-list-retry" @click="load">{{ t("agents.retry") }}</button>
+      </div>
+
+      <template v-else>
+        <div v-if="!groups.active.length && !searching" class="agent-list-empty" data-testid="agent-list-empty">
+          <span class="agent-list-badge" aria-hidden="true">✦</span>
+          <h2>{{ t("agents.emptyTitle") }}</h2>
+          <template v-if="admin">
+            <p>{{ t("agents.emptyAdmin") }}</p>
+            <router-link to="/admin/agents" class="btn-primary">{{ t("agents.importRecommended") }}</router-link>
+          </template>
+          <p v-else>{{ t("agents.emptyUser") }}</p>
+        </div>
+
+        <p v-if="noMatch" class="agent-list-nomatch">
+          {{ t("agents.noMatch", { q: applied.trim() }) }}
+          <button type="button" class="btn-ghost" @click="query = ''">{{ t("agents.clearSearch") }}</button>
+        </p>
+
+        <section v-if="groups.active.length" data-testid="agent-list-active">
+          <h2 class="agent-list-group">{{ t("agents.groupActive") }} <span>{{ groups.active.length }}</span></h2>
+          <div class="agent-grid">
+            <AgentCard v-for="(a, i) in groups.active" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i" />
+          </div>
+          <div v-if="groups.active.length === 1 && !searching" class="agent-list-more">
+            <span>{{ admin ? t("agents.emptyAdmin") : t("agents.moreUser") }}</span>
+            <router-link v-if="admin" to="/admin/agents" class="btn-ghost">{{ t("agents.importRecommended") }}</router-link>
+          </div>
+        </section>
+
+        <section v-if="groups.inactive.length" data-testid="agent-list-inactive">
+          <h2 class="agent-list-group">
+            {{ t("agents.groupInactive") }} <span>{{ groups.inactive.length }}</span>
+            <button type="button" class="agent-list-toggle" :aria-expanded="showInactive" data-testid="agent-list-inactive-toggle"
+              @click="showInactive = !showInactive">{{ showInactive ? t("agents.collapse") : t("agents.expand") }}</button>
+          </h2>
+          <div v-if="showInactive" class="agent-grid agent-grid-in">
+            <AgentCard v-for="(a, i) in groups.inactive" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i" />
+          </div>
+          <p v-else class="agent-list-names">{{ groups.inactive.map((a) => a.name).join(t("agents.nameSep")) }} — {{ t("agents.inactiveHint") }}</p>
+        </section>
+      </template>
     </div>
   </div>
 </template>
 
-<style scoped>
-.agent-list { height: 100%; overflow-y: auto; max-width: 880px; margin: 0 auto; width: 100%; padding: 32px 24px 48px; display: flex; flex-direction: column; gap: 10px; }
-h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); }
-.hint { font-size: 13px; color: var(--text-tertiary); }
-.row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); text-decoration: none; }
-.row:hover { border-color: var(--border-strong); }
-.row.off { opacity: 0.6; }
-.avatar { width: 36px; height: 36px; border-radius: var(--r-md); background: var(--grad-brand-soft); color: var(--teal-600); display: grid; place-items: center; font-weight: 700; flex: none; }
-.main { display: flex; flex-direction: column; min-width: 0; }
-.name { font-size: 14px; font-weight: 600; color: var(--text-primary); display: flex; gap: 8px; align-items: center; }
-.desc { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag { font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 999px; background: var(--slate-100); color: var(--text-tertiary); }
-@media (max-width: 1023.98px) { .agent-list { padding: 16px; } }
+<style>
+/* Non-scoped like AgentCard; agent-list-* / agent-grid / agent-skel are core-private. Tokens only. */
+.agent-list { height: 100%; overflow-y: auto; max-width: 1200px; margin: 0 auto; width: 100%; padding: 32px 32px 48px; display: flex; flex-direction: column; gap: 20px; }
+.agent-list-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.agent-list-eyebrow { margin: 0 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal-600); }
+.agent-list h1 { margin: 0; font-size: 26px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+.agent-list-hint { margin: 6px 0 0; font-size: 13px; color: var(--text-tertiary); }
+.agent-list-help-wrap { position: relative; display: inline-flex; }
+.agent-list-q { width: 22px; height: 22px; border-radius: var(--r-full); border: 1px solid var(--border); background: var(--bg-card); color: var(--text-tertiary); font-size: 12px; cursor: pointer; }
+.agent-list-pop { position: absolute; top: 30px; left: -8px; z-index: 5; width: 280px; padding: 10px 12px; border-radius: var(--r-md); background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); font-size: 12.5px; font-weight: 400; line-height: 1.6; color: var(--text-secondary); animation: fade-in 0.2s var(--ease) both; }
+.agent-list-tools { display: flex; gap: 8px; align-items: center; }
+.agent-list-tools input { height: 36px; width: 240px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); font-size: 13px; }
+.agent-list-tools input:focus { outline: none; border-color: var(--teal-500); }
+.agent-list-tools a, .agent-list-more a, .agent-list-empty a { height: 36px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; text-decoration: none; }
+.agent-list-group { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
+.agent-list-group > span { color: var(--text-tertiary); font-weight: 500; }
+.agent-list-toggle { margin-left: auto; border: 0; background: none; color: var(--teal-600); font-size: 12.5px; cursor: pointer; }
+.agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 16px; }
+.agent-grid-in { animation: fade-in-up 0.4s var(--ease-out) both; }
+.agent-list-names { margin: 0; padding: 10px 14px; border: 1px dashed var(--border); border-radius: var(--r-lg); font-size: 12.5px; color: var(--text-tertiary); }
+.agent-list-more { margin-top: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: var(--r-lg); background: var(--grad-brand-soft); font-size: 13px; color: var(--text-secondary); }
+.agent-list-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 64px 16px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+.agent-list-empty h2 { margin: 0; font-size: 20px; font-weight: 700; color: var(--text-primary); }
+.agent-list-empty p { margin: 0; }
+.agent-list-badge { width: 64px; height: 64px; border-radius: var(--r-lg); display: grid; place-items: center; background: var(--grad-brand); color: #fff; font-size: 26px; box-shadow: var(--shadow-glow-teal); animation: float 3s ease-in-out infinite; }
+.agent-list-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-radius: var(--r-lg); background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; font-size: 13px; }
+.agent-list-nomatch { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-tertiary); }
+.agent-skel { height: 196px; border-radius: var(--r-lg); border: 1px solid var(--border); background: var(--bg-card); overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+.agent-skel i, .agent-skel b { display: block; background: linear-gradient(90deg, var(--slate-100) 25%, #f8fafc 50%, var(--slate-100) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.agent-skel i { height: 64px; }
+.agent-skel b { height: 12px; margin: 0 16px; border-radius: 6px; }
+.agent-skel b.short { width: 40%; }
+@media (max-width: 1023.98px) { .agent-list { padding: 16px 16px 88px; } }
+@media (max-width: 640px) {
+  .agent-list h1 { font-size: 22px; }
+  .agent-list-tools { width: 100%; }
+  .agent-list-tools input { flex: 1; width: auto; font-size: 16px; }
+  .agent-grid { grid-template-columns: 1fr; gap: 10px; }
+  .agent-skel { height: 72px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-skel i, .agent-skel b, .agent-list-badge, .agent-grid-in, .agent-list-pop { animation: none; }
+}
 </style>
