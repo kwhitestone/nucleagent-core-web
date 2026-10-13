@@ -9,7 +9,7 @@
  * 仅保留内容。创建对话的逻辑沿用 useConversationStore。
  */
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { BroadcastApiError } from "@/addons/conversation/api/broadcast";
@@ -28,8 +28,13 @@ import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/
 import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
 import SuggestionChip from "@/components/SuggestionChip.vue";
 import { cardInput, generationKind, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
+import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
+import { createGeneration } from "@/addons/conversation/api/media";
+import { errorText, type MediaModel } from "@/addons/conversation/composables/generation";
+import { DEFAULT_PARAMS, type Aspect } from "@/addons/conversation/composables/chatGeneration";
 
 const router = useRouter();
+const route = useRoute();
 const store = useConversationStore();
 const { t, locale } = useI18n();
 const narrow = useNarrow();
@@ -44,7 +49,28 @@ const executionBackend = ref<string | null>(null);
 const backendCompatible = ref(false);
 const broadcast = ref(false);
 const eligibleCount = ref(0);
-const canSend = computed(() => broadcast.value ? eligibleCount.value > 0 : backendCompatible.value);
+/** UI-IMPL-3: image mode — sending creates a new chat (conversationId 0) with the generation in it. */
+const genOn = ref(route.query.gen === "image");
+const genAspect = ref<Aspect>(DEFAULT_PARAMS.aspect);
+const genCount = ref(DEFAULT_PARAMS.count);
+const genModel = ref<MediaModel | null>(null);
+const canSend = computed(() => genOn.value ? !!genModel.value : broadcast.value ? eligibleCount.value > 0 : backendCompatible.value);
+
+async function createImageChat(prompt: string): Promise<void> {
+  const m = genModel.value;
+  if (!m) return;
+  submitting.value = true;
+  try {
+    const created = await createGeneration({ kind: "image", providerId: m.providerId, model: m.model, prompt,
+      conversationId: 0, aspect: genAspect.value, count: genCount.value });
+    input.value = "";
+    await router.push({ path: `/c/${created.conversationId}`, query: { gen: "image" } });
+  } catch (error) {
+    toast.error(errorText(error instanceof ApiError ? error.code : "", t, error instanceof Error ? error.message : ""));
+  } finally {
+    submitting.value = false;
+  }
+}
 
 /**
  * 首页建议卡只来自 Core（UNI-C7：去掉了前端写死的旧 9 张兜底）。
@@ -56,6 +82,7 @@ const suggestions = computed<HomeCard[]>(() => resolveCards(configured.value, lo
 
 async function handleCreate(): Promise<void> {
   const text = input.value.trim();
+  if (genOn.value && text) return createImageChat(text);
   if (!text || submitting.value) return;
   if (!canSend.value) {
     toast.warning(t("common.executionBackendSelectionInvalid"));
@@ -113,7 +140,7 @@ function fillSuggestion(card: HomeCard): void {
   // MT3: video opens the generate page; UI-IMPL-3 (6B): image opens a new chat in image mode.
   const kind = generationKind(card);
   if (kind === "image") {
-    void router.push({ name: "chat", query: { gen: "image" } });
+    genOn.value = true;
     return;
   }
   if (kind) {
@@ -185,7 +212,8 @@ onMounted(() => {
           :disabled="submitting"
         />
         <div class="desk-actions">
-          <AttachmentPicker v-model="attachments" :disabled="submitting" />
+          <AttachmentPicker v-if="!genOn" v-model="attachments" :disabled="submitting" />
+          <ChatGenBar v-model:on="genOn" v-model:aspect="genAspect" v-model:count="genCount" v-model:model="genModel" />
           <button type="button" class="desk-pill" data-testid="run-pill" :disabled="submitting" @click="runSheet = true">
             <span>{{ broadcast ? t('broadcast.toggle') : [modelLabel || t('common.modelDefault'), backendLabel].filter(Boolean).join(' · ') }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -248,7 +276,8 @@ onMounted(() => {
             @keydown.enter.exact.prevent="handleCreate"
           />
           <div class="composer-actions">
-            <AttachmentPicker v-model="attachments" :disabled="submitting" />
+            <AttachmentPicker v-if="!genOn" v-model="attachments" :disabled="submitting" />
+            <ChatGenBar v-model:on="genOn" v-model:aspect="genAspect" v-model:count="genCount" v-model:model="genModel" />
             <ModelPicker v-model="modelChoice" :disabled="submitting" compact />
             <ExecutionBackendPicker
               v-if="!broadcast"

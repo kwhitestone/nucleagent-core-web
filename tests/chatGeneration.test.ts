@@ -81,5 +81,5 @@ test("C8 carrier conversations accept input (image only) and the banner is plain
   assert.ok(zh.includes("这是一次图片生成，可以在下方继续描述修改"));
   assert.ok(zh.includes("取消后不会出结果。尚未提交给模型的不扣费；已提交的按实际扣费。"));
   const home = src("addons/conversation/views/Home.vue");
-  assert.ok(/gen: "image"/.test(home), "home card opens chat in image mode");
+  assert.ok(/conversationId: 0/.test(home) && /genOn\.value = true/.test(home), "home card turns on image mode; send creates a new chat");
 });
