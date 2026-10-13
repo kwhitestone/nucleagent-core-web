@@ -32,6 +32,7 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
+  deletedAt?: string | null;
 }
 
 /** "media": MT3 carrier of one image/video generation (Core addons/media); no follow-ups. */

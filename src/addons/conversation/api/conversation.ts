@@ -137,6 +137,22 @@ export async function cancelConversation(conversationId: number | string): Promi
   await http().post(`${BASE}/${conversationId}/cancel`);
 }
 
+/** DELETE /conversation/:id — hide my conversation (soft delete; whole compare group). */
+export async function deleteConversation(conversationId: number | string): Promise<void> {
+  await http().delete(`${BASE}/${conversationId}`);
+}
+
+/** POST /conversation/:id/restore — undo / restore from "recently deleted" (30 days). */
+export async function restoreConversation(conversationId: number | string): Promise<void> {
+  await http().post(`${BASE}/${conversationId}/restore`);
+}
+
+/** GET /conversation/deleted — my recently deleted conversations (30 days). */
+export async function listDeletedConversations(): Promise<Conversation[]> {
+  const response = await http().get<Envelope<Conversation[]>>(`${BASE}/deleted`);
+  return response.data?.data ?? [];
+}
+
 /**
  * PATCH /conversation/:id — 切换对话使用的模型/提供商。
  *
