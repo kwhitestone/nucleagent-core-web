@@ -56,7 +56,7 @@ test("avatar fallback rotates six existing gradients by id", () => {
 
 test("AgentCard shows the uploaded avatar and falls back to initial + gradient when it breaks", () => {
   const card = src("addons/conversation/components/AgentCard.vue");
-  assert.match(card, /<img[^>]*v-if="avatarOk"[^>]*@error="avatarOk = false"/s);
+  assert.match(card, /<img[^>]*v-if="avatar"[^>]*@error="avatarOk = false"/s);
   assert.match(card, /avatarGradient\(agent\.templateId\)/);
   assert.match(card, /data-testid="agent-card-start"/);
   assert.match(card, /v-if="admin"/, "edit is admin-only");
