@@ -26,6 +26,8 @@ import {
 } from "@/contracts/platform-runtime";
 import { configValue } from "@/runtimeConfig";
 import { listMyAgents, type MyAgent } from "../api/agent";
+import { parseDeleteIntent } from "./conversationDelete";
+import { requestDelete } from "./useConversationDelete";
 
 const SHELL_ORIGIN = configValue("VITE_SHELL_URL");
 
@@ -81,7 +83,7 @@ export function installShellBridge(router: Router): () => void {
     allowedHostOrigins: configValue("VITE_SHELL_ALLOWED_ORIGINS"),
     parent: window.parent,
     messages: {
-      toChild: ["auth", "view", "locale", "load-more"],
+      toChild: ["auth", "view", "locale", "load-more", "delete"],
       fromChild: ["auth-required", "conversations", "view-changed"],
     },
     onMessage(type, payload) {
@@ -129,6 +131,13 @@ export function installShellBridge(router: Router): () => void {
     if (type === "locale" && d.type === "locale") {
       const raw = d.locale;
       if (raw === "zh" || raw === "en") setLocale(raw);
+      return;
+    }
+
+    // UI-IMPL-5: sidebar 「⋯ › 删除」 opens our confirm dialog; Core checks ownership on DELETE.
+    if (type === "delete") {
+      const intent = parseDeleteIntent(payload);
+      if (intent) requestDelete(intent.conversationId);
       return;
     }
 

@@ -123,6 +123,7 @@ export default {
   conversation: {
     delete: {
       action: "删除",
+      menu: "删除对话",
       title: "删除这个对话？",
       body: "删除后对话从你的列表消失；账单与用量记录仍保留；30 天内可在“最近删除”找回。",
       runningNote: "正在生成的任务会被停止，已产生的费用照常计算。",

@@ -166,6 +166,19 @@
 .conv-more { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; background: transparent; color: var(--text-secondary); }
 .conv-more svg { width: 20px; height: 20px; fill: currentColor; }
 .conv-more-actions { display: flex; gap: 8px; }
+/* UI-IMPL-5: 「⋯ › 删除对话」 */
+.conv-head { position: relative; }
+.conv-head--wide { min-height: 44px; border-bottom: 0; background: transparent; }
+.conv-head--wide .conv-head-text strong { font-size: 14px; }
+.conv-menu {
+  position: absolute; top: 100%; right: 4px; z-index: 50; min-width: 140px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); box-shadow: var(--shadow-lg);
+  animation: fade-in-up 0.15s var(--ease-out) both;
+}
+.conv-menu button { width: 100%; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: none; text-align: left; cursor: pointer; }
+.conv-menu button:hover { background: var(--bg-hover); }
+.conv-menu-danger { color: var(--rose-500, #e11d48); }
+.conv-sheet-delete { width: 100%; min-height: 44px; margin-top: 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); }
 .conv-more-actions button { flex: 1; min-height: 44px; }
 @media (prefers-color-scheme: dark) {
   .conv-status[data-status="executing"] { color: var(--teal-300); }

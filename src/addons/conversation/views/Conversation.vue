@@ -47,11 +47,23 @@ import { followUp, getMessages } from "@/addons/conversation/api/conversation";
 import { DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, unsignedDone, type Aspect } from "@/addons/conversation/composables/chatGeneration";
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
+import { requestDelete } from "@/addons/conversation/composables/useConversationDelete";
 
 const props = defineProps<{ id: string }>();
 const narrow = useNarrow();
 /** Q7: below 1024px the model/backend switch lives behind the header's 「⋯」. */
 const moreOpen = ref(false);
+/** UI-IMPL-5: wide screens get a one-item 「⋯」 menu (删除); narrow ones put it in the sheet. */
+const menuOpen = ref(false);
+function onMore(): void {
+  if (narrow.value) moreOpen.value = true;
+  else menuOpen.value = !menuOpen.value;
+}
+function askDelete(): void {
+  moreOpen.value = false;
+  menuOpen.value = false;
+  requestDelete(Number(props.id), { title: title.value, status: status.value || undefined });
+}
 const title = ref("");
 // AG1: the agent behind this conversation was deleted: history stays, sending is refused (server 409).
 const agentDeleted = ref(false);
@@ -290,16 +302,19 @@ function onError(error: Error): void {
   <div class="view active view--scroll-hidden">
     <div class="chat-view" :class="{ 'chat-view--narrow': narrow }">
       <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
-      <header v-if="narrow" class="conv-head" data-testid="conv-head">
+      <header class="conv-head" :class="{ 'conv-head--wide': !narrow }" data-testid="conv-head">
         <div class="conv-head-text">
           <strong>{{ title || t('common.untitled') }}</strong>
           <span v-if="status" class="conv-status" :data-status="status">
             {{ status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${status}`) }}
           </span>
         </div>
-        <button type="button" class="conv-more" data-testid="conv-more" :aria-label="t('conversation.more')" :aria-expanded="moreOpen" @click="moreOpen = true">
+        <button type="button" class="conv-more" data-testid="conv-more" :aria-label="t('conversation.more')" :aria-expanded="moreOpen" @click="onMore">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
         </button>
+        <div v-if="menuOpen && !narrow" class="conv-menu" role="menu" @keydown.esc="menuOpen = false">
+          <button type="button" role="menuitem" class="conv-menu-danger" data-testid="conv-delete" @click="askDelete">{{ t('conversation.delete.menu') }}</button>
+        </div>
       </header>
       <div v-if="narrow" v-show="moreOpen" class="osheet-scrim" data-testid="conv-more-sheet" @click.self="moreOpen = false" @keydown.esc="moreOpen = false">
         <div class="osheet" role="dialog" aria-modal="true" :aria-label="t('home.runTitle')">
@@ -308,6 +323,7 @@ function onError(error: Error): void {
             <b>{{ t('home.runTitle') }}</b>
             <button type="button" class="osheet-done" @click="moreOpen = false">{{ t('common.done') }}</button>
           </div>
+          <button type="button" class="conv-menu-danger conv-sheet-delete" data-testid="conv-delete-narrow" @click="askDelete">{{ t('conversation.delete.menu') }}</button>
           <div class="picker-group">
             <ModelPicker
               :model-value="modelChoice"

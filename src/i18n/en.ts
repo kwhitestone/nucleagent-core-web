@@ -123,6 +123,7 @@ export default {
   conversation: {
     delete: {
       action: "Delete",
+      menu: "Delete conversation",
       title: "Delete this conversation?",
       body: "It disappears from your list. Billing and usage records are kept. You can restore it from \"Recently deleted\" within 30 days.",
       runningNote: "The task being generated will be stopped; costs already incurred are still charged.",
