@@ -110,6 +110,16 @@ describe("GenPendingCard", () => {
     assert.match(html, /Generating 4 images/);
     assert.match(html, /Working/);
   });
+
+  test("UI-IMPL-6 video placeholder: one cell, minutes estimate, over-estimate is a hint not an error", async () => {
+    const html = await render(Pending, { ...base, kind: "video", count: 1, aspect: "16:9", expectedSec: 120 });
+    assert.equal(count(html, "gen-pending__cell"), 1);
+    assert.match(html, /正在生成视频/);
+    assert.match(html, /预计约 2 分钟/);
+    const late = await render(Pending, { ...base, kind: "video", expectedSec: 120, startedAt: Date.now() - 300_000 });
+    assert.match(late, /比平时慢一些，仍在生成…/);
+    assert.match(late, /已用 5:00/);
+  });
 });
 
 describe("GenResultCard", () => {
@@ -299,6 +309,9 @@ describe("GenMessage cancelled batch", () => {
     app.use(i18n());
     await renderToString(app);
     state.redo();
-    assert.deepEqual(calls, [["prefill", "一只猫", "3:4", 2]]);
+    // UI-IMPL-6 rebase: prefill takes the stored media meta (kind + params) like regenerate/refine.
+    assert.equal(calls.length, 1);
+    const [name, prompt, meta] = calls[0] as [string, string, Record<string, unknown>];
+    assert.deepEqual([name, prompt, meta.aspect, meta.count], ["prefill", "一只猫", "3:4", 2]);
   });
 });

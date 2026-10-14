@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * UI-IMPL-6: video result (registry card "video-player", design §3.4).
- * Native player, never autoplays; the first frame is the cover (poster when
+ * Native player, starts only on user click; the first frame is the cover (poster when
  * the server has one, else `#t=0.1` so Safari paints a frame from metadata).
  */
 import { computed, ref } from "vue";
@@ -9,7 +9,6 @@ import { useI18n } from "vue-i18n";
 import type { GenResultItem } from "./GenResultCard.vue";
 
 const props = defineProps<{ item?: GenResultItem; aspect: string }>();
-const emit = defineEmits<{ download: [] }>();
 
 const FALLBACK: Record<string, string> = { "chatGen.videoLoadFailed": "视频加载失败", "chatGen.reload": "重新加载" };
 const { t, te } = useI18n();

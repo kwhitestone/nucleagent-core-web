@@ -77,6 +77,8 @@ export interface MediaMeta {
   aspect?: string;
   size?: string;
   count?: number;
+  duration?: number;
+  resolution?: string;
   taskIds?: number[];
   taskId?: number;
   batch?: number;

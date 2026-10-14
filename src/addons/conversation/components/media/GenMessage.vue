@@ -10,6 +10,7 @@ import type { ConversationItem } from "@/addons/conversation/task-conversation/c
 import type { GenerationTask } from "@/addons/conversation/composables/generation";
 import { isPending } from "@/addons/conversation/composables/generation";
 import { cancelSubmitted, cancelledBatch, mediaOf, promptOf, saveImage, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import { MEDIA_KINDS, kindOf } from "@/addons/conversation/registry";
 import GenPendingCard from "./GenPendingCard.vue";
 import GenResultCard, { type GenResultItem } from "./GenResultCard.vue";
 import GenErrorCard from "./GenErrorCard.vue";
@@ -20,10 +21,11 @@ export interface ChatGenHost {
   /** Cancel replies of this session: task id → submitted (reached the model). */
   submitted: ReadonlyMap<number, boolean>;
   cancel(ids: number[]): void;
+  /** meta = the stored data.media (kind + params; registry.paramsFromMeta). */
   /** Put prompt and params back into the composer (no generation). */
-  prefill(prompt: string, aspect: string, count: number): void;
-  regenerate(prompt: string, aspect: string, count: number): void;
-  refine(item: GenResultItem, prompt: string): void;
+  prefill(prompt: string, meta: Record<string, unknown>): void;
+  regenerate(prompt: string, meta: Record<string, unknown>): void;
+  refine(item: GenResultItem, prompt: string, meta: Record<string, unknown>): void;
 }
 const props = defineProps<{ item: ConversationItem }>();
 // Provided by Conversation.vue (renderers only receive the item).
@@ -40,7 +42,10 @@ const startedAt = computed(() => Math.min(...pending.value.map((x) => Date.parse
 const cancelled = computed(() => cancelledBatch(batchTasks.value));
 const done = computed(() => batchTasks.value.filter((x) => x.status === "succeeded" && x.downloadUrl));
 const lead = computed(() => props.item.role !== "user" && done.value[0]?.id === media.value?.taskId);
-const results = computed<GenResultItem[]>(() => done.value.map((x) => ({ url: x.downloadUrl!, name: x.file?.name ?? `image-${x.id}.png` })));
+const kind = computed(() => kindOf(media.value));
+const meta = computed(() => ({ ...(media.value ?? {}) }) as Record<string, unknown>);
+const results = computed<GenResultItem[]>(() => done.value.map((x) => ({ url: x.downloadUrl!,
+  name: x.file?.name ?? (kind.value === "video" ? `video-${x.id}.mp4` : `image-${x.id}.png`) })));
 const isError = computed(() => props.item.lane === "system" || typeof props.item.data?.errorCode === "string");
 const errCode = computed(() => {
   const c = String(props.item.data?.errorCode ?? "failed");
@@ -50,7 +55,7 @@ const errCode = computed(() => {
 const prompt = computed(() => promptOf(props.item.content ?? "") || batchTasks.value[0]?.prompt || "");
 
 function redo(): void {
-  host.prefill(prompt.value, media.value?.aspect ?? "1:1", media.value?.count ?? 1);
+  host.prefill(prompt.value, meta.value);
 }
 function download(item: GenResultItem): void {
   void saveImage(item.url, item.name);
@@ -66,6 +71,8 @@ function download(item: GenResultItem): void {
       :count="media?.count ?? pending.length"
       :aspect="(media?.aspect as Aspect) ?? '1:1'"
       :started-at="startedAt"
+      :kind="kind"
+      :expected-sec="MEDIA_KINDS[kind].expectSec"
       @cancel="host.cancel(pending.map((x) => x.id))"
     />
     <GenErrorCard v-else-if="cancelled" code="cancelled" :submitted="cancelSubmitted(ids, host.submitted)" @retry="redo" />
@@ -74,16 +81,17 @@ function download(item: GenResultItem): void {
     v-else-if="isError"
     :code="errCode as never"
     :message="errCode === 'failed' ? item.content : undefined"
-    @retry="host.regenerate(batchTasks[0]?.prompt ?? '', media?.aspect ?? '1:1', 1)"
+    @retry="host.regenerate(batchTasks[0]?.prompt ?? '', { ...meta, count: 1 })"
   />
   <GenResultCard
     v-else-if="lead"
     :items="results"
     :prompt="prompt"
-    :params="{ aspect: media?.aspect ?? '1:1', count: media?.count ?? 1, model: media?.model ?? '', size: media?.size ?? '' }"
+    :kind="kind"
+    :params="{ aspect: media?.aspect ?? '1:1', count: media?.count ?? 1, model: media?.model ?? '', size: media?.size ?? '', duration: media?.duration, resolution: media?.resolution }"
     saved
     @download="download"
-    @regenerate="host.regenerate(prompt, media?.aspect ?? '1:1', media?.count ?? 1)"
-    @refine="(it) => host.refine(it, prompt)"
+    @regenerate="host.regenerate(prompt, meta)"
+    @refine="(it) => host.refine(it, prompt, meta)"
   />
 </template>

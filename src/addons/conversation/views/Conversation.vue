@@ -44,7 +44,10 @@ import type { ConversationStatus } from "@/addons/conversation/api/types";
 import { errorText, isPending, type GenerationTask, type MediaModel } from "@/addons/conversation/composables/generation";
 import { cancelGeneration, createGeneration, getGeneration, listGenerations } from "@/addons/conversation/api/media";
 import { followUp, getMessages } from "@/addons/conversation/api/conversation";
-import { ASPECTS, DEFAULT_PARAMS, cancelNoteKey, forcedImageMode, unsignedDone, type Aspect } from "@/addons/conversation/composables/chatGeneration";
+import { cancelNoteKey, forcedImageMode, unsignedDone } from "@/addons/conversation/composables/chatGeneration";
+import { agentDefaults, defaultParams, enabledKinds, kindOf, needsConfirm, paramsFromMeta, requestParams, skipConfirm, type GenKind, type GenParams } from "@/addons/conversation/registry";
+import type { CreateGenerationBody } from "@/addons/conversation/api/media";
+import VideoConfirm from "@/addons/conversation/components/media/VideoConfirm.vue";
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 import { requestDelete } from "@/addons/conversation/composables/useConversationDelete";
@@ -80,9 +83,21 @@ const router = useRouter();
 const route = useRoute();
 
 // ── UI-IMPL-3: in-chat image generation ────────────────────────────────
-const genOn = ref(route.query.gen === "image");
-const genAspect = ref<Aspect>(DEFAULT_PARAMS.aspect);
-const genCount = ref(DEFAULT_PARAMS.count);
+const genKind = ref<GenKind>(route.query.gen === "video" ? "video" : "image");
+const genOn = ref(route.query.gen === "image" || route.query.gen === "video");
+const genParams = ref<GenParams>(defaultParams(genKind.value));
+/** UI-IMPL-6 P1: the agent's `<kind>Model` defaults (public view); empty on any failure. */
+const genPreferred = ref<Partial<Record<GenKind, string>>>({});
+/** Video asks first (§3.5); resolves true to go ahead. */
+const confirmVideo = ref<((ok: boolean) => void) | null>(null);
+function askVideo(): Promise<boolean> {
+  return new Promise((resolve) => { confirmVideo.value = resolve; });
+}
+function answerVideo(ok: boolean, skip: boolean): void {
+  if (ok && skip) skipConfirm(props.id);
+  confirmVideo.value?.(ok);
+  confirmVideo.value = null;
+}
 const genModel = ref<MediaModel | null>(null);
 const genTasks = ref(new Map<number, GenerationTask>());
 const genGroups = ref(new Map<number, number[]>());
@@ -94,7 +109,11 @@ let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function refreshGen(id: string): Promise<void> {
   clearTimeout(pollTimer);
-  const [tasks, messages] = await Promise.all([listGenerations("image"), getMessages(id)]).catch(() => [null, null] as const);
+  // Refresh/return trusts the server: every enabled kind's own tasks, then filter by conversation.
+  const [lists, messages] = await Promise.all([
+    Promise.all(enabledKinds().map((k) => listGenerations(k.kind as GenKind))), getMessages(id),
+  ]).catch(() => [null, null] as const);
+  const tasks = lists?.flat();
   if (id !== props.id) return;
   if (tasks && messages) {
     const mine = new Map(tasks.filter((x) => String(x.conversationId) === id).map((x) => [x.id, x]));
@@ -119,11 +138,12 @@ async function refreshGen(id: string): Promise<void> {
 }
 onBeforeUnmount(() => clearTimeout(pollTimer));
 
-async function generate(prompt: string, aspect: string, count: number): Promise<void> {
-  if (!genModel.value) throw new Error(t("chatGen.noModels"));
+async function generate(prompt: string, kind: GenKind, params: GenParams, model = genModel.value): Promise<void> {
+  if (!model || model.kind !== kind) throw new Error(t("chatGen.noModels"));
+  if (needsConfirm(kind, props.id) && !(await askVideo())) return;
   try {
-    await createGeneration({ kind: "image", providerId: genModel.value.providerId, model: genModel.value.model, prompt,
-      conversationId: Number(props.id), aspect, count });
+    await createGeneration({ kind, providerId: model.providerId, model: model.model, prompt,
+      conversationId: Number(props.id), ...(requestParams(kind, params) as Partial<CreateGenerationBody>) });
   } catch (error) {
     const code = error instanceof ApiError ? error.code : "";
     const busy = [...genTasks.value.values()].filter((x) => isPending(x.status)).length;
@@ -147,17 +167,22 @@ const genHost: ChatGenHost = {
     }).catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
       .finally(() => void refreshGen(props.id));
   },
-  regenerate(prompt, aspect, count) {
-    void generate(prompt, aspect, count).catch((error: Error) => toast.error(error.message));
+  regenerate(prompt, meta) {
+    const kind = kindOf(meta);
+    // Same kind as the bar → its model; otherwise the server rejects a mismatch, so say so.
+    void generate(prompt, kind, paramsFromMeta(meta), genModel.value?.kind === kind ? genModel.value : null)
+      .catch((error: Error) => toast.error(error.message));
   },
-  prefill(prompt, aspect, count) {
+  prefill(prompt, meta) {
+    genKind.value = kindOf(meta);
+    genParams.value = paramsFromMeta(meta);
     genOn.value = true;
-    if ((ASPECTS as readonly string[]).includes(aspect)) genAspect.value = aspect as Aspect;
-    genCount.value = count;
     conversationView.value?.setDraft(prompt);
   },
-  refine(_item, prompt) {
+  refine(_item, prompt, meta) {
     // ponytail: front-end-only reference — prefill the prompt; image-to-image is not in this phase.
+    const kind = kindOf(meta);
+    if (genKind.value !== kind) { genKind.value = kind; genParams.value = paramsFromMeta(meta); }
     genOn.value = true;
     conversationView.value?.setDraft(prompt);
   },
@@ -172,7 +197,7 @@ const adapter = computed<ConversationAdapter>(() => (void remount.value, createC
       await followUp(props.id, input, _atts);
       return { accepted: true };
     }
-    await generate(input, genAspect.value, genCount.value);
+    await generate(input, genKind.value, genParams.value);
     return { accepted: true };
   },
 })));
@@ -221,14 +246,16 @@ watch(
       if (!active) return;
       title.value = conversation.title ?? "";
       carrier.value = forcedImageMode(conversation);
-      if (carrier.value) genOn.value = true;
+      if (carrier.value) { genOn.value = true; genKind.value = "image"; genParams.value = defaultParams("image"); }
       void refreshGen(conversationId);
       agentDeleted.value = false;
+      genPreferred.value = {};
       if (conversation.agentId) {
         void (async () => {
           const templateId = await getInstanceTemplateId(conversation.agentId!);
           const agent = templateId ? await getMyAgent(templateId) : null;
           if (active) agentDeleted.value = agent?.deleted === true;
+          if (active) genPreferred.value = agentDefaults(agent?.config as { defaults?: Record<string, unknown> } | undefined);
         })().catch(() => {});
       }
       status.value = conversation.status ?? "";
@@ -368,6 +395,7 @@ function onError(error: Error): void {
         </div>
       </div>
       <p v-if="carrier" class="conv-media-banner" role="status" data-testid="conv-media-banner">{{ t("generate.mediaConversation") }}</p>
+      <VideoConfirm v-if="confirmVideo" @answer="answerVideo" />
       <p v-if="agentDeleted" class="conv-agent-deleted" role="status" data-testid="conv-agent-deleted">{{ t("agents.deletedHint") }}</p>
       <TaskConversation
         ref="conversationView"
@@ -393,7 +421,7 @@ function onError(error: Error): void {
           <AttachmentChips v-if="!item.data?.media" :attachments="[toMessageAttachment(attachment)]" />
         </template>
         <template #composer-toolbar-trailing>
-          <ChatGenBar v-model:on="genOn" v-model:aspect="genAspect" v-model:count="genCount" v-model:model="genModel" :locked="carrier" />
+          <ChatGenBar v-model:on="genOn" v-model:kind="genKind" v-model:params="genParams" v-model:model="genModel" :locked="carrier" :only="carrier ? 'image' : undefined" :preferred="genPreferred" />
         </template>
         <template v-if="!narrow" #composer-toolbar-leading="{ status }">
           <ModelPicker

@@ -16,7 +16,8 @@ const props = withDefaults(defineProps<{
   startedAt: number;
   expectedSec?: number;
   cancelable?: boolean;
-}>(), { count: 1, aspect: "1:1", expectedSec: 20, cancelable: true });
+  kind?: "image" | "video";
+}>(), { count: 1, aspect: "1:1", expectedSec: 20, cancelable: true, kind: "image" });
 
 const emit = defineEmits<{ cancel: [] }>();
 
@@ -29,6 +30,8 @@ const FALLBACK: Record<string, string> = {
   "chatGen.stage.ingesting": "马上就好，正在取回结果…",
   "chatGen.elapsed": "已用 {t}",
   "chatGen.expectedSec": "预计约 {n} 秒",
+  "chatGen.expectedMin": "预计约 {n} 分钟",
+  "chatGen.generatingVideo": "正在生成视频",
   "chatGen.slow": "比平时慢一些，仍在生成…",
   "chatGen.cancel": "取消",
   "chatGen.cancelConfirm": "取消后不会出结果。尚未提交给模型的不扣费；已提交的按实际扣费。",
@@ -41,7 +44,11 @@ function tr(key: string, params: Record<string, unknown> = {}): string {
   return (FALLBACK[key] ?? key).replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? ""));
 }
 
-const cells = computed(() => Math.min(4, Math.max(1, Math.round(props.count) || 1)));
+const cells = computed(() => (props.kind === "video" ? 1 : Math.min(4, Math.max(1, Math.round(props.count) || 1))));
+// Over the estimate only changes the hint (never an error); minutes past one minute.
+const expectedText = computed(() => (props.expectedSec >= 60
+  ? tr("chatGen.expectedMin", { n: Math.round(props.expectedSec / 60) })
+  : tr("chatGen.expectedSec", { n: props.expectedSec })));
 const ratio = computed(() => props.aspect.replace(":", " / "));
 const portrait = computed(() => {
   const [w, h] = props.aspect.split(":").map(Number);
@@ -88,7 +95,7 @@ function confirmCancel() {
 <template>
   <div class="gen-pending" :class="`is-${state}`" role="status" aria-live="polite">
     <div class="gen-pending__head">
-      <span>{{ tr("chatGen.generating", { n: cells }) }}</span>
+      <span>{{ kind === "video" ? tr("chatGen.generatingVideo") : tr("chatGen.generating", { n: cells }) }}</span>
       <i class="gen-pending__dot" aria-hidden="true" />
     </div>
     <div
@@ -102,7 +109,7 @@ function confirmCancel() {
     <div class="gen-pending__meta">
       <span class="gen-pending__text">
         {{ tr(`chatGen.stage.${state}`) }} · {{ tr("chatGen.elapsed", { t: elapsedText }) }} ·
-        {{ slow ? tr("chatGen.slow") : tr("chatGen.expectedSec", { n: expectedSec }) }}
+        {{ slow ? tr("chatGen.slow") : expectedText }}
       </span>
       <button v-if="showCancel && !confirming" type="button" class="gen-pending__cancel gen-btn" @click="askCancel">
         {{ tr("chatGen.cancel") }}

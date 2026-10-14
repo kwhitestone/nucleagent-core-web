@@ -76,7 +76,6 @@ function downloadAll() { shown.value.forEach((item) => emit("download", item)); 
       v-if="kind === 'video'"
       :item="shown[0]"
       :aspect="params.aspect"
-      @download="emit('download', shown[0])"
     />
     <ImageGrid v-else :items="shown" :aspect="params.aspect" @download="(it) => emit('download', it)" @refine="(it) => emit('refine', it)" />
 

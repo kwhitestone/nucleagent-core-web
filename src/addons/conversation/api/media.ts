@@ -17,6 +17,8 @@ export async function listMediaModels(kind: GenerationKind): Promise<MediaModel[
 export interface CreateGenerationBody {
   kind: GenerationKind; providerId: number; model: string; prompt: string;
   conversationId?: number; aspect?: string; count?: number;
+  /** UI-IMPL-6: video params (registry-declared; server validates). */
+  duration?: number; resolution?: string;
 }
 export interface CreatedGeneration { id: number; status: string; ids?: number[]; conversationId?: number }
 
