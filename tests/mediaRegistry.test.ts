@@ -35,7 +35,9 @@ test("R3 model preselect: agent default when listed, else first (fallback never 
   assert.deepEqual(reg.pickModel(ms, "gone"), { model: ms[0], agentDefault: false });
   assert.deepEqual(reg.pickModel(ms, undefined), { model: ms[0], agentDefault: false });
   assert.deepEqual(reg.pickModel([], "b"), { model: null, agentDefault: false });
-  assert.deepEqual(reg.agentDefaults({ defaults: { imageModel: "x", videoModel: 3, model: "glm" } }), { image: "x" });
+  // Public view: flat config.<kind>Model strings (core definition_view.go), never a defaults object.
+  assert.deepEqual(reg.agentDefaults({ imageModel: "x", videoModel: 3, model: "glm", musicModel: "m" }), { image: "x" });
+  assert.deepEqual(reg.agentDefaults({ imageModel: "", videoModel: "v" }), { video: "v" });
   assert.deepEqual(reg.agentDefaults(undefined), {});
 });
 

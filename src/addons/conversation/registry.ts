@@ -73,11 +73,11 @@ export function pickModel(models: MediaModel[], preferred: string | undefined): 
   return hit ? { model: hit, agentDefault: true } : { model: models[0] ?? null, agentDefault: false };
 }
 
-/** `<kind>Model` strings from an agent config (public view); anything else is ignored. */
-export function agentDefaults(config: { defaults?: Record<string, unknown> } | null | undefined): Partial<Record<GenKind, string>> {
+/** Flat `<kind>Model` strings from the public agent view (core definition_view.go); anything else is ignored. */
+export function agentDefaults(config: Record<string, unknown> | null | undefined): Partial<Record<GenKind, string>> {
   const out: Partial<Record<GenKind, string>> = {};
   for (const k of enabledKinds()) {
-    const v = config?.defaults?.[modelKey(k.kind)];
+    const v = config?.[modelKey(k.kind)];
     if (typeof v === "string" && v) out[k.kind as GenKind] = v;
   }
   return out;

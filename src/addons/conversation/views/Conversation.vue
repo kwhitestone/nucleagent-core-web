@@ -255,7 +255,7 @@ watch(
           const templateId = await getInstanceTemplateId(conversation.agentId!);
           const agent = templateId ? await getMyAgent(templateId) : null;
           if (active) agentDeleted.value = agent?.deleted === true;
-          if (active) genPreferred.value = agentDefaults(agent?.config as { defaults?: Record<string, unknown> } | undefined);
+          if (active) genPreferred.value = agentDefaults(agent?.config as Record<string, unknown> | undefined);
         })().catch(() => {});
       }
       status.value = conversation.status ?? "";
