@@ -30,6 +30,8 @@ export interface MyAgent {
   config?: AgentTemplate["config"];
   i18n?: Record<string, unknown>;
   disabled: boolean;
+  /** Created by the caller (user agents, U2/U8 — assumed field until the backend lands); system agents omit it. */
+  owned?: boolean;
   /** The definition was deleted by an admin (only on the single-item endpoint). */
   deleted?: boolean;
   /** Null until first use: everyone owns every agent before a row exists. */

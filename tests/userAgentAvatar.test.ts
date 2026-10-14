@@ -9,9 +9,8 @@ import {
 const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
 const png = (size = 1024, type = "image/png") => new File([new Uint8Array(size)], "a.png", { type });
 const side = (width = 512, height = 512) => async () => ({ width, height });
-const httpError = (status: number, detail: string) => Object.assign(new Error(`Request failed with status code ${status}`), {
-  response: { status, data: { title: "x", status, detail } },
-});
+// Same shape the platform runtime http throws (ApiError: server text in message, HTTP status).
+const httpError = (status: number, message: string) => Object.assign(new Error(message), { name: "ApiError", code: "", status });
 
 test("contract: user route, admin field name and limits, one mock shape (backend assumed until U8)", () => {
   assert.equal(USER_AVATAR_CONTRACT.method, "POST");

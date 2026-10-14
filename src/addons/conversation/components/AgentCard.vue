@@ -6,13 +6,40 @@ import type { MyAgent } from "../api/agent";
 import { relativeTime } from "../composables/taskDesk";
 import { avatarUrl } from "../../administration/agents/definition/groups";
 import { agentModel, agentStatus, avatarGradient } from "./agentCard";
+import { getPlatformRuntime } from "@/contracts/platform-runtime";
+import { configValue } from "@/runtimeConfig";
+import { toast } from "@/composables/useToast";
+import { AvatarUploadError, USER_AVATAR_CONTRACT, avatarUploader, canUploadAvatar, imageDims, storageAvatar } from "../api/userAvatar";
 
 const props = defineProps<{ agent: MyAgent; admin: boolean; hasModelField: boolean; delay: number }>();
+const emit = defineEmits<{ avatar: [path: string] }>();
 const { t, locale } = useI18n();
 const avatarOk = ref(true);
 watch(() => props.agent.config?.avatar, () => { avatarOk.value = true; });
 // Same https-only, no-credentials rule as the definition editor.
-const avatar = computed(() => (avatarOk.value ? avatarUrl(props.agent.config?.avatar) : ""));
+const storageOrigin = () => { try { return configValue("VITE_STORAGE_URL"); } catch { return ""; } };
+const avatar = computed(() => (avatarOk.value ? avatarUrl(storageAvatar(props.agent.config?.avatar, storageOrigin())) : ""));
+
+// User-created agents only (U8); same rules as the admin upload, contract in api/userAvatar.ts.
+const uploading = ref(false);
+const upload = avatarUploader((path, body) => getPlatformRuntime().http.post(path, body,
+  { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data), imageDims, (b) => { uploading.value = b; });
+async function onAvatarFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    const path = await upload(props.agent.templateId, file);
+    if (path) { emit("avatar", path); toast.success(t("agents.avatarUpdated")); }
+  } catch (e) {
+    const kind = e instanceof AvatarUploadError ? e.kind : "failed";
+    // 404 is one fixed text; other failures show the server message, never swallowed.
+    if (kind === "notFound") toast.error(t("agents.avatarNotFound"));
+    else if (kind === "failed") toast.error(t("agents.avatarFailed", { message: e instanceof Error ? e.message : String(e) }));
+    else toast.error(t(`agents.avatar_${kind}`, { mb: USER_AVATAR_CONTRACT.maxBytes >> 20, side: USER_AVATAR_CONTRACT.maxSide }));
+  }
+}
 const model = computed(() => agentModel(props.agent));
 const status = computed(() => agentStatus(props.agent, props.hasModelField));
 const used = computed(() => props.agent.sessionCount > 0
@@ -48,6 +75,10 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
         <router-link v-if="admin" :to="`/admin/agents?edit=${agent.templateId}`" class="btn-ghost" data-testid="agent-card-edit">
           {{ status === "unconfigured" ? t("agents.configure") : t("agents.edit") }}
         </router-link>
+        <label v-if="canUploadAvatar(agent)" class="btn-ghost agent-card-upload" :class="{ busy: uploading }" data-testid="agent-card-avatar">
+          {{ uploading ? t("agents.avatarUploading") : t("agents.avatarUpload") }}
+          <input type="file" accept="image/png,image/jpeg" :disabled="uploading" hidden @change="onAvatarFile">
+        </label>
       </div>
     </div>
     <span class="agent-card-go" aria-hidden="true">→</span>
@@ -77,6 +108,8 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
 .agent-card-act { display: flex; gap: 8px; margin-top: 6px; pointer-events: auto; }
 .agent-card-act a { height: 32px; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; padding: 0 14px; }
 .agent-card-act .btn-primary { flex: 1; }
+.agent-card-upload { height: 32px; font-size: 12.5px; display: inline-flex; align-items: center; padding: 0 14px; cursor: pointer; }
+.agent-card-upload.busy { opacity: 0.6; cursor: progress; }
 .agent-card.off { background: rgba(255, 255, 255, 0.55); }
 .agent-card.off .agent-card-cover { filter: saturate(0.25); opacity: 0.6; }
 .agent-card.off .agent-card-av { filter: saturate(0.3); }
