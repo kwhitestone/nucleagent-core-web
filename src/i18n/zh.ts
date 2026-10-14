@@ -651,6 +651,8 @@ export default {
     expected: "预计约 20 秒",
     expectedSec: "预计约 {n} 秒",
     countN: "{n} 张",
+    durationN: "{n} 秒",
+    videoLoadFailed: "视频加载失败",
     copyPrompt: "复制提示词",
     copied: "已复制",
     saveToLibrary: "保存到成果库",

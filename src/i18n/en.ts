@@ -651,6 +651,8 @@ export default {
     expected: "usually about 20 s",
     expectedSec: "usually about {n} s",
     countN: "{n} images",
+    durationN: "{n}s",
+    videoLoadFailed: "Video failed to load",
     copyPrompt: "Copy prompt",
     copied: "Copied",
     saveToLibrary: "Save to library",

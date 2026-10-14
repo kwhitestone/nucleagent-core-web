@@ -162,7 +162,7 @@ describe("GenResultCard", () => {
   });
 
   test("lightbox opens on an image and closes on Escape only", async () => {
-    const { state } = await bindings(Result, base);
+    const { state } = await bindings(await load("ImageGrid"), { items: base.items, aspect: "1:1" });
     assert.equal(state.active.value, null);
     state.open(2);
     assert.equal(state.active.value, 2);
@@ -180,6 +180,19 @@ describe("GenResultCard", () => {
     await state.copyPrompt();
     assert.equal(written, "一只橘猫，水彩风格");
     assert.equal(state.copied.value, true);
+  });
+  test("UI-IMPL-6 video kind renders the native player, never autoplays, with video badges", async () => {
+    const html = await render(Result, { ...base, kind: "video", items: [{ url: "/u/v.mp4", name: "video-1.mp4" }],
+      params: { aspect: "9:16", count: 1, model: "doubao-seedance-x", size: "", duration: 8, resolution: "720p" } });
+    assert.match(html, /<video[^>]*controls/);
+    assert.match(html, /preload="metadata"/);
+    assert.match(html, /src="\/u\/v.mp4#t=0.1"/);
+    assert.doesNotMatch(html, /autoplay/);
+    assert.doesNotMatch(html, /gen-result__grid/);
+    assert.match(html, /is-portrait/);
+    for (const b of ["9:16", "8 秒", "720p", "doubao-seedance-x"]) assert.match(html, new RegExp(`gen-result__badge[^>]*>${b}<`));
+    assert.doesNotMatch(html, /1 张/);
+    for (const a of ["下载", "重新生成", "继续修改"]) assert.match(html, new RegExp(a));
   });
 });
 
