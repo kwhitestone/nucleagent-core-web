@@ -29,9 +29,11 @@ import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions"
 import SuggestionChip from "@/components/SuggestionChip.vue";
 import { cardInput, generationKind, resolveCards, type HomeCard } from "@/composables/homeSuggestions";
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
+import VideoConfirm from "@/addons/conversation/components/media/VideoConfirm.vue";
 import { createGeneration, type CreateGenerationBody } from "@/addons/conversation/api/media";
 import { errorText, type MediaModel } from "@/addons/conversation/composables/generation";
-import { defaultParams, requestParams } from "@/addons/conversation/registry";
+import { createGenChat, HOME_CONFIRM_KEY } from "@/addons/conversation/composables/homeGen";
+import { defaultParams, skipConfirm, type GenKind, type GenParams } from "@/addons/conversation/registry";
 
 const router = useRouter();
 const route = useRoute();
@@ -49,21 +51,31 @@ const executionBackend = ref<string | null>(null);
 const backendCompatible = ref(false);
 const broadcast = ref(false);
 const eligibleCount = ref(0);
-/** UI-IMPL-3: image mode — sending creates a new chat (conversationId 0) with the generation in it. */
-const genOn = ref(route.query.gen === "image");
-const genParams = ref(defaultParams("image"));
+/** UI-IMPL-3 / 6H: image or video mode — sending creates a new chat (conversationId 0) with the generation in it. */
+const genKind = ref<GenKind>(route.query.gen === "video" ? "video" : "image");
+const genOn = ref(route.query.gen === "image" || route.query.gen === "video");
+const genParams = ref<GenParams>(defaultParams(genKind.value));
 const genModel = ref<MediaModel | null>(null);
+/** Video asks first (same dialog as the chat page); resolves true to go ahead. */
+const confirmVideo = ref<((ok: boolean) => void) | null>(null);
+function answerVideo(ok: boolean, skip: boolean): void {
+  if (ok && skip) skipConfirm(HOME_CONFIRM_KEY);
+  confirmVideo.value?.(ok);
+  confirmVideo.value = null;
+}
 const canSend = computed(() => genOn.value ? !!genModel.value : broadcast.value ? eligibleCount.value > 0 : backendCompatible.value);
 
-async function createImageChat(prompt: string): Promise<void> {
+async function createChatGen(prompt: string): Promise<void> {
   const m = genModel.value;
-  if (!m) return;
+  if (!m || submitting.value) return;
   submitting.value = true;
   try {
-    const created = await createGeneration({ kind: "image", providerId: m.providerId, model: m.model, prompt,
-      conversationId: 0, ...(requestParams("image", genParams.value) as Partial<CreateGenerationBody>) });
-    input.value = "";
-    await router.push({ path: `/c/${created.conversationId}`, query: { gen: "image" } });
+    const sent = await createGenChat({
+      create: (body) => createGeneration(body as unknown as CreateGenerationBody),
+      push: (to) => router.push(to),
+      confirm: () => new Promise<boolean>((resolve) => { confirmVideo.value = resolve; }),
+    }, genKind.value, m, prompt, genParams.value);
+    if (sent) input.value = "";
   } catch (error) {
     toast.error(errorText(error instanceof ApiError ? error.code : "", t, error instanceof Error ? error.message : ""));
   } finally {
@@ -81,7 +93,7 @@ const suggestions = computed<HomeCard[]>(() => resolveCards(configured.value, lo
 
 async function handleCreate(): Promise<void> {
   const text = input.value.trim();
-  if (genOn.value && text) return createImageChat(text);
+  if (genOn.value && text) return createChatGen(text);
   if (!text || submitting.value) return;
   if (!canSend.value) {
     toast.warning(t("common.executionBackendSelectionInvalid"));
@@ -136,14 +148,11 @@ function moreSettings(): void {
 }
 
 function fillSuggestion(card: HomeCard): void {
-  // MT3: video opens the generate page; UI-IMPL-3 (6B): image opens a new chat in image mode.
+  // UI-IMPL-3 (6B) / 6H: an image or video card switches the composer into that mode (sent as a new chat).
   const kind = generationKind(card);
-  if (kind === "image") {
+  if (kind === "image" || kind === "video") {
+    if (genKind.value !== kind) { genKind.value = kind; genParams.value = defaultParams(kind); }
     genOn.value = true;
-    return;
-  }
-  if (kind) {
-    void router.push({ name: "generate", params: { kind } });
     return;
   }
   input.value = cardInput(card);
@@ -167,6 +176,7 @@ onMounted(() => {
 
 <template>
   <div class="view active" :class="{ 'view--scroll-hidden': narrow }">
+    <VideoConfirm v-if="confirmVideo" @answer="answerVideo" />
     <!-- Below 1024px: the task desk (board §11). Recent tasks + a resident composer. -->
     <div v-if="narrow" class="desk" data-testid="task-desk">
       <div class="desk-scroll">
@@ -212,7 +222,7 @@ onMounted(() => {
         />
         <div class="desk-actions">
           <AttachmentPicker v-if="!genOn" v-model="attachments" :disabled="submitting" />
-          <ChatGenBar v-model:on="genOn" v-model:params="genParams" v-model:model="genModel" only="image" />
+          <ChatGenBar v-model:on="genOn" v-model:kind="genKind" v-model:params="genParams" v-model:model="genModel" />
           <button type="button" class="desk-pill" data-testid="run-pill" :disabled="submitting" @click="runSheet = true">
             <span>{{ broadcast ? t('broadcast.toggle') : [modelLabel || t('common.modelDefault'), backendLabel].filter(Boolean).join(' · ') }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
@@ -276,7 +286,7 @@ onMounted(() => {
           />
           <div class="composer-actions">
             <AttachmentPicker v-if="!genOn" v-model="attachments" :disabled="submitting" />
-            <ChatGenBar v-model:on="genOn" v-model:params="genParams" v-model:model="genModel" only="image" />
+            <ChatGenBar v-model:on="genOn" v-model:kind="genKind" v-model:params="genParams" v-model:model="genModel" />
             <ModelPicker v-model="modelChoice" :disabled="submitting" compact />
             <ExecutionBackendPicker
               v-if="!broadcast"

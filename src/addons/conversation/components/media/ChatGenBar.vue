@@ -12,7 +12,7 @@ import { MEDIA_KINDS, defaultParams, enabledKinds, pickModel, type GenKind, type
 
 const props = defineProps<{
   locked?: boolean;
-  /** Restrict the entries (the home composer creates image chats only). */
+  /** Restrict the entries (e.g. a carrier chat is image-only). */
   only?: GenKind;
   /** Agent defaults (`config.defaults.<kind>Model`); missing/unlisted → first model, as before. */
   preferred?: Partial<Record<GenKind, string>>;
