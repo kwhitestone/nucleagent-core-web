@@ -64,7 +64,11 @@ test("H5 Home.vue: ＋ menu not restricted to image, kind is bound, no jump to t
 });
 
 test("H6 ChatGenBar `only` still filters for other callers; Conversation still accepts gen=video", () => {
-  assert.match(src("addons/conversation/components/media/ChatGenBar.vue"), /!props\.only \|\| k\.kind === props\.only/);
+  const bar = src("addons/conversation/components/media/ChatGenBar.vue");
+  assert.match(bar, /!props\.only \|\| k\.kind === props\.only/);
+  // no video model on home → "＋视频" disabled with "暂无可用模型" (empty(k), unchanged)
+  assert.match(bar, /:disabled="empty\(k\.kind as GenKind\)"/);
+  assert.match(bar, /if \(empty\(k\)\) return;/);
   const conv = src("addons/conversation/views/Conversation.vue");
   assert.match(conv, /route\.query\.gen === "video" \? "video" : "image"/);
   assert.match(conv, /:only="carrier \? 'image' : undefined"/);

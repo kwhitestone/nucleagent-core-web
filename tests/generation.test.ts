@@ -46,13 +46,14 @@ after(async () => {
 const card = (id: string) => ({ id, icon: "image", action: "prefill" as const, title: "t", desc: "d", prompt: "p" });
 
 // ---- W1
-test("W1 only the two generate cards route; every other card keeps prefilling", () => {
+test("W1 only the two generate cards switch to gen mode; every other card keeps prefilling", () => {
   assert.equal(gen.generationKind(card("generateImage")), "image");
   assert.equal(gen.generationKind(card("generateVideo")), "video");
   for (const id of ["generateimage", "video", "writeReport", "generateImage2", ""]) assert.equal(gen.generationKind(card(id)), null, id);
   const home = src("addons/conversation/views/Home.vue");
   assert.ok(/generationKind\(card\)/.test(home), 'home /generationKind\\(card\\)/');
-  assert.ok(/name: "generate", params: \{ kind \}/.test(home), 'home /name: "generate", params: \\{ kind \\}/');
+  // UI-IMPL-6H: home no longer jumps to the standalone page; the page and its route stay.
+  assert.ok(!/name: "generate"/.test(home), 'home must not route to the generate page');
   assert.ok(/input\.value = cardInput\(card\)/.test(home), 'home /input\\.value = cardInput\\(card\\)/');
   const routes = src("addons/conversation/index.ts");
   assert.ok(/path: "\/generate\/:kind\(image\|video\)"/.test(routes), 'routes /path: "\\/generate\\/:kind\\(image\\|video\\)"/');
