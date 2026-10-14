@@ -82,9 +82,10 @@ test("busy while uploading; a second click during flight sends nothing", async (
   const post: Post = () => { calls++; return new Promise((r) => { release = () => r(mockUserAvatarResponse("z")); }); };
   const pick = avatarUploader(post, side(), (b) => busy.push(b));
   const first = pick(4, png());
-  const second = await pick(4, png());
-  assert.equal(second, null);
+  const second = pick(4, png());
   await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "second click during flight must not post");
+  assert.equal(await second, null);
   release();
   assert.equal(await first, "/api/v1/avatars/z");
   assert.equal(calls, 1);
