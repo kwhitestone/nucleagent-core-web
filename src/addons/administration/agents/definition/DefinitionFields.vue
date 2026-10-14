@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { definitionFields, readPath, validateChanges, type Changes } from "./draft";
+import { definitionFields, genModelState, readPath, validateChanges, type Changes } from "./draft";
+import type { MediaModel } from "../../../conversation/composables/generation.ts";
 import { text, type MessageKey } from "./messages";
 
 export interface Choice { value: string | number; label: string }
@@ -14,6 +15,8 @@ const props = defineProps<{
   backends: Choice[];
   providers: Choice[];
   models: Choice[];
+  /** UI-IMPL-6: media catalog per kind; null = read failed (no "delisted" claim). */
+  genModels?: Record<string, MediaModel[] | null>;
   busy?: boolean;
   only?: readonly string[];
 }>();
@@ -28,6 +31,8 @@ const value = (path: string) => Object.hasOwn(props.changes, path) ? props.chang
 const allowed = (path: string) => props.editablePaths.includes(path) && !props.busy;
 const id = (path: string) => `definition${path.replaceAll("/", "-")}`;
 const choices = (kind: string) => kind === "backend" ? props.backends : kind === "provider" ? props.providers : props.models;
+const genList = (kind?: string) => kind ? props.genModels?.[kind] : undefined;
+const genState = (path: string, kind?: string) => genModelState(value(path), genList(kind));
 const reason = (path: string) => props.readonlyFields.find((field) => field.path === path)?.reason || label("readonly");
 function change(path: string, event: Event, kind: string) {
   const target = event.target as HTMLInputElement;
@@ -61,12 +66,21 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
           :value="String(value(field.path))" disabled>{{ value(field.path) }} ({{ label('unavailable') }})</option>
         <option v-for="choice in choices(field.kind)" :key="choice.value" :value="choice.value">{{ choice.label }}</option>
       </select>
+      <select v-else-if="field.kind === 'genModel'" :id="id(field.path)" :value="value(field.path) ?? ''" :disabled="!allowed(field.path)"
+        :aria-invalid="genState(field.path, field.genKind) === 'delisted'" :aria-describedby="`${id(field.path)}-hint`"
+        @change="change(field.path, $event, field.kind)">
+        <option value="">{{ label('genInherit') }}</option>
+        <option v-if="genState(field.path, field.genKind) !== 'ok' && value(field.path)" :value="String(value(field.path))" disabled>{{ value(field.path) }}</option>
+        <option v-for="m in genList(field.genKind) ?? []" :key="m.model" :value="m.model">
+          {{ m.model }} · {{ label(m.kind as MessageKey) }} · {{ m.verified ? label('genVerified') : label('genUnverified') }}</option>
+      </select>
       <input v-else :id="id(field.path)" :value="value(field.path) ?? ''" :readonly="!allowed(field.path)"
         :aria-invalid="!!shownError(field.path)" :aria-describedby="`${id(field.path)}-hint`"
         :autocomplete="field.label === 'name' ? 'off' : undefined"
         @input="change(field.path, $event, field.kind)" />
       <small :id="`${id(field.path)}-hint`" :class="{ 'definition-error': shownError(field.path) }">
-        <template v-if="shownError(field.path)">{{ errorLabel(shownError(field.path)!) }}</template>
+        <template v-if="field.kind === 'genModel' && genState(field.path, field.genKind) === 'delisted'"><span class="definition-error">{{ label('genDelisted') }}</span></template>
+        <template v-else-if="shownError(field.path)">{{ errorLabel(shownError(field.path)!) }}</template>
         <template v-else-if="!props.editablePaths.includes(field.path)">{{ reason(field.path) }}</template>
         <template v-else-if="field.label === 'memory'">{{ label('memoryNote') }}</template>
         <template v-else-if="field.max">{{ [...String(value(field.path) ?? '')].length }} / {{ field.max }}</template>

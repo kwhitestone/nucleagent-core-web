@@ -1,9 +1,13 @@
+import { enabledKinds, modelKey, type MediaKindId } from "../../../conversation/registry.ts";
+import type { MediaModel } from "../../../conversation/composables/generation.ts";
+
 export type Changes = Record<string, unknown>;
 export interface Field {
   path: string;
   label: string;
-  kind: "text" | "textarea" | "boolean" | "backend" | "provider" | "model";
+  kind: "text" | "textarea" | "boolean" | "backend" | "provider" | "model" | "genModel";
   max?: number;
+  genKind?: MediaKindId;
 }
 
 export const definitionFields: readonly Field[] = [
@@ -16,7 +20,17 @@ export const definitionFields: readonly Field[] = [
   { path: "/config/defaults/executionBackend", label: "backend", kind: "backend", max: 32 },
   { path: "/config/defaults/providerId", label: "provider", kind: "provider" },
   { path: "/config/defaults/model", label: "model", kind: "model", max: 100 },
+  // UI-IMPL-6 P1: per-kind generation default, one per enabled registry kind.
+  ...enabledKinds().map((k): Field => ({ path: `/config/defaults/${modelKey(k.kind)}`, label: k.kind, kind: "genModel", max: 100, genKind: k.kind })),
 ];
+export const genModelPaths = definitionFields.filter(f => f.kind === "genModel").map(f => f.path);
+
+/** list null = catalog read failed: never claim "delisted" then. */
+export function genModelState(name: unknown, list: MediaModel[] | null | undefined): "unset" | "ok" | "delisted" | "unknown" {
+  if (typeof name !== "string" || !name) return "unset";
+  if (!list) return "unknown";
+  return list.some(m => m.model === name) ? "ok" : "delisted";
+}
 
 export function readPath(source: unknown, path: string): unknown {
   return path.slice(1).split("/").map(key => key.replaceAll("~1", "/").replaceAll("~0", "~")).reduce<unknown>((value, key) =>

@@ -255,6 +255,13 @@ export function createDefinitionApi(transport: Transport) {
       if (typesAvailable !== true || !Array.isArray(data)) throw new Error("Model catalog unavailable");
       return data;
     },
+    /** UI-IMPL-6: media catalog per kind (plain body, no code envelope); old sync / failure → throw. */
+    async genModels(kind: string): Promise<{ providerId: number; model: string; kind: string; verified: boolean }[]> {
+      const response = await transport(`/api/v1/addons/media/models?${new URLSearchParams({ kind })}`, { cache: "no-store" });
+      const body = response.body as { typesAvailable?: boolean; data?: unknown };
+      if (response.status !== 200 || body?.typesAvailable !== true || !Array.isArray(body.data)) throw new Error("Generation model catalog unavailable");
+      return body.data as { providerId: number; model: string; kind: string; verified: boolean }[];
+    },
     async backends(): Promise<{ id: string; displayName: string }[]> {
       const { data } = await request<{ id: string; displayName: string }[]>("/api/v1/addons/conversation/execution-backends");
       if (!Array.isArray(data)) throw new Error("Backend catalog unavailable");

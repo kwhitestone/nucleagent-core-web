@@ -104,6 +104,10 @@ export const messages = {
   willImport: ["将导入", "Will import"], skippedExists: ["已存在，跳过", "Already exists, skipped"],
   skippedDeleted: ["已存在（在回收站），跳过", "Exists in recycle bin, skipped"], imported: ["已导入", "Imported"],
   confirmImport: ["确认导入", "Import"], nothingToImport: ["全部已存在，没有需要导入的", "Everything already exists; nothing to import"],
+  genModels: ["生成模型", "Generation models"], image: ["图片", "Image"], video: ["视频", "Video"], music: ["音乐", "Music"],
+  genInherit: ["不指定（用平台默认）", "Not set (platform default)"], genVerified: ["已实测", "Verified"], genUnverified: ["未验证", "Unverified"],
+  genDelisted: ["不可用（目录已下架）", "Unavailable (removed from catalog)"],
+  model_not_supported: ["该生成模型不可用", "This generation model is not available"],
 } as const;
 export type MessageKey = keyof typeof messages;
 export function text(key: MessageKey, locale: string): string {
@@ -116,6 +120,7 @@ const errorKeys: Record<string, MessageKey> = {
   agent_identity_unavailable: "identityFailed", agent_identity_binding_conflict: "identityFailed",
   agent_identity_update_failed: "identityFailed", agent_definition_active: "mustDisable",
   agent_definition_deleted: "deletedLocked", invalid_definition_patch: "invalidPatch", model_type_mismatch: "modelMismatch",
+  model_not_supported: "model_not_supported",
 };
 /** Maps a failed request to a user-facing reason; unknown failures keep the generic message. */
 export function errorKey(error: unknown): MessageKey {

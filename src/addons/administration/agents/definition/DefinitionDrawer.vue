@@ -11,7 +11,7 @@ import AgentPreview from "./AgentPreview.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, initial, type Group } from "./groups";
 import { DefinitionError, type Catalog, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
-import { definitionFields, readPath, reconcileBindings, validateChanges } from "./draft";
+import { definitionFields, genModelPaths, readPath, reconcileBindings, validateChanges } from "./draft";
 import { errorKey, text, type MessageKey } from "./messages";
 
 const props = defineProps<{ api: DefinitionApi; detail: Detail; catalog?: Catalog }>();
@@ -28,6 +28,7 @@ const status = ref<MessageKey | "">("");
 const catalogError = ref(false);
 const models = ref<Awaited<ReturnType<DefinitionApi["models"]>>>([]);
 const backends = ref<Awaited<ReturnType<DefinitionApi["backends"]>>>([]);
+const genModels = ref<Record<string, Awaited<ReturnType<DefinitionApi["genModels"]>> | null>>({});
 const action = ref<LifecycleAction | "save" | null>(null);
 const impact = ref<Impact | null>(null);
 const acknowledged = ref(false);
@@ -198,6 +199,10 @@ onMounted(async () => {
   if (results[0].status === "fulfilled") models.value = results[0].value;
   if (results[1].status === "fulfilled") backends.value = results[1].value;
   catalogError.value = results.some(result => result.status === "rejected");
+  // UI-IMPL-6: one catalog per kind; a failed read leaves the select usable (no "delisted" claim).
+  const kinds = definitionFields.flatMap(f => f.genKind ? [f.genKind] : []);
+  const lists = await Promise.allSettled(kinds.map(kind => props.api.genModels(kind)));
+  if (mounted) genModels.value = Object.fromEntries(kinds.map((kind, i) => [kind, lists[i].status === "fulfilled" ? lists[i].value : null]));
 });
 onUnmounted(() => {
   mounted = false; readGeneration++; pageGeneration++;
@@ -300,9 +305,14 @@ onUnmounted(() => clearTimeout(toastTimer));
         <p v-if="catalogError" role="status" class="notice warn">{{ label('catalogError') }}</p>
         <section v-for="group in (['basic', 'persona', 'model'] as const)" :id="`group-${group}`" :key="group" class="form-card">
           <h3>{{ label(groupLabel[group]) }}<span v-if="dirtyGroupSet.has(group)" class="dirty-dot" aria-hidden="true"></span></h3>
-          <DefinitionFields :only="groupPaths(group, allPaths)" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
+          <DefinitionFields :only="groupPaths(group, allPaths).filter(path => !genModelPaths.includes(path))" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
             :readonly-fields="readonlyFields" :backends="backends.map(item => ({ value: item.id, label: item.displayName }))"
             :providers="providerChoices" :models="modelChoices" :busy="locked" @change="change" />
+          <template v-if="group === 'model' && genModelPaths.length">
+            <h4>{{ label('genModels') }}</h4>
+            <DefinitionFields :only="genModelPaths" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
+              :readonly-fields="readonlyFields" :backends="[]" :providers="[]" :models="[]" :gen-models="genModels" :busy="locked" @change="change" />
+          </template>
         </section>
         <section id="group-skills" class="form-card">
           <h3>{{ label('groupSkills') }}<span v-if="dirtyGroupSet.has('skills')" class="dirty-dot" aria-hidden="true"></span></h3>
