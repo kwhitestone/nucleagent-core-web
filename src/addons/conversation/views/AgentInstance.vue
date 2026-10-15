@@ -16,6 +16,9 @@ import { useConversationStore } from "../store/conversation";
 import AgentEffective from "../../administration/agents/definition/AgentEffective.vue";
 import { createEffectiveApi } from "../../administration/agents/definition/effective";
 import { definitionTransport } from "../../administration/api/agent";
+import { avatarUrl } from "../../administration/agents/definition/groups";
+import { storageAvatar } from "../api/userAvatar";
+import { configValue } from "@/runtimeConfig";
 
 const props = defineProps<{ templateId: string }>();
 const { t, locale } = useI18n();
@@ -39,6 +42,11 @@ const savingMemory = ref(false);
 const effective = createEffectiveApi(definitionTransport);
 const selectedSession = ref<number | null>(null);
 const memory = computed(() => (agent.value?.memory ?? "").trim());
+// Header avatar: same rule as AgentCard (storage path + https-only, initial on missing/failed); a new avatar clears the failure.
+const avatarOk = ref(true);
+watch(() => agent.value?.config?.avatar, () => { avatarOk.value = true; });
+const storageOrigin = () => { try { return configValue("VITE_STORAGE_URL"); } catch { return ""; } };
+const avatar = computed(() => (avatarOk.value ? avatarUrl(storageAvatar(agent.value?.config?.avatar, storageOrigin())) : ""));
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -119,7 +127,10 @@ function source(c: Conversation): string {
       <p v-else-if="missing || !agent" class="empty-hint">{{ t("agents.notFound") }}</p>
       <template v-else>
         <header class="agent-head">
-          <div class="agent-avatar" aria-hidden="true">{{ agent.name.slice(0, 1) }}</div>
+          <div class="agent-avatar" aria-hidden="true">
+            <img v-if="avatar" :src="avatar" alt="" @error="avatarOk = false">
+            <template v-else>{{ agent.name.slice(0, 1) }}</template>
+          </div>
           <div class="agent-title">
             <h1>{{ agent.name }}
               <span v-if="agent.deleted" class="tag off" data-testid="agent-deleted-tag">{{ t("agents.deleted") }}</span>
@@ -193,7 +204,8 @@ function source(c: Conversation): string {
 .effective-target { display: grid; gap: 8px; font-size: 13px; }
 .effective-target select { width: 100%; min-height: 44px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; padding: 8px; }
 .agent-head { display: flex; align-items: center; gap: 14px; }
-.agent-avatar { width: 48px; height: 48px; border-radius: var(--r-lg); background: var(--grad-brand-soft); color: var(--teal-600); display: grid; place-items: center; font-weight: 700; font-size: 20px; flex: none; }
+.agent-avatar { width: 48px; height: 48px; border-radius: var(--r-lg); background: var(--grad-brand-soft); color: var(--teal-600); display: grid; place-items: center; font-weight: 700; font-size: 20px; flex: none; overflow: hidden; }
+.agent-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .agent-title h1 { font-size: 20px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
 .agent-title p { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
 .tag.off { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--slate-100); color: var(--text-tertiary); }
