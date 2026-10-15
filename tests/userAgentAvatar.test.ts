@@ -105,3 +105,20 @@ test("card shows the uploaded storage path via the storage origin; https-only ru
   const list = src("addons/conversation/views/AgentList.vue");
   assert.match(list, /@avatar=/, "list applies the new avatar to the card");
 });
+
+test("429 user_avatar_daily_limit maps to a Chinese daily-limit text; other 429 text still echoes", async () => {
+  const err = await uploadMyAgentAvatar(async () => { throw httpError(429, "user_avatar_daily_limit"); }, 9, png()).catch((e) => e);
+  assert.ok(err instanceof AvatarUploadError);
+  assert.equal(err.kind, "dailyLimit");
+  assert.match(src("i18n/zh.ts"), /avatar_dailyLimit: "今日头像上传次数已用完，请明天再试"/);
+  assert.match(src("addons/conversation/components/AgentCard.vue"), /t\(`agents\.avatar_\$\{kind\}`/);
+  const other = await uploadMyAgentAvatar(async () => { throw httpError(429, "slow down"); }, 9, png()).catch((e) => e);
+  assert.equal(other.kind, "failed");
+  assert.equal(other.message, "slow down");
+});
+
+test("old core without owned: no upload button for any /mine row", () => {
+  const oldCoreMine = [{ templateId: 1, name: "System" }, { templateId: 2, name: "Mine" }];
+  assert.deepEqual(oldCoreMine.filter(canUploadAvatar), []);
+  assert.equal(canUploadAvatar({ owned: undefined }), false);
+});
