@@ -183,7 +183,8 @@ function remove(a: MyAgent): void {
           <h2 class="agent-list-group">{{ t("agents.groupActive") }} <span>{{ groups.active.length }}</span></h2>
           <div class="agent-grid">
             <AgentCard v-for="(a, i) in groups.active" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i"
-              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)" />
+              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)"
+              @avatar="(path) => (a.config = { ...a.config, avatar: path })" />
           </div>
           <div v-if="groups.active.length === 1 && !searching" class="agent-list-more">
             <span>{{ admin ? t("agents.emptyAdmin") : t("agents.moreUser") }}</span>
@@ -199,7 +200,8 @@ function remove(a: MyAgent): void {
           </h2>
           <div v-if="showInactive" class="agent-grid agent-grid-in">
             <AgentCard v-for="(a, i) in groups.inactive" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i"
-              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)" />
+              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)"
+              @avatar="(path) => (a.config = { ...a.config, avatar: path })" />
           </div>
           <p v-else class="agent-list-names">{{ groups.inactive.map((a) => a.name).join(t("agents.nameSep")) }} — {{ t("agents.inactiveHint") }}</p>
         </section>
