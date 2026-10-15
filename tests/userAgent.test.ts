@@ -74,6 +74,35 @@ describe("API contract (core main definitions.go)", () => {
     await assert.rejects(ua.listMyDefinitions(), /boom/);
     reply = () => ({ data: { data: [{ id: 1, name: "a", isActive: true }] } });
     assert.deepEqual((await ua.listMyDefinitions()).map((d: any) => d.id), [1]);
+  });
+
+  test("entry hidden (422 kill switch / older core) logs one searchable console.info with the status only", async () => {
+    const seen: unknown[][] = [];
+    const orig = console.info;
+    console.info = (...a: unknown[]) => { seen.push(a); };
+    try {
+      for (const status of [422, 404, 405]) {
+        seen.length = 0;
+        reply = () => new Err(status, "周报-私密名 user@x");
+        assert.equal(await ua.listMyDefinitions(), null);
+        assert.equal(seen.length, 1);
+        const line = seen[0].map(String).join(" ");
+        assert.match(line, /user-agent-entry-hidden/);
+        assert.match(line, new RegExp(`\\b${status}\\b`));
+        assert.doesNotMatch(line, /周报|user@x/);
+      }
+      seen.length = 0;
+      reply = () => ({ data: { data: [] } });
+      await ua.listMyDefinitions();
+      reply = () => new Err(500, "boom");
+      await assert.rejects(ua.listMyDefinitions());
+      assert.equal(seen.length, 0);
+    } finally { console.info = orig; }
+  });
+
+  test("list/models happy paths", async () => {
+    reply = () => ({ data: { data: [{ id: 1, name: "a", isActive: true }] } });
+    assert.deepEqual((await ua.listMyDefinitions()).map((d: any) => d.id), [1]);
     reply = () => ({ data: { data: [{ model: "m1" }, { model: "m2", providerId: 3 }, {}] } });
     assert.deepEqual(await ua.listUserAgentModels(), ["m1", "m2"]);
   });
