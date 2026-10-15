@@ -16,7 +16,7 @@ let unregister: () => void;
 const calls: { method: string; url: string; body?: unknown }[] = [];
 let reply: (method: string, url: string, body?: unknown) => unknown = () => ({ data: { data: null } });
 
-class Err extends Error { constructor(public status: number, message: string) { super(message); } }
+class Err extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status; } }
 const fakeHttp = Object.fromEntries(["get", "post", "patch", "delete"].map((m) => [m, async (url: string, body?: unknown) => {
   calls.push({ method: m, url, body });
   const r = reply(m, url, body);
@@ -63,7 +63,7 @@ describe("API contract (core main definitions.go)", () => {
   });
 
   test("older core: list 404/405 → null (entry hidden); models 404 → [] ; other errors propagate", async () => {
-    for (const status of [404, 405]) {
+    for (const status of [404, 405, 422]) { // 422: older core routes GET /mine/definitions to /mine/{templateId}
       reply = () => new Err(status, "Not Found");
       assert.equal(await ua.listMyDefinitions(), null);
       assert.deepEqual(await ua.listUserAgentModels(), []);

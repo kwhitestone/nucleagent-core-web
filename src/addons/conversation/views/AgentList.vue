@@ -1,12 +1,17 @@
 <script setup lang="ts">
 /** All of my agents: every enabled definition (chat-ready), plus disabled ones I have used (collapsed). */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import { listMyAgents, type MyAgent } from "../api/agent";
+import {
+  USER_AGENT_LIMIT, createUserAgent, deleteUserAgent, draftPatch, entryState, listMyDefinitions, listUserAgentModels, mergeOwned,
+  setUserAgentActive, singleFlight, updateUserAgent, userAgentError, type Draft, type UserDefinition,
+} from "../api/userAgent";
 import AgentCard from "../components/AgentCard.vue";
-import { groupAgents } from "../components/agentCard";
+import UserAgentWizard from "../components/UserAgentWizard.vue";
+import { agentModel, groupAgents } from "../components/agentCard";
 
 const { t } = useI18n();
 const authorization = useEmbeddedAuthorization();
@@ -31,11 +36,23 @@ const searchable = computed(() => agents.value.length >= 6);
 const searching = computed(() => !!applied.value.trim());
 const noMatch = computed(() => searching.value && !groups.value.active.length && !groups.value.inactive.length);
 
+// My own definitions: null = this core has no list route → create/manage hidden (fail closed).
+const defs = ref<UserDefinition[] | null>(null);
+const models = ref<string[]>([]);
+const ownedIds = computed(() => new Set((defs.value ?? []).map((d) => d.id)));
+const entry = computed(() => entryState(defs.value, models.value));
+const wizard = ref<{ initial?: Draft & { id: number } } | null>(null);
+const busy = ref(false);
+const errors = ref<Record<string, string>>({});
+
 async function load(): Promise<void> {
   loading.value = true;
   failed.value = false;
   try {
-    agents.value = await listMyAgents();
+    const [mine, own, open] = await Promise.all([listMyAgents(), listMyDefinitions().catch(() => null), listUserAgentModels().catch(() => [])]);
+    defs.value = own;
+    models.value = open;
+    agents.value = mergeOwned(mine, own);
   } catch {
     failed.value = true;
     toast.error(t("agents.loadFailed"));
@@ -44,6 +61,69 @@ async function load(): Promise<void> {
   }
 }
 onMounted(load);
+
+/** Mapped error as text (toast and template both render text, never HTML). */
+function errorText(e: unknown): { field?: string; text: string } {
+  const m = userAgentError(e);
+  return "text" in m ? { text: m.text } : { field: m.field, text: t(m.key) };
+}
+
+function openCreate(): void {
+  if (entry.value === "noModels") { toast.info(t("agents.mine.noModels")); return; }
+  if (entry.value !== "ok") return;
+  errors.value = {};
+  wizard.value = {};
+}
+function openEdit(a: MyAgent): void {
+  errors.value = {};
+  wizard.value = { initial: { id: a.templateId, name: a.name, description: a.description ?? "", model: agentModel(a), prompt: "" } };
+}
+
+async function reveal(id: number): Promise<void> {
+  if (agents.value.find((a) => a.templateId === id)?.disabled) showInactive.value = true;
+  await nextTick();
+  const card = document.querySelector<HTMLElement>(`[data-template-id="${id}"]`);
+  card?.scrollIntoView({ block: "center" });
+  card?.querySelector<HTMLElement>("a")?.focus();
+}
+
+const submit = singleFlight(async (draft: Draft) => {
+  busy.value = true;
+  errors.value = {};
+  const initial = wizard.value?.initial;
+  let id = initial?.id ?? 0;
+  try {
+    if (initial) {
+      const patch = draftPatch(initial, draft);
+      if (Object.keys(patch).length) await updateUserAgent(id, patch);
+      toast.success(t("agents.mine.saved"));
+    } else {
+      id = (await createUserAgent(draft)).id;
+      // The create route refuses isActive; "create and enable" is create + PATCH.
+      try { await setUserAgentActive(id, true); toast.success(t("agents.mine.created")); }
+      catch (e) { toast.error(errorText(e).text); }
+    }
+    wizard.value = null;
+    await load();
+    await reveal(id);
+  } catch (e) {
+    const m = errorText(e);
+    errors.value = { [m.field ?? "form"]: m.text };
+  } finally {
+    busy.value = false;
+  }
+});
+
+const act = singleFlight(async (run: () => Promise<void>, done: string) => {
+  try { await run(); toast.success(t(done)); } catch (e) { toast.error(errorText(e).text); }
+  await load();
+});
+const toggle = (a: MyAgent) => act(() => setUserAgentActive(a.templateId, a.disabled), a.disabled ? "agents.mine.enabledDone" : "agents.mine.disabledDone");
+function remove(a: MyAgent): void {
+  // Same native confirm as clearing memory (AgentInstance.vue).
+  if (!window.confirm(t("agents.mine.confirmDelete", { name: a.name }))) return;
+  void act(() => deleteUserAgent(a.templateId), "agents.mine.deleted");
+}
 </script>
 
 <template>
@@ -66,6 +146,11 @@ onMounted(load);
           <input v-if="searchable" v-model="query" type="search" :placeholder="t('agents.searchPlaceholder')"
             :aria-label="t('agents.searchPlaceholder')" data-testid="agent-list-search">
           <router-link v-if="admin" to="/admin/agents" class="btn-ghost" data-testid="agent-list-admin">{{ t("agents.manage") }}</router-link>
+          <template v-if="entry !== 'hidden'">
+            <span class="agent-list-quota" data-testid="agent-quota">{{ t("agents.mine.used", { n: defs?.length ?? 0, max: USER_AGENT_LIMIT }) }}</span>
+            <button type="button" class="btn-primary" data-testid="agent-create" :disabled="entry === 'full'"
+              :title="entry === 'full' ? t('agents.mine.fullHint') : undefined" @click="openCreate">+ {{ t("agents.mine.create") }}</button>
+          </template>
         </div>
       </header>
 
@@ -97,7 +182,8 @@ onMounted(load);
         <section v-if="groups.active.length" data-testid="agent-list-active">
           <h2 class="agent-list-group">{{ t("agents.groupActive") }} <span>{{ groups.active.length }}</span></h2>
           <div class="agent-grid">
-            <AgentCard v-for="(a, i) in groups.active" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i" />
+            <AgentCard v-for="(a, i) in groups.active" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i"
+              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)" />
           </div>
           <div v-if="groups.active.length === 1 && !searching" class="agent-list-more">
             <span>{{ admin ? t("agents.emptyAdmin") : t("agents.moreUser") }}</span>
@@ -112,12 +198,15 @@ onMounted(load);
               @click="showInactive = !showInactive">{{ showInactive ? t("agents.collapse") : t("agents.expand") }}</button>
           </h2>
           <div v-if="showInactive" class="agent-grid agent-grid-in">
-            <AgentCard v-for="(a, i) in groups.inactive" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i" />
+            <AgentCard v-for="(a, i) in groups.inactive" :key="a.templateId" :agent="a" :admin="admin" :has-model-field="hasModelField" :delay="i"
+              :owned="ownedIds.has(a.templateId)" @edit="openEdit(a)" @toggle="toggle(a)" @remove="remove(a)" />
           </div>
           <p v-else class="agent-list-names">{{ groups.inactive.map((a) => a.name).join(t("agents.nameSep")) }} — {{ t("agents.inactiveHint") }}</p>
         </section>
       </template>
     </div>
+    <UserAgentWizard v-if="wizard" :models="models" :busy="busy" :errors="errors" :initial="wizard.initial"
+      @submit="submit" @cancel="busy || (wizard = null)" />
   </div>
 </template>
 
@@ -133,6 +222,9 @@ onMounted(load);
 .agent-list-pop { position: absolute; top: 30px; left: -8px; z-index: 5; width: 280px; padding: 10px 12px; border-radius: var(--r-md); background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); font-size: 12.5px; font-weight: 400; line-height: 1.6; color: var(--text-secondary); animation: fade-in 0.2s var(--ease) both; }
 .agent-list-tools { display: flex; gap: 8px; align-items: center; }
 .agent-list-tools input { height: 36px; width: 240px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); font-size: 13px; }
+.agent-list-tools > button { height: 36px; padding: 0 14px; font-size: 13px; cursor: pointer; }
+.agent-list-tools > button:disabled { opacity: 0.55; cursor: not-allowed; }
+.agent-list-quota { font-size: 12.5px; color: var(--text-tertiary); }
 .agent-list-tools input:focus { outline: none; border-color: var(--teal-500); }
 .agent-list-tools a, .agent-list-more a, .agent-list-empty a { height: 36px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; text-decoration: none; }
 .agent-list-group { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }

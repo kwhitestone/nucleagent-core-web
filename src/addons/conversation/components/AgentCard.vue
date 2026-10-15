@@ -7,7 +7,9 @@ import { relativeTime } from "../composables/taskDesk";
 import { avatarUrl } from "../../administration/agents/definition/groups";
 import { agentModel, agentStatus, avatarGradient } from "./agentCard";
 
-const props = defineProps<{ agent: MyAgent; admin: boolean; hasModelField: boolean; delay: number }>();
+// owned: I created this private definition (from GET /mine/definitions); only then edit/disable/delete.
+const props = defineProps<{ agent: MyAgent; admin: boolean; hasModelField: boolean; delay: number; owned?: boolean }>();
+const emit = defineEmits<{ edit: []; toggle: []; remove: [] }>();
 const { t, locale } = useI18n();
 const avatarOk = ref(true);
 watch(() => props.agent.config?.avatar, () => { avatarOk.value = true; });
@@ -35,6 +37,7 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
         <span>{{ agent.name }}</span>
         <span v-if="status === 'unconfigured'" class="badge cfg" data-testid="agent-badge-unconfigured">{{ t("agents.unconfigured") }}</span>
         <span v-else-if="status === 'disabled'" class="badge off" data-testid="agent-badge-disabled">{{ t("agents.disabled") }}</span>
+        <span v-if="owned" class="badge own" data-testid="agent-badge-owned">{{ t("agents.mine.owned") }}</span>
       </div>
       <p class="agent-card-desc" :class="{ fb: !agent.description }">
         {{ agent.description || (model ? t("agents.basedOn", { model }) : t("agents.noDescription")) }}
@@ -48,6 +51,13 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
         <router-link v-if="admin" :to="`/admin/agents?edit=${agent.templateId}`" class="btn-ghost" data-testid="agent-card-edit">
           {{ status === "unconfigured" ? t("agents.configure") : t("agents.edit") }}
         </router-link>
+      </div>
+      <div v-if="owned" class="agent-card-act own">
+        <button type="button" class="btn-ghost" data-testid="agent-own-edit" @click="emit('edit')">{{ t("agents.mine.edit") }}</button>
+        <button type="button" class="btn-ghost" data-testid="agent-own-toggle" @click="emit('toggle')">
+          {{ agent.disabled ? t("agents.mine.enable") : t("agents.mine.disable") }}
+        </button>
+        <button type="button" class="btn-ghost danger" data-testid="agent-own-delete" @click="emit('remove')">{{ t("agents.mine.delete") }}</button>
       </div>
     </div>
     <span class="agent-card-go" aria-hidden="true">→</span>
@@ -77,6 +87,10 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
 .agent-card-act { display: flex; gap: 8px; margin-top: 6px; pointer-events: auto; }
 .agent-card-act a { height: 32px; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; padding: 0 14px; }
 .agent-card-act .btn-primary { flex: 1; }
+.agent-card-act.own { margin-top: 0; }
+.agent-card-act.own button { height: 28px; padding: 0 10px; font-size: 12px; cursor: pointer; }
+.agent-card-act.own .danger { color: var(--rose-500); }
+.agent-card .badge.own { background: var(--grad-brand-soft); color: var(--teal-600); }
 .agent-card.off { background: rgba(255, 255, 255, 0.55); }
 .agent-card.off .agent-card-cover { filter: saturate(0.25); opacity: 0.6; }
 .agent-card.off .agent-card-av { filter: saturate(0.3); }
@@ -85,6 +99,7 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
   .agent-card { flex-direction: row; align-items: center; padding: 12px; }
   .agent-card:hover { transform: none; }
   .agent-card-cover, .agent-card-act { display: none; }
+  .agent-card-act.own { display: flex; }
   .agent-card-av { margin: 0; border: 0; }
   .agent-card-body { padding: 0 0 0 12px; gap: 3px; }
   .agent-card-desc { -webkit-line-clamp: 1; min-height: 0; }
