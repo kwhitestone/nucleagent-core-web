@@ -554,6 +554,7 @@ export default {
     avatar_type: "Only PNG or JPEG images",
     avatar_size: "Image must be {mb}MB or smaller",
     avatar_side: "Image sides must be 1–{side} pixels",
+    avatar_dailyLimit: "Today's avatar upload limit is used up, try again tomorrow",
     noMatch: "Nothing matches \u201c{q}\u201d",
     clearSearch: "Clear",
     start: "Start chat",

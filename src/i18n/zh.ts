@@ -554,6 +554,7 @@ export default {
     avatar_type: "仅支持 PNG 或 JPEG 图片",
     avatar_size: "图片不能超过 {mb}MB",
     avatar_side: "图片宽高需在 1–{side} 像素之间",
+    avatar_dailyLimit: "今日头像上传次数已用完，请明天再试",
     noMatch: "没有找到“{q}”",
     clearSearch: "清空",
     start: "开始对话",

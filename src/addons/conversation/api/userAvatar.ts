@@ -29,7 +29,7 @@ function avatarPath(body: unknown): string {
   return typeof path === "string" && path.startsWith(USER_AVATAR_CONTRACT.pathPrefix) ? path : "";
 }
 
-export type AvatarErrorKind = "type" | "size" | "side" | "notFound" | "failed";
+export type AvatarErrorKind = "type" | "size" | "side" | "notFound" | "dailyLimit" | "failed";
 export class AvatarUploadError extends Error {
   readonly kind: AvatarErrorKind;
   constructor(kind: AvatarErrorKind, message = "") { super(message); this.name = "AvatarUploadError"; this.kind = kind; }
@@ -38,7 +38,7 @@ export class AvatarUploadError extends Error {
 export type Post = (path: string, body: FormData) => Promise<unknown>;
 export type Dims = (file: File) => Promise<{ width: number; height: number }>;
 
-/** Only definitions the caller created. /mine is assumed to flag them `owned: true` (U2/U8); system and foreign never do. */
+/** Only definitions the caller created: core /mine sets `owned: true` (mine.go); system rows get false, older cores omit it → hidden. */
 export const canUploadAvatar = (agent: { owned?: boolean }) => agent.owned === true;
 
 /** Same type/size rules as the admin route; "" = ok. */
@@ -55,7 +55,10 @@ export async function uploadMyAgentAvatar(post: Post, id: number, file: File): P
     body = await post(USER_AVATAR_CONTRACT.path(id), form);
   } catch (e) {
     // One fixed answer for 404: never echo server text that could tell foreign from missing.
-    if ((e as { status?: unknown })?.status === 404) throw new AvatarUploadError("notFound");
+    const err = e as { status?: unknown; message?: unknown } | null;
+    if (err?.status === 404) throw new AvatarUploadError("notFound");
+    // Core answers 429 with a machine code (user_avatar.go); show it as text. Any other 429 echoes as-is.
+    if (err?.status === 429 && err.message === "user_avatar_daily_limit") throw new AvatarUploadError("dailyLimit");
     throw new AvatarUploadError("failed", e instanceof Error ? e.message : String(e));
   }
   const path = avatarPath(body);
