@@ -39,8 +39,10 @@ export async function listMyDefinitions(): Promise<UserDefinition[] | null> {
     const r = await http().get<{ data?: UserDefinition[] }>(DEFS);
     return r.data?.data ?? [];
   } catch (e) {
-    if (unsupported(e)) return null;
-    throw e;
+    if (!unsupported(e)) throw e;
+    // 422 = kill switch NUCLEAGENT_USER_AGENTS_ENABLE off (or older core). Status only, never server text.
+    console.info("[user-agent-entry-hidden] status", status(e));
+    return null;
   }
 }
 
