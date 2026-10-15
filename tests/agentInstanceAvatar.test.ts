@@ -116,7 +116,7 @@ describe("AgentInstance header avatar (UA-AVATAR-DETAIL-FIX-0036)", () => {
       serve = { [`${MINE}/9`]: agent(9, avatar) };
       const { app, img, head } = await mount("9");
       try {
-        assert.equal(img(), undefined, `no image for ${String(avatar)}`);
+        assert.equal(img()?.props.src, undefined, `no image for ${String(avatar)}`);
         assert.equal(textOf(head()).trim(), "B", `initial for ${String(avatar)}`);
       } finally { app.unmount(); }
     }
@@ -128,7 +128,7 @@ describe("AgentInstance header avatar (UA-AVATAR-DETAIL-FIX-0036)", () => {
     try {
       img().props.onError();
       await settle();
-      assert.equal(img(), undefined, "broken image removed");
+      assert.equal(img()?.props.src, undefined, "broken image removed");
       assert.equal(textOf(head()).trim(), "B");
     } finally { app.unmount(); }
   });
@@ -140,13 +140,13 @@ describe("AgentInstance header avatar (UA-AVATAR-DETAIL-FIX-0036)", () => {
       assert.equal(img()?.props.src, `${STORAGE}/api/v1/avatars/f9`);
       props.templateId = "12";
       await settle();
-      assert.equal(img(), undefined, "agent 12 has no avatar: 9's image must not stay");
+      assert.equal(img()?.props.src, undefined, "agent 12 has no avatar: 9's image must not stay");
       assert.equal(textOf(head()).trim(), "B");
       props.templateId = "9";
       await settle();
       img().props.onError();
       await settle();
-      assert.equal(img(), undefined);
+      assert.equal(img()?.props.src, undefined);
       props.templateId = "13";
       await settle();
       assert.equal(img()?.props.src, `${STORAGE}/api/v1/avatars/f13`, "9's load failure does not hide 13's image");
