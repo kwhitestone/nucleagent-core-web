@@ -131,6 +131,7 @@ test("disabled create button is dimmed and not-allowed", { skip }, async () => {
     const s = await style(tab, "create");
     assert.ok(Number(s.opacity) < 0.7, `opacity ${s.opacity}`);
     assert.equal(s.cursor, "not-allowed");
+    assert.equal(s.shadow, "none", "no glow on a disabled primary");
   });
 });
 
@@ -157,4 +158,21 @@ test("phone width: owner buttons stay visible and styled", { skip }, async () =>
     assert.ok(s.height > 0);
     assert.equal(s.border, "1px solid");
   } finally { await tab.close(); }
+});
+
+// The fixture above only proves the CSS; this ties it to the real templates (class per data-testid).
+test("templates put the styled classes on the real buttons", () => {
+  const tpl = (f: string) => readFileSync(`src/addons/conversation/${f}`, "utf8").split("<style")[0];
+  const cls = (src: string, id: string) => src.match(new RegExp(`class="([^"]*)"[^>]*data-testid="${id}"`))?.[1].split(" ") ?? [];
+  const card = tpl("components/AgentCard.vue");
+  const list = tpl("views/AgentList.vue");
+  const wizard = tpl("components/UserAgentWizard.vue");
+  const want: [string, string, string[]][] = [
+    [card, "agent-card-start", ["btn-primary"]], [card, "agent-card-avatar", ["btn-ghost"]], [card, "agent-own-edit", ["btn-ghost"]],
+    [card, "agent-own-toggle", ["btn-ghost"]], [card, "agent-own-delete", ["btn-ghost", "danger"]], [list, "agent-create", ["btn-primary"]],
+    [list, "agent-list-retry", ["btn-ghost"]], [wizard, "ua-submit", ["btn-primary"]],
+  ];
+  for (const [src, id, need] of want) for (const c of need) assert.ok(cls(src, id).includes(c), `${id} lacks .${c}`);
+  assert.match(list, /class="agent-list"/, "button rules are scoped under .agent-list");
+  assert.match(wizard, /class="ua-wizard"/, "and under .ua-wizard");
 });
