@@ -238,6 +238,17 @@ function remove(a: MyAgent): void {
 .agent-list-tools > button { height: 36px; padding: 0 14px; font-size: 13px; cursor: pointer; }
 .agent-list-tools > button:disabled { opacity: 0.55; cursor: not-allowed; }
 .agent-list-quota { font-size: 12.5px; color: var(--text-tertiary); }
+/* Buttons for this page, its cards and the owner wizard: same spec as AgentInstance.vue / admin views, whose copies are
+   scoped and never reach here. :where() keeps specificity at one class so per-place size rules still win. */
+:where(.agent-list, .ua-wizard) :is(.btn-primary, .btn-ghost) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 14px; border: 1px solid transparent; border-radius: var(--r-md); font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer; transition: all 0.2s var(--ease); }
+:where(.agent-list, .ua-wizard) .btn-primary { background: var(--grad-teal-indigo); color: #fff; box-shadow: var(--shadow-glow-teal); }
+:where(.agent-list, .ua-wizard) .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-glow-indigo); }
+:where(.agent-list, .ua-wizard) .btn-ghost { border-color: var(--border); background: var(--bg-card); color: var(--text-secondary); font-weight: 500; }
+:where(.agent-list, .ua-wizard) .btn-ghost:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-hover); color: var(--text-primary); }
+:where(.agent-list, .ua-wizard) .btn-ghost.danger { color: var(--rose-500); }
+:where(.agent-list, .ua-wizard) .btn-ghost.danger:hover:not(:disabled) { border-color: var(--rose-400); background: #fff1f2; color: var(--rose-500); }
+:where(.agent-list, .ua-wizard) :is(.btn-primary, .btn-ghost):focus-visible { outline: 2px solid var(--teal-500); outline-offset: 2px; }
+:where(.agent-list, .ua-wizard) :is(.btn-primary, .btn-ghost):disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
 .agent-list-tools input:focus { outline: none; border-color: var(--teal-500); }
 .agent-list-tools a, .agent-list-more a, .agent-list-empty a { height: 36px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; text-decoration: none; }
 .agent-list-group { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
