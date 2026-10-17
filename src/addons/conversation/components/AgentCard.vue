@@ -114,14 +114,12 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
 .agent-card .badge { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
 .agent-card .badge.off { background: var(--slate-100); color: var(--text-tertiary); }
 .agent-card .badge.cfg { background: #fef3c7; color: #b45309; }
-.agent-card-act { display: flex; gap: 8px; margin-top: 6px; pointer-events: auto; }
-.agent-card-act a { height: 32px; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; padding: 0 14px; }
-.agent-card-act .btn-primary { flex: 1; }
+/* Button look comes from AgentList.vue (.btn-primary/.btn-ghost). Actions are pinned to the card bottom (margin-top: auto)
+   so cards in one grid row line their buttons up; left-aligned, same size, wrap on narrow cards. */
+.agent-card-act { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; margin-top: auto; padding-top: 6px; pointer-events: auto; }
+.agent-card-act > :is(a, button, label) { height: 32px; padding: 0 14px; font-size: 12.5px; }
 .agent-card-act.own { margin-top: 0; }
-.agent-card-act.own button { height: 28px; padding: 0 10px; font-size: 12px; cursor: pointer; }
-.agent-card-act.own .danger { color: var(--rose-500); }
 .agent-card .badge.own { background: var(--grad-brand-soft); color: var(--teal-600); }
-.agent-card-upload { height: 32px; font-size: 12.5px; display: inline-flex; align-items: center; padding: 0 14px; cursor: pointer; }
 .agent-card-upload.busy { opacity: 0.6; cursor: progress; }
 .agent-card.off { background: rgba(255, 255, 255, 0.55); }
 .agent-card.off .agent-card-cover { filter: saturate(0.25); opacity: 0.6; }
