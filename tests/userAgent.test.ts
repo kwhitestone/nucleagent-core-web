@@ -384,6 +384,33 @@ describe("list behaviour (mounted setup)", () => {
     } finally { app.unmount(); }
   });
 
+  test("F10 (UA-EDIT-FIELDS-1230): edit prefills from the owner config + server lists; save PATCHes changed fields, then uploads the picked avatar; cancel writes nothing", async () => {
+    serve = { ...routes,
+      [`get ${DEFS}`]: [{ id: 9, name: "a9", slug: "u-9", isActive: true, config: { model: "m1", executionBackend: "codex", memory: true, imageModel: "", videoModel: "" } }],
+      [`get ${MINE}/backends`]: [{ id: "codex", displayName: "Codex" }],
+      [`get ${MINE}/gen-models`]: { image: ["img-1"], video: ["vid-1"] },
+      [`patch ${DEFS}/9`]: {}, [`post ${DEFS}/9/avatar`]: { fileId: "f", path: "/api/v1/avatars/f" } };
+    Object.defineProperty(globalThis, "createImageBitmap", { configurable: true, value: async () => ({ width: 64, height: 64, close() {} }) });
+    const { app, s } = await mount();
+    try {
+      assert.deepEqual(s.backends, [{ id: "codex", displayName: "Codex" }]);
+      assert.deepEqual(s.genModels, { image: ["img-1"], video: ["vid-1"] });
+      const mine = s.agents.find((a: any) => a.templateId === 9);
+      s.openEdit(mine);
+      const init = s.wizard.initial;
+      assert.equal(init.slug, "u-9");
+      assert.deepEqual([init.executionBackend, init.memory, init.gen], ["codex", true, { image: "", video: "" }]);
+      s.wizard = null; // cancel
+      assert.deepEqual(writes(), [], "cancel stores nothing");
+      s.openEdit(mine);
+      const file = { name: "a.png", type: "image/png", size: 10 } as unknown as File;
+      await s.submit({ ...s.wizard.initial, gen: { image: "img-1", video: "vid-1" } }, file);
+      assert.deepEqual(writes()[0], [`patch ${DEFS}/9`, { imageModel: "img-1", videoModel: "vid-1" }]);
+      assert.equal(writes()[1][0], `post ${DEFS}/9/avatar`, "avatar after the save");
+      assert.equal(writes().length, 2);
+    } finally { app.unmount(); Reflect.deleteProperty(globalThis, "createImageBitmap"); }
+  });
+
   test("F4: wizard ignores submit while busy (no second create)", async () => {
     const sent: unknown[] = [];
     const initial = { id: 9, name: "a9", description: "", model: "m1", prompt: "" };
@@ -392,5 +419,85 @@ describe("list behaviour (mounted setup)", () => {
       try { s.submit(); } finally { app.unmount(); }
     }
     assert.equal(sent.length, 1, "only the non-busy submit is emitted");
+  });
+});
+
+// UA-EDIT-FIELDS-1230: same fields as the admin editor (minus server-managed), every option from a server list.
+describe("edit fields (UA-EDIT-FIELDS-1230)", () => {
+  const BACKENDS = "/api/v1/addons/agent/mine/backends";
+  const GEN = "/api/v1/addons/agent/mine/gen-models";
+  let Wizard: any;
+  before(async () => { Wizard = (await vite.ssrLoadModule("/src/addons/conversation/components/UserAgentWizard.vue")).default; });
+  const props = { models: ["m1"], busy: false, errors: {}, backends: [{ id: "codex", displayName: "Codex" }],
+    genModels: { image: ["img-1"], video: ["vid-1"] } };
+
+  test("lists: backends id+displayName only, gen-models names per kind; older core → empty", async () => {
+    reply = (_m, url) => url === BACKENDS ? { data: { data: [{ id: "codex", displayName: "Codex", url: "x" }, { id: "" }, { id: "hermes" }] } }
+      : { data: { data: { image: ["img-1", 3, ""], video: ["vid-1"], bad: "x" } } };
+    assert.deepEqual(await ua.listUserAgentBackends(), [{ id: "codex", displayName: "Codex" }, { id: "hermes", displayName: "hermes" }]);
+    assert.deepEqual(await ua.listUserAgentGenModels(), { image: ["img-1"], video: ["vid-1"] });
+    reply = () => new Err(404, "nope");
+    assert.deepEqual(await ua.listUserAgentBackends(), []);
+    assert.deepEqual(await ua.listUserAgentGenModels(), {});
+    reply = () => new Err(500, "boom");
+    await assert.rejects(ua.listUserAgentGenModels());
+  });
+
+  test("create body: gen as <kind>Model, backend, memory only when off; blanks left out (= platform default)", () => {
+    const d = ua.emptyDraft({ name: " n ", model: "m1", executionBackend: "codex", memory: false, gen: { image: "img-1", video: "" } });
+    assert.deepEqual(ua.draftBody(d), { name: "n", model: "m1", executionBackend: "codex", imageModel: "img-1", memory: false });
+    assert.deepEqual(ua.draftBody(ua.emptyDraft({ name: "n" })), { name: "n" });
+  });
+
+  test("edit patch: changed fields only; clearing gen/backend sends \"\" (platform default); memory toggles", () => {
+    const base = ua.emptyDraft({ name: "a", model: "m", executionBackend: "codex", gen: { image: "img-1", video: "vid-1" } });
+    assert.deepEqual(ua.draftPatch(base, { ...base, gen: { ...base.gen } }), {});
+    assert.deepEqual(ua.draftPatch(base, { ...base, executionBackend: "", gen: { image: "", video: "vid-1" } }), { executionBackend: "", imageModel: "" });
+    assert.deepEqual(ua.draftPatch(base, { ...base, memory: false, gen: { image: "img-2", video: "vid-1" } }), { imageModel: "img-2", memory: false });
+  });
+
+  test("prefill from the owner config: backend, memory (unset = on), <kind>Model per kind", () => {
+    assert.deepEqual(ua.draftFromConfig({ executionBackend: "codex", memory: false, imageModel: "img-1", providerId: 3 }, ["image", "video"]),
+      { executionBackend: "codex", memory: false, gen: { image: "img-1", video: "" } });
+    assert.deepEqual(ua.draftFromConfig(undefined, ["image"]), { executionBackend: "", memory: true, gen: { image: "" } });
+  });
+
+  test("error mapping: off-list backend / incompatible / gen type mismatch / gen unavailable", () => {
+    assert.deepEqual(ua.userAgentError(new Err(422, "execution_backend_not_open_to_users")), { field: "executionBackend", key: "agents.mine.errBackendClosed" });
+    assert.deepEqual(ua.userAgentError(new Err(422, "execution_backend_incompatible")), { field: "executionBackend", key: "agents.mine.errBackendIncompatible" });
+    assert.deepEqual(ua.userAgentError(new Err(422, "model_type_mismatch")), { field: "gen", key: "agents.mine.errGenType" });
+    assert.deepEqual(ua.userAgentError(new Err(422, "model_not_supported")), { field: "gen", key: "agents.mine.errGenClosed" });
+    for (const k of ["errBackendClosed", "errBackendIncompatible", "errGenType", "errGenClosed", "gen_image", "gen_video", "backend", "memory", "slug"]) {
+      assert.ok(zh.agents.mine[k] && en.agents.mine[k], k);
+    }
+  });
+
+  test("wizard renders every field the admin editor has (minus server-managed): avatar picker, slug read-only, memory, backend, image/video models", async () => {
+    const html = await render(Wizard, { ...props, initial: { id: 3, slug: "u-abc", name: "n", description: "", model: "m1", prompt: "",
+      executionBackend: "codex", memory: false, gen: { image: "img-1", video: "" } } });
+    for (const id of ["ua-avatar", "ua-name", "ua-desc", "ua-model", "ua-prompt", "ua-memory", "ua-backend", "ua-gen-image", "ua-gen-video", "ua-slug"]) {
+      assert.match(html, new RegExp(`id="${id}"`), id);
+      assert.match(html, new RegExp(`<label[^>]*for="${id}"`), `label for ${id}`);
+    }
+    assert.match(html, /id="ua-slug"[^>]*readonly|readonly[^>]*id="ua-slug"/);
+    assert.match(html, /value="u-abc"/);
+    assert.match(html, /<option value="codex" selected>Codex<\/option>/);
+    assert.match(html, /<option value="img-1" selected>img-1<\/option>/);
+    assert.match(html, /<option value="vid-1">vid-1<\/option>/);
+    assert.match(html, new RegExp(`<option value="" selected>${zh.agents.mine.platformDefault}</option>`), "empty video = platform default");
+    assert.match(html, new RegExp(zh.agents.mine.gen_image));
+    assert.match(html, new RegExp(zh.agents.mine.gen_video));
+    assert.doesNotMatch(html, /type="checkbox"[^>]*checked[^>]*data-testid="ua-memory"/, "memory off");
+    assert.doesNotMatch(html, /providerId|music/i);
+    // create mode: no slug yet
+    assert.doesNotMatch(await render(Wizard, props), /id="ua-slug"/);
+  });
+
+  test("wizard keeps a stored value selectable after it left the list; no gen section on a core without media", async () => {
+    const html = await render(Wizard, { ...props, backends: [], genModels: { image: [] },
+      initial: { id: 3, name: "n", description: "", model: "m1", prompt: "", executionBackend: "gone", gen: { image: "old-img" } } });
+    assert.match(html, /<option value="gone" selected>gone<\/option>/);
+    assert.match(html, /<option value="old-img" selected>old-img<\/option>/);
+    assert.doesNotMatch(await render(Wizard, { ...props, genModels: {} }), /data-testid="ua-gen"/);
   });
 });

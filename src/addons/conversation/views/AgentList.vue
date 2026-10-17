@@ -5,11 +5,14 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
+import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import { listMyAgents, type MyAgent } from "../api/agent";
 import {
-  USER_AGENT_LIMIT, createUserAgent, deleteUserAgent, draftPatch, entryState, listMyDefinitions, listUserAgentModels, mergeOwned,
-  setUserAgentActive, singleFlight, updateUserAgent, userAgentError, type Draft, type UserDefinition,
+  USER_AGENT_LIMIT, createUserAgent, deleteUserAgent, draftFromConfig, draftPatch, entryState, listMyDefinitions, listUserAgentBackends,
+  listUserAgentGenModels, listUserAgentModels, mergeOwned, setUserAgentActive, singleFlight, updateUserAgent, userAgentError,
+  type Draft, type UserAgentBackend, type UserDefinition,
 } from "../api/userAgent";
+import { AvatarUploadError, USER_AVATAR_CONTRACT, avatarUploader, imageDims } from "../api/userAvatar";
 import AgentCard from "../components/AgentCard.vue";
 import UserAgentWizard from "../components/UserAgentWizard.vue";
 import { agentModel, groupAgents } from "../components/agentCard";
@@ -42,9 +45,11 @@ const noMatch = computed(() => searching.value && !groups.value.active.length &&
 // My own definitions: null = this core has no list route → create/manage hidden (fail closed).
 const defs = ref<UserDefinition[] | null>(null);
 const models = ref<string[]>([]);
+const backends = ref<UserAgentBackend[]>([]);
+const genModels = ref<Record<string, string[]>>({});
 const ownedIds = computed(() => new Set((defs.value ?? []).map((d) => d.id)));
 const entry = computed(() => entryState(defs.value, models.value));
-const wizard = ref<{ initial?: Draft & { id: number } } | null>(null);
+const wizard = ref<{ initial?: Draft & { id: number; slug?: string } } | null>(null);
 const busy = ref(false);
 const errors = ref<Record<string, string>>({});
 
@@ -52,9 +57,12 @@ async function load(): Promise<void> {
   loading.value = true;
   failed.value = false;
   try {
-    const [mine, own, open] = await Promise.all([listMyAgents(), listMyDefinitions().catch(() => null), listUserAgentModels().catch(() => [])]);
+    const [mine, own, open, be, gen] = await Promise.all([listMyAgents(), listMyDefinitions().catch(() => null), listUserAgentModels().catch(() => []),
+      listUserAgentBackends().catch(() => []), listUserAgentGenModels().catch(() => ({}))]);
     defs.value = own;
     models.value = open;
+    backends.value = be;
+    genModels.value = gen;
     agents.value = mergeOwned(mine, own);
   } catch {
     failed.value = true;
@@ -87,7 +95,21 @@ function openCreate(): void {
 }
 function openEdit(a: MyAgent): void {
   errors.value = {};
-  wizard.value = { initial: { id: a.templateId, name: a.name, description: a.description ?? "", model: agentModel(a), prompt: "" } };
+  const def = defs.value?.find((d) => d.id === a.templateId);
+  wizard.value = { initial: { id: a.templateId, slug: def?.slug || a.slug || undefined, name: a.name, description: a.description ?? "",
+    model: agentModel(a), prompt: "", ...draftFromConfig(def?.config ?? a.config, Object.keys(genModels.value)) } };
+}
+
+// Wizard avatar: uploaded only after the definition is saved (create needs its id), same route and rules as the card.
+const upload = avatarUploader((path, body) => getPlatformRuntime().http.post(path, body,
+  { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data), imageDims, () => {});
+async function saveAvatar(id: number, file: File): Promise<void> {
+  try { await upload(id, file); } catch (e) {
+    const kind = e instanceof AvatarUploadError ? e.kind : "failed";
+    if (kind === "notFound") toast.error(t("agents.avatarNotFound"));
+    else if (kind === "failed") toast.error(t("agents.avatarFailed", { message: e instanceof Error ? e.message : String(e) }));
+    else toast.error(t(`agents.avatar_${kind}`, { mb: USER_AVATAR_CONTRACT.maxBytes >> 20, side: USER_AVATAR_CONTRACT.maxSide }));
+  }
 }
 
 async function reveal(id: number): Promise<void> {
@@ -98,7 +120,7 @@ async function reveal(id: number): Promise<void> {
   card?.querySelector<HTMLElement>("a")?.focus();
 }
 
-const submit = singleFlight(async (draft: Draft) => {
+const submit = singleFlight(async (draft: Draft, avatar?: File) => {
   busy.value = true;
   errors.value = {};
   const initial = wizard.value?.initial;
@@ -107,9 +129,11 @@ const submit = singleFlight(async (draft: Draft) => {
     if (initial) {
       const patch = draftPatch(initial, draft);
       if (Object.keys(patch).length) await updateUserAgent(id, patch);
+      if (avatar) await saveAvatar(id, avatar);
       toast.success(t("agents.mine.saved"));
     } else {
       id = (await createUserAgent(draft)).id;
+      if (avatar) await saveAvatar(id, avatar);
       // The create route refuses isActive; "create and enable" is create + PATCH.
       try { await setUserAgentActive(id, true); toast.success(t("agents.mine.created")); }
       catch (e) { toast.error(errorText(e).text); }
@@ -218,7 +242,7 @@ function remove(a: MyAgent): void {
         </section>
       </template>
     </div>
-    <UserAgentWizard v-if="wizard" :models="models" :busy="busy" :errors="errors" :initial="wizard.initial"
+    <UserAgentWizard v-if="wizard" :models="models" :backends="backends" :gen-models="genModels" :busy="busy" :errors="errors" :initial="wizard.initial"
       @submit="submit" @cancel="busy || (wizard = null)" />
   </div>
 </template>
