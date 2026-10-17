@@ -74,7 +74,7 @@ const to = computed(() => `/agents/${props.agent.templateId}`);
       </div>
       <div class="agent-card-act">
         <router-link :to="to" class="btn-primary" data-testid="agent-card-start">{{ agent.disabled ? t("agents.history") : t("agents.start") }}</router-link>
-        <router-link v-if="admin" :to="`/admin/agents?edit=${agent.templateId}`" class="btn-ghost" data-testid="agent-card-edit">
+        <router-link v-if="admin && !owned" :to="`/admin/agents?edit=${agent.templateId}`" class="btn-ghost" data-testid="agent-card-edit">
           {{ status === "unconfigured" ? t("agents.configure") : t("agents.edit") }}
         </router-link>
         <label v-if="canUploadAvatar(agent)" class="btn-ghost agent-card-upload" :class="{ busy: uploading }" data-testid="agent-card-avatar">

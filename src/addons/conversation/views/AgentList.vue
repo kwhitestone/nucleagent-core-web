@@ -2,6 +2,7 @@
 /** All of my agents: every enabled definition (chat-ready), plus disabled ones I have used (collapsed). */
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import { listMyAgents, type MyAgent } from "../api/agent";
@@ -14,6 +15,8 @@ import UserAgentWizard from "../components/UserAgentWizard.vue";
 import { agentModel, groupAgents } from "../components/agentCard";
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const authorization = useEmbeddedAuthorization();
 // Same capability that gates the admin console; regular users never see manage/import/edit.
 const admin = computed(() => isInShell() && authorization.can("core:admin:read"));
@@ -60,7 +63,15 @@ async function load(): Promise<void> {
     loading.value = false;
   }
 }
-onMounted(load);
+// /agents?edit=<id> (detail page "编辑"): open the owner wizard once, only for a definition I own.
+onMounted(async () => {
+  await load();
+  const id = Number(route?.query.edit);
+  if (!id) return;
+  void router?.replace({ query: {} });
+  const a = agents.value.find((x) => x.templateId === id);
+  if (a && ownedIds.value.has(id)) openEdit(a);
+});
 
 /** Mapped error as text (toast and template both render text, never HTML). */
 function errorText(e: unknown): { field?: string; text: string } {
