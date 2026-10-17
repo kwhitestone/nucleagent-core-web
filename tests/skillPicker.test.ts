@@ -251,6 +251,7 @@ test("skill picker groups by source, badges imports, and flags selected-but-unav
     click(all(root, "skill-toggle")[0]); await nextTick();
     assert.deepEqual(all(body, "osheet-tab").map(textOf), ["全部 502", "已选 2", "系统 1", "导入 500", "我的 1"]);
     assert.equal(all(body, "osheet-row").length, PAGE_SIZE);
+    assert.equal(textOf(all(all(body, "osheet-row")[0], "osheet-badge")[0]), "导入");
     assert.equal(all(body, "osheet-search")[0].props.placeholder, "搜索技能名称、描述、分类");
 
     click(all(chips[2], "skill-chip-remove")[0]);
