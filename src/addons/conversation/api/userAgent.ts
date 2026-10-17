@@ -7,7 +7,9 @@
  * Limits (runes, trimmed): name 32, description 80, prompt 4000, model 100 (definitions.go:37).
  * UA-EDIT-FIELDS-1230: executionBackend from GET /mine/backends, <kind>Model from GET /mine/gen-models
  * (names only), memory bool. "" = platform default. Slug stays server-generated (read-only).
- * Skills/tools (L8) are not in the server whitelist yet: add them to Draft + GEN/TEXT keys below.
+ * G-TASK-TOOL-PICK-1900: skillIds/toolIds (number[]) from GET /skill and GET /tool/catalog; the server
+ * accepts only enabled, user-pickable ids and refuses a tool a picked skill already brings (422).
+ * [] clears, absent keeps.
  *
  * BLOCKER (core main has neither; the UI fails closed until they ship):
  *   GET /mine/definitions → [{id,name,isActive,config{description,avatar,model}}] (my live private definitions)
@@ -37,23 +39,29 @@ export interface Draft {
   executionBackend: string; memory: boolean;
   /** <kind>Model per enabled kind; "" = platform default. */
   gen: Record<string, string>;
+  skillIds: number[]; toolIds: number[];
 }
-type Field = "name" | "description" | "model" | "prompt" | "executionBackend" | "gen" | "memory";
+type Field = "name" | "description" | "model" | "prompt" | "executionBackend" | "gen" | "memory" | "bindings";
 export interface UserAgentBackend { id: string; displayName: string }
 
 /** Defaults for the fields older call sites do not pass. */
 export const emptyDraft = (d: Partial<Draft> = {}): Draft =>
-  ({ name: "", description: "", model: "", prompt: "", executionBackend: "", memory: true, ...d, gen: { ...d.gen } });
+  ({ name: "", description: "", model: "", prompt: "", executionBackend: "", memory: true, ...d, gen: { ...d.gen },
+    skillIds: [...(d.skillIds ?? [])], toolIds: [...(d.toolIds ?? [])] });
 
 /** Owner fields from GET /mine/definitions config (core ownerDefinition). */
-export function draftFromConfig(config: UserDefinition["config"] | undefined, kinds: readonly string[]): Pick<Draft, "executionBackend" | "memory" | "gen"> {
+export function draftFromConfig(config: UserDefinition["config"] | undefined, kinds: readonly string[]): Pick<Draft, "executionBackend" | "memory" | "gen" | "skillIds" | "toolIds"> {
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   return {
+    skillIds: ids(config?.skillIds), toolIds: ids(config?.toolIds),
     executionBackend: str(config?.executionBackend),
     memory: config?.memory !== false,
     gen: Object.fromEntries(kinds.map((k) => [k, str(config?.[`${k}Model`])])),
   };
 }
+
+const ids = (v: unknown): number[] => (Array.isArray(v) ? v.filter((id): id is number => Number.isSafeInteger(id) && id > 0) : []);
+const sameIds = (a: number[], b: number[]) => [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
 
 const status = (e: unknown) => (e as { status?: unknown } | null)?.status;
 // Older core: no route (404/405), or GET falls through to /mine/{templateId} and fails to parse the id (422).
@@ -111,9 +119,11 @@ export async function listUserAgentGenModels(): Promise<Record<string, string[]>
 }
 
 /** Trimmed; empty optional fields are left out (create = platform default). */
-export function draftBody(draft: Draft): Record<string, string | boolean> {
+export function draftBody(draft: Draft): Record<string, string | boolean | number[]> {
   const d = emptyDraft(draft);
-  const body: Record<string, string | boolean> = { name: d.name.trim() };
+  const body: Record<string, string | boolean | number[]> = { name: d.name.trim() };
+  if (d.skillIds.length) body.skillIds = d.skillIds;
+  if (d.toolIds.length) body.toolIds = d.toolIds;
   for (const k of ["description", "model", "prompt", "executionBackend"] as const) if (d[k].trim()) body[k] = d[k].trim();
   for (const [kind, name] of Object.entries(d.gen)) if (name.trim()) body[`${kind}Model`] = name.trim();
   if (!d.memory) body.memory = false;
@@ -147,9 +157,11 @@ export function validateDraft(d: Pick<Draft, "name" | "description" | "model" | 
  * Changed fields only. The server never returns the prompt, so a blank prompt in edit means "keep";
  * a blank model keeps it too. Backend and <kind>Model: "" is sent as "" (= back to the platform default).
  */
-export function draftPatch(base: Draft, next: Draft): Record<string, string | boolean> {
+export function draftPatch(base: Draft, next: Draft): Record<string, string | boolean | number[]> {
   const b = emptyDraft(base), n = emptyDraft(next);
-  const out: Record<string, string | boolean> = {};
+  const out: Record<string, string | boolean | number[]> = {};
+  if (!sameIds(b.skillIds, n.skillIds)) out.skillIds = n.skillIds;
+  if (!sameIds(b.toolIds, n.toolIds)) out.toolIds = n.toolIds;
   for (const k of ["name", "description", "model", "prompt", "executionBackend"] as const) {
     const v = n[k].trim();
     if (v !== b[k].trim() && (v || (k !== "prompt" && k !== "model"))) out[k] = v;
@@ -180,6 +192,9 @@ export function userAgentError(e: unknown): UserAgentError {
     if (msg === "execution_backend_incompatible") return { field: "executionBackend", key: "agents.mine.errBackendIncompatible" };
     if (msg === "model_type_mismatch") return { field: "gen", key: "agents.mine.errGenType" };
     if (msg === "model_not_supported") return { field: "gen", key: "agents.mine.errGenClosed" };
+    if (msg === "skill_not_selectable" || msg === "invalid skillIds") return { field: "bindings", key: "agents.mine.errSkillClosed" };
+    if (msg === "tool_not_selectable" || msg === "invalid toolIds") return { field: "bindings", key: "agents.mine.errToolClosed" };
+    if (msg === "tool_covered_by_skill") return { field: "bindings", key: "agents.mine.errToolCovered" };
     const field = /^invalid (name|description|prompt|model)$/.exec(msg)?.[1] as Field | undefined;
     if (field) return { field, key: "agents.mine.errTooLong" };
   }

@@ -24,6 +24,8 @@ import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import DevicePicker from "@/addons/conversation/components/DevicePicker.vue";
 import SkillPicker from "@/addons/conversation/components/SkillPicker.vue";
+import ToolPicker from "@/addons/conversation/components/ToolPicker.vue";
+import { effectiveToolIds, listToolCatalog, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
 import { useNarrow } from "@/composables/useNarrow";
 import { clearDraft, readDraft, saveDraft, type TaskDraft } from "@/addons/conversation/composables/taskDraft";
 import type {
@@ -133,6 +135,18 @@ watch(targetDeviceId, () => { backendCompatible.value = false; attachments.value
  * （见 types.ts 的 CreateConversationRequest.skillIds 注释）。
  */
 const skillIds = ref<number[]>([]);
+/** G-TASK-TOOL-PICK-1900: extra tools; empty = field omitted (current behavior). */
+const toolIds = ref<number[]>([]);
+const tools = ref<ToolCatalogItem[]>([]);
+const toolsLoading = ref(false);
+const toolsFailed = ref(false);
+async function loadTools(): Promise<void> {
+  toolsLoading.value = true; toolsFailed.value = false;
+  try { tools.value = await listToolCatalog(); }
+  catch { toolsFailed.value = true; toast.warning(t("common.toolLoadFailed")); }
+  finally { toolsLoading.value = false; }
+}
+onMounted(loadTools);
 
 const form = reactive({
   name: "",
@@ -167,7 +181,7 @@ const backendPicker = ref<{ openSheet: () => void } | null>(null);
 // --- Q5: 保存草稿 (desktop). Local, one draft per browser; launching clears it. ---
 const draftSaved = ref(false);
 function currentDraft(): TaskDraft {
-  return { ...form, templateName: templates.value[selected.value]?.name ?? "", skillIds: [...skillIds.value], targetDeviceId: targetDeviceId.value || undefined, executionBackend: executionBackend.value || undefined };
+  return { ...form, templateName: templates.value[selected.value]?.name ?? "", skillIds: [...skillIds.value], ...(toolIds.value.length ? { toolIds: [...toolIds.value] } : {}), targetDeviceId: targetDeviceId.value || undefined, executionBackend: executionBackend.value || undefined };
 }
 function onSaveDraft(): void {
   saveDraft(localStorage, currentDraft());
@@ -179,6 +193,7 @@ function restoreDraft(draft: TaskDraft): void {
   if (index >= 0) selected.value = index;
   Object.assign(form, { name: draft.name, desc: draft.desc, execMode: draft.execMode, outputFormat: draft.outputFormat });
   skillIds.value = draft.skillIds;
+  toolIds.value = draft.toolIds ?? [];
   targetDeviceId.value = draft.targetDeviceId || "";
   executionBackend.value = draft.executionBackend || null;
   void nextTick(() => { draftSaved.value = true; });
@@ -212,6 +227,7 @@ async function launch(): Promise<void> {
   try {
     const input = form.desc.trim();
     const mode: ConversationMode = "a2a_agent";
+    const pickedTools = effectiveToolIds(toolIds.value, tools.value, skillIds.value);
     const created = await store.create({
       mode,
       input,
@@ -228,6 +244,8 @@ async function launch(): Promise<void> {
       targetDeviceId: targetDeviceId.value || undefined,
       // 没选技能时必须整个字段缺省，不能传空数组：后端据此决定是否走自动匹配。
       skillIds: skillIds.value.length > 0 ? skillIds.value : undefined,
+      // Same rule: no pick = no field. Tools a picked skill already brings are dropped (server: covered = redundant).
+      toolIds: pickedTools.length > 0 ? pickedTools : undefined,
     });
     clearDraft(localStorage);
     // replace: Back from the conversation returns to the task desk, not the form (board §12 ⑤).
@@ -301,6 +319,7 @@ async function launch(): Promise<void> {
             @validation-change="(value) => (backendCompatible = value.allowed)"
           />
           <SkillPicker v-model="skillIds" :disabled="submitting" row />
+          <ToolPicker v-model="toolIds" :tools="tools" :skill-ids="skillIds" :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" row @retry="loadTools" />
         </div>
 
         <p class="task-m-glabel">{{ t('common.attachment') }}</p>
@@ -386,6 +405,11 @@ async function launch(): Promise<void> {
         <div class="form-group">
           <label>{{ t('common.skill') }}</label>
           <SkillPicker v-model="skillIds" :disabled="submitting" />
+        </div>
+
+        <div class="form-group" data-testid="task-tools">
+          <label>{{ t('common.tool') }}</label>
+          <ToolPicker v-model="toolIds" :tools="tools" :skill-ids="skillIds" :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" @retry="loadTools" />
         </div>
 
         <div class="form-group">

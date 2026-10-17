@@ -9,7 +9,11 @@ export interface Definition {
 export interface Capabilities {
   read: boolean; write: boolean; writeIdentity: boolean; delete: boolean; restore: boolean;
   readSkills: boolean; writeSkillBindings: boolean; readTools: boolean; writeTools: boolean;
+  /** L6: replace the template's selected tools (core:admin:write + core:tool:read). Absent on older core = not writable. */
+  writeToolBindings?: boolean;
 }
+/** GET /tool/catalog item (safe fields only). */
+export interface CatalogTool { id: number; name: string; description?: string; skillIds: number[]; imported: boolean }
 export interface FieldPolicy {
   editablePaths: string[]; readOnlyPaths: string[]; protectedPaths: string[];
   unknownPaths: { path: string; type: string }[]; reasons: Record<string, string>;
@@ -32,6 +36,8 @@ export interface ToolDetail { tool: Tool; capabilities: { read: boolean; write: 
 export interface Detail {
   definition: Definition; capabilities: Capabilities; fieldPolicy: FieldPolicy;
   skillBindings: Binding[]; skills: Skill[]; tools: Tool[];
+  /** L6 selected tool ids (tool_bindings); absent on older core. */
+  toolBindings?: number[];
   effective: { revision: string; definitionRevision: string; dependencies?: unknown[]; modelRule?: string; promptRule?: string; inFlightRule?: string; overrideRule?: string };
   identity: { uid: number | null; status: "pending" | "ready" | "failed"; projectionRevision?: string; lastErrorCode?: string };
   instanceCount?: number; sessions7d?: number; etag: string;
@@ -220,12 +226,13 @@ export function createDefinitionApi(transport: Transport) {
     async detail(id: number): Promise<Detail> {
       return aggregate(await request<Omit<Detail, "etag">>(idPath(id)));
     },
-    async patch(record: Detail, changes: Changes, skillBindings?: Binding[]): Promise<Detail> {
-      if (!record.capabilities.write || (skillBindings !== undefined && !record.capabilities.writeSkillBindings)) {
+    async patch(record: Detail, changes: Changes, skillBindings?: Binding[], toolBindings?: number[]): Promise<Detail> {
+      if (!record.capabilities.write || (skillBindings !== undefined && !record.capabilities.writeSkillBindings)
+        || (toolBindings !== undefined && record.capabilities.writeToolBindings !== true)) {
         throw new DefinitionError(403, "forbidden");
       }
       const body = { changes: buildChanges(record.definition, changes, record.fieldPolicy.editablePaths),
-        ...(skillBindings === undefined ? {} : { skillBindings }) };
+        ...(skillBindings === undefined ? {} : { skillBindings }), ...(toolBindings === undefined ? {} : { toolBindings }) };
       return aggregate(await request<Omit<Detail, "etag">>(idPath(record.definition.id), mutation(record, "PATCH", body)));
     },
     async lifecycle(record: Detail, action: LifecycleAction): Promise<Detail> {
@@ -266,6 +273,13 @@ export function createDefinitionApi(transport: Transport) {
       const { data } = await request<{ id: string; displayName: string }[]>("/api/v1/addons/conversation/execution-backends");
       if (!Array.isArray(data)) throw new Error("Backend catalog unavailable");
       return data;
+    },
+    /** Selectable tools (L6 GET /tool/catalog); ids, names and owning skills only. */
+    async toolCatalog(): Promise<CatalogTool[]> {
+      const { data } = await request<CatalogTool[]>("/api/v1/addons/tool/catalog");
+      if (!Array.isArray(data)) throw new Error("Tool catalog unavailable");
+      return data.filter(t => Number.isSafeInteger(t?.id) && typeof t.name === "string")
+        .map(t => ({ ...t, skillIds: Array.isArray(t.skillIds) ? t.skillIds : [] }));
     },
     async audits(id: number, offset = 0): Promise<{ items: Audit[]; total: number }> {
       const result = await request<Audit[]>(`${idPath(id)}/audits?${new URLSearchParams({ offset: String(offset), limit: "20" })}`);
