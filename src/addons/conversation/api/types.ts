@@ -243,6 +243,8 @@ export interface Skill {
   isActive: boolean;
   version?: string;
   sourceSha256?: string;
+  /** "agentia-engine" for imported rows; absent for skills uploaded here. */
+  sourceSystem?: string;
   createdAt?: string;
   updatedAt?: string;
 }
