@@ -59,7 +59,7 @@ test("AgentCard shows the uploaded avatar and falls back to initial + gradient w
   assert.match(card, /<img[^>]*v-if="avatar"[^>]*@error="avatarOk = false"/s);
   assert.match(card, /avatarGradient\(agent\.templateId\)/);
   assert.match(card, /data-testid="agent-card-start"/);
-  assert.match(card, /v-if="admin"/, "edit is admin-only");
+  assert.match(card, /v-if="admin && !owned"/, "admin editor link only for definitions I do not own (UA-EDIT-PERM-1110)");
 });
 
 test("AgentList: states, collapse, search and admin-only entries", () => {

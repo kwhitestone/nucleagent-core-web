@@ -55,6 +55,7 @@ const MINE = "/api/v1/addons/agent/mine";
 const agent = (id: number, avatar?: string) => ({ templateId: id, name: `Bot${id}`, slug: `s${id}`, description: "", disabled: false,
   instanceId: null, sessionCount: 0, lastSessionAt: null, memory: null, config: avatar === undefined ? { model: "m1" } : { model: "m1", avatar } });
 let serve: Record<string, unknown> = {};
+let adminMode = false;
 let vite: ViteDevServer;
 let unregister: () => void;
 let View: Component;
@@ -69,7 +70,7 @@ before(async () => {
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({
     http: { get: async (url: string) => ({ data: { code: 0, data: serve[url] ?? null } }) },
-    isInShell: () => false, useEmbeddedAuthorization: () => ({ permissions: { value: [] }, can: () => false }),
+    isInShell: () => adminMode, useEmbeddedAuthorization: () => ({ permissions: { value: [] }, can: () => adminMode }),
   } as any);
   // Same runtime-config path the app uses (validated, https-only storage origin).
   const rc = await vite.ssrLoadModule("/src/runtimeConfig.ts");
@@ -82,7 +83,7 @@ before(async () => {
 after(async () => { unregister?.(); await vite.close(); });
 
 const settle = async () => { for (let i = 0; i < 8; i++) { await new Promise((r) => setTimeout(r, 0)); await nextTick(); } };
-const stub = (tag: string) => ({ props: ["to"], setup: (_p: unknown, { slots }: any) => () => h(tag, slots.default?.()) });
+const stub = (tag: string) => ({ props: ["to"], setup: (p: any, { slots }: any) => () => h(tag, { to: p.to }, slots.default?.()) });
 
 async function mount(templateId: string) {
   const props = reactive({ templateId });
@@ -97,7 +98,7 @@ async function mount(templateId: string) {
   await settle();
   const head = () => { const r = all(root, (n) => n.props.class === "agent-avatar"); assert.equal(r.length, 1, "one header avatar"); return r[0]; };
   const img = () => all(head(), (n) => n.tag === "img")[0];
-  return { app, props, head, img };
+  return { app, props, head, img, root };
 }
 
 describe("AgentInstance header avatar (UA-AVATAR-DETAIL-FIX-0036)", () => {
@@ -152,4 +153,25 @@ describe("AgentInstance header avatar (UA-AVATAR-DETAIL-FIX-0036)", () => {
       assert.equal(img()?.props.src, `${STORAGE}/api/v1/avatars/f13`, "9's load failure does not hide 13's image");
     } finally { app.unmount(); }
   });
+});
+
+// UA-EDIT-PERM-1110: the detail page of my own agent edits through the owner wizard, never the admin console.
+describe("AgentInstance edit entry (UA-EDIT-PERM-1110)", () => {
+  const links = (root: N) => all(root, (n) => typeof n.props.to === "string" && /edit=/.test(n.props.to))
+    .map((n) => [n.props["data-testid"], n.props.to]);
+  const cases: [string, boolean, Record<string, unknown>, unknown[]][] = [
+    ["ordinary user, my agent", false, { owned: true }, [["agent-own-edit", "/agents?edit=9"]]],
+    ["admin, my agent", true, { owned: true }, [["agent-own-edit", "/agents?edit=9"]]],
+    ["admin, system agent", true, { owned: false }, [["agent-admin-edit", "/admin/agents?edit=9"]]],
+    ["ordinary user, system agent", false, { owned: false }, []],
+    ["ordinary user, my deleted agent", false, { owned: true, deleted: true }, []],
+  ];
+  for (const [label, admin, extra, want] of cases) {
+    test(label, async () => {
+      adminMode = admin;
+      serve = { [`${MINE}/9`]: { ...agent(9), ...extra } };
+      const { app, root } = await mount("9");
+      try { assert.deepEqual(links(root), want); } finally { app.unmount(); adminMode = false; }
+    });
+  }
 });

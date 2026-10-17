@@ -7,6 +7,7 @@ import { after, before, describe, test } from "node:test";
 import { compile, createRenderer, getCurrentInstance, h, nextTick, ssrContextKey, type Component } from "vue";
 import { parse } from "vue/compiler-sfc";
 import { createI18n } from "vue-i18n";
+import { routeLocationKey, routerKey } from "vue-router";
 import { createServer, type ViteDevServer } from "vite";
 import vue from "@vitejs/plugin-vue";
 
@@ -57,6 +58,9 @@ let Card: Component;
 const calls: { method: string; url: string; body?: unknown }[] = [];
 const toasts: string[] = [];
 let serve: Record<string, unknown> = {};
+let adminMode = false; // UA-EDIT-PERM-1110: same file drives admin and ordinary-user renders
+let query: Record<string, string> = {};
+const replaced: unknown[] = [];
 const fakeHttp = Object.fromEntries(["get", "post", "patch", "delete"].map((m) => [m, async (url: string, body?: unknown) => {
   calls.push({ method: m, url, body });
   const r = serve[`${m} ${url}`];
@@ -72,7 +76,7 @@ before(async () => {
   });
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({
-    http: fakeHttp, isInShell: () => false, useEmbeddedAuthorization: () => ({ permissions: { value: [] }, can: () => false }),
+    http: fakeHttp, isInShell: () => adminMode, useEmbeddedAuthorization: () => ({ permissions: { value: [] }, can: () => adminMode }),
   } as any);
   zh = (await vite.ssrLoadModule("/src/i18n/zh.ts")).default;
   List = withTemplate((await vite.ssrLoadModule("/src/addons/conversation/views/AgentList.vue")).default, "addons/conversation/views/AgentList.vue");
@@ -102,9 +106,10 @@ const routes = {
   [`post ${DEFS}/12/avatar`]: { fileId: "f12", path: "/api/v1/avatars/f12" },
 };
 const settle = async () => { for (let i = 0; i < 8; i++) { await new Promise((r) => setTimeout(r, 0)); await nextTick(); } };
-const stub = (tag: string) => ({ props: ["to"], setup: (_p: unknown, { slots }: any) => () => h(tag, slots.default?.()) });
+const stub = (tag: string) => ({ props: ["to"], setup: (p: any, { slots }: any) => () => h(tag, { to: p.to }, slots.default?.()) });
 
-async function mountList() {
+async function mountList(opts: { admin?: boolean; query?: Record<string, string> } = {}) {
+  adminMode = !!opts.admin; query = opts.query ?? {}; replaced.length = 0;
   serve = routes;
   calls.length = 0; toasts.length = 0;
   let instance: any = null;
@@ -112,6 +117,8 @@ async function mountList() {
   const app = renderer.createApp({ render: () => h(List, { onVnodeMounted: (v: any) => { instance = v.component; } }) });
   app.use(createI18n({ legacy: false, locale: "zh", missingWarn: false, fallbackWarn: false, messages: { zh } }));
   app.provide(ssrContextKey, {});
+  app.provide(routeLocationKey, { query } as any);
+  app.provide(routerKey, { replace: async (to: unknown) => { replaced.push(to); } } as any);
   app.component("AgentCard", Card);
   app.component("RouterLink", stub("a"));
   app.component("UserAgentWizard", stub("wizard"));
@@ -187,4 +194,46 @@ describe("AgentList ↔ AgentCard wiring in both groups (UA-FINAL-REVIEW-1921 W1
       assert.match(textOf(c), /a1/);
     } finally { app.unmount(); }
   });
+});
+
+// UA-EDIT-PERM-1110: editing my own agent never needs the admin console, for admins and ordinary users alike.
+describe("my own agent: one edit entry, the owner wizard (UA-EDIT-PERM-1110)", () => {
+  const edits = (c: N) => all(c, (n) => n.props["data-testid"] === "agent-card-edit" || n.props["data-testid"] === "agent-own-edit");
+  for (const admin of [false, true]) {
+    test(`${admin ? "admin" : "ordinary user"}: my cards offer only the owner edit; no link into /admin`, async () => {
+      const { app, s, cardOf } = await mountList({ admin });
+      try {
+        for (const id of [9, 12]) {
+          const c = cardOf(id);
+          assert.deepEqual(edits(c).map((n) => n.props["data-testid"]), ["agent-own-edit"], `card ${id}`);
+          assert.equal(all(c, (n) => String(n.props.to ?? "").startsWith("/admin")).length, 0, `card ${id} admin link`);
+          one(c, "agent-own-edit").props.onClick();
+          assert.equal(s.wizard?.initial?.id, id);
+          s.wizard = null;
+        }
+        // system definition: admin keeps the admin editor, an ordinary user gets no edit at all
+        const sys = edits(cardOf(1));
+        assert.deepEqual(sys.map((n) => n.props.to), admin ? ["/admin/agents?edit=1"] : []);
+      } finally { app.unmount(); }
+    });
+  }
+
+  test("/agents?edit=<my id> opens the owner wizard once and clears the query", async () => {
+    const { app, s } = await mountList({ query: { edit: "12" } });
+    try {
+      assert.equal(s.wizard?.initial?.id, 12);
+      assert.deepEqual(replaced, [{ query: {} }]);
+      assert.deepEqual(writes(), [], "opening the wizard writes nothing");
+    } finally { app.unmount(); }
+  });
+
+  for (const id of ["1", "999", "x"]) {
+    test(`/agents?edit=${id} (system / foreign-or-missing / junk) never opens the wizard`, async () => {
+      const { app, s } = await mountList({ admin: true, query: { edit: id } });
+      try {
+        assert.equal(s.wizard, null);
+        assert.deepEqual(writes(), []);
+      } finally { app.unmount(); }
+    });
+  }
 });

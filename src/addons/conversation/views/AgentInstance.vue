@@ -25,7 +25,8 @@ const { t, locale } = useI18n();
 const router = useRouter();
 const store = useConversationStore();
 const authorization = useEmbeddedAuthorization();
-// Admins jump to the definition editor (/admin/agents?edit=id); others never see the link.
+// My own definition: edit in the owner wizard on /agents (login + owner only, no admin capability).
+// Anything else: admins jump to the definition editor (/admin/agents?edit=id); others never see a link.
 const canEditDefinition = computed(() => isInShell() && authorization.can("core:admin:write"));
 
 const agent = ref<MyAgent | null>(null);
@@ -137,7 +138,9 @@ function source(c: Conversation): string {
               <span v-else-if="agent.disabled" class="tag off">{{ t("agents.disabled") }}</span></h1>
             <p v-if="agent.description">{{ agent.description }}</p>
           </div>
-          <router-link v-if="canEditDefinition && !agent.deleted" class="btn-ghost" :to="`/admin/agents?edit=${agent.templateId}`"
+          <router-link v-if="agent.owned && !agent.deleted" class="btn-ghost" :to="`/agents?edit=${agent.templateId}`"
+            data-testid="agent-own-edit">{{ t("agents.mine.edit") }}</router-link>
+          <router-link v-else-if="canEditDefinition && !agent.deleted" class="btn-ghost" :to="`/admin/agents?edit=${agent.templateId}`"
             data-testid="agent-admin-edit">{{ t("agents.editAsAdmin") }}</router-link>
         </header>
 
