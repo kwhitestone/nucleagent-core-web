@@ -7,9 +7,9 @@
  * 选了哪些、逐个摘掉。原生 <select multiple> 不满足——它的多选交互（按住
  * Ctrl 点）在触控和普通用户手里基本不可用，且选中项无法单独移除。
  *
- * 展开面板用的是 checkbox 列表而非自绘浮层：项目没有下拉组件可复用
- * （element-plus 已被刻意弃用，见 main.ts 注释），checkbox 的键盘操作与
- * 可访问性天然正确。
+ * L7：几百个技能时桌面端也用 OptionSheet（桌面居中弹层）：来源分组（系统/
+ * 导入/我的）、防抖搜索名称/描述/分类并高亮、每次 50 条分页、导入/需启用角标、
+ * 加载/错误/空态。数据仍是 GET /skill 全量，后端不改（见 pickerSearch.ts）。
  *
  * loading/disabled/防竞态（createLatestRequestGate + SESSION_CHANGE_EVENT）
  * 照 ModelPicker 的样板，保证换账号后旧响应不会把上个用户的技能列表灌进来。
@@ -21,7 +21,8 @@ import { toast } from "@/composables/useToast";
 import type { Skill } from "@/addons/conversation/api/types";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
-import OptionSheet, { type SheetOption } from "./OptionSheet.vue";
+import OptionSheet, { type SheetGroup, type SheetOption } from "./OptionSheet.vue";
+import { SKILL_SOURCES, skillSource, type SkillSource } from "./pickerSearch.ts";
 
 const props = withDefaults(
   defineProps<{
@@ -39,7 +40,9 @@ const emit = defineEmits<{ "update:modelValue": [value: number[]] }>();
 const { t, locale } = useI18n();
 const skills = ref<Skill[]>([]);
 const loading = ref(false);
-const expanded = ref(false);
+/** Last load failed; the sheet shows an error with retry instead of "no skills". */
+const failed = ref(false);
+const loaded = ref(false);
 const requestGate = createLatestRequestGate();
 
 /**
@@ -48,47 +51,56 @@ const requestGate = createLatestRequestGate();
  * i18n 是自由 JSON（后端 model.Skill.I18n 是 JSON 列），必须逐层做类型守卫，
  * 脏数据不能让整个列表炸掉（与 ModelPicker.modelsOf 的 Array.isArray 同款考量）。
  */
-function displayName(skill: Skill): string {
+function localized(skill: Skill, key: "name" | "description"): string {
   const bundle = skill.i18n?.[locale.value];
   if (bundle && typeof bundle === "object") {
-    const name = (bundle as Record<string, unknown>).name;
-    if (typeof name === "string" && name) return name;
+    const value = (bundle as Record<string, unknown>)[key];
+    if (typeof value === "string" && value) return value;
   }
-  return skill.name || skill.slug;
+  return "";
+}
+
+function displayName(skill: Skill): string {
+  return localized(skill, "name") || skill.name || skill.slug;
 }
 
 function describe(skill: Skill): string {
   const desc = skill.config?.description;
-  return typeof desc === "string" ? desc : "";
+  return localized(skill, "description") || (typeof desc === "string" ? desc : "");
 }
 
-/** 已选 ID → Skill。选中项可能在列表里找不到（技能被停用/删除），过滤掉。 */
-const selectedSkills = computed(() =>
-  props.modelValue
-    .map((id) => skills.value.find((s) => s.id === id))
-    .filter((s): s is Skill => s !== undefined),
-);
+const GROUP_LABEL: Record<SkillSource, string> = { system: "common.skillGroupSystem", imported: "common.skillGroupImported", mine: "common.skillGroupMine" };
+
+/**
+ * 已选 ID → chip。列表只含启用项；拿不到的 ID（停用/删除，常见于草稿或深链）
+ * 以“需启用”chip 显示并可移除——否则它被静默提交，后端以“技能已停用”拒绝建任务。
+ */
+const chips = computed(() => props.modelValue.map((id) => {
+  const skill = skills.value.find((s) => s.id === id);
+  return skill
+    ? { id, name: displayName(skill), imported: skillSource(skill) === "imported", missing: false }
+    : { id, name: `#${id}`, imported: false, missing: loaded.value };
+}));
 
 const sheetOpen = ref(false);
-const sheetOptions = computed<SheetOption[]>(() =>
-  skills.value.map((s) => ({ value: String(s.id), label: displayName(s), note: describe(s) || undefined })));
-const rowValue = computed(() => selectedSkills.value.length
-  ? selectedSkills.value.map(displayName).join("、")
+const groups = computed<SheetGroup[]>(() => SKILL_SOURCES.map((value) => ({ value, label: t(GROUP_LABEL[value]) })));
+const sheetOptions = computed<SheetOption[]>(() => skills.value.map((s) => {
+  const source = skillSource(s);
+  const category = s.config?.category;
+  return {
+    value: String(s.id),
+    label: displayName(s),
+    note: describe(s) || undefined,
+    keywords: [s.name, s.slug, typeof category === "string" ? category : ""].join(" "),
+    group: source,
+    badges: source === "imported" ? [t("common.skillBadgeImported")] : undefined,
+  };
+}));
+const rowValue = computed(() => chips.value.length
+  ? chips.value.map((c) => c.name).join("、")
   : t("common.skillAuto"));
 function onSheet(value: string | string[]): void {
   if (!props.disabled) emit("update:modelValue", (Array.isArray(value) ? value : [value]).map(Number));
-}
-
-function isSelected(id: number): boolean {
-  return props.modelValue.includes(id);
-}
-
-function toggle(id: number): void {
-  if (props.disabled) return;
-  emit(
-    "update:modelValue",
-    isSelected(id) ? props.modelValue.filter((x) => x !== id) : [...props.modelValue, id],
-  );
 }
 
 function remove(id: number): void {
@@ -99,13 +111,17 @@ function remove(id: number): void {
 async function load(warn = true): Promise<void> {
   const request = requestGate.begin();
   loading.value = true;
+  failed.value = false;
   try {
     const next = await listSkills();
     if (!request.isCurrent()) return;
     skills.value = next;
+    loaded.value = true;
   } catch {
     // 拉不到技能不阻断建任务：不选技能时后端会走自动语义匹配兜底。
-    if (request.isCurrent() && warn) toast.warning(t("common.skillLoadFailed"));
+    if (!request.isCurrent()) return;
+    failed.value = true;
+    if (warn) toast.warning(t("common.skillLoadFailed"));
   } finally {
     if (request.isCurrent()) loading.value = false;
   }
@@ -118,7 +134,8 @@ function onSessionChange(event: Event): void {
     requestGate.invalidate();
     skills.value = [];
     loading.value = false;
-    expanded.value = false;
+    loaded.value = false;
+    sheetOpen.value = false;
     // 换账号后旧账号的选择不能留着：技能 ID 对新账号没有意义。
     if (props.modelValue.length > 0) emit("update:modelValue", []);
     return;
@@ -138,67 +155,60 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <template v-if="row">
-    <button type="button" class="picker-row" data-testid="row-skills" :disabled="disabled || loading" @click="sheetOpen = true">
-      <span class="picker-row-k">{{ t('common.skill') }}</span>
-      <span class="picker-row-v">{{ rowValue }}</span>
-      <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
-    </button>
-    <OptionSheet
-      :open="sheetOpen"
-      :title="t('common.skill')"
-      :options="sheetOptions"
-      :model-value="modelValue.map(String)"
-      multiple
-      searchable
-      @update:model-value="onSheet"
-      @close="sheetOpen = false"
-    />
-  </template>
+  <OptionSheet
+    :open="sheetOpen"
+    :title="t('common.skill')"
+    :options="sheetOptions"
+    :model-value="modelValue.map(String)"
+    :groups="groups"
+    :loading="loading"
+    :error="failed ? t('common.skillLoadError') : ''"
+    :empty-text="t('common.skillEmpty')"
+    :search-placeholder="t('common.skillSearch')"
+    multiple
+    searchable
+    @update:model-value="onSheet"
+    @retry="load()"
+    @close="sheetOpen = false"
+  />
+  <button v-if="row" type="button" class="picker-row" data-testid="row-skills" :disabled="disabled" @click="sheetOpen = true">
+    <span class="picker-row-k">{{ t('common.skill') }}</span>
+    <span class="picker-row-v">{{ rowValue }}</span>
+    <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+  </button>
   <div v-else class="skill-picker">
     <button
       class="skill-toggle"
       :class="{ active: modelValue.length > 0 }"
       type="button"
-      :disabled="disabled || loading"
-      :aria-expanded="expanded"
-      @click="expanded = !expanded"
+      data-testid="skill-picker-open"
+      :disabled="disabled"
+      aria-haspopup="dialog"
+      :aria-expanded="sheetOpen"
+      @click="sheetOpen = true"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
       <span>{{ loading ? t('common.skillLoading') : t('common.skillSelect') }}</span>
+      <span v-if="!loading && loaded" class="skill-total">{{ t('common.skillCount', { n: skills.length }) }}</span>
       <span v-if="modelValue.length > 0" class="skill-count">{{ modelValue.length }}</span>
     </button>
-
-    <div v-if="expanded" class="skill-options">
-      <p v-if="!loading && skills.length === 0" class="skill-empty">{{ t('common.skillEmpty') }}</p>
-      <label v-for="skill in skills" :key="skill.id" class="skill-option">
-        <input
-          type="checkbox"
-          :checked="isSelected(skill.id)"
-          :disabled="disabled"
-          @change="toggle(skill.id)"
-        />
-        <span class="skill-option-body">
-          <span class="skill-option-name">{{ displayName(skill) }}</span>
-          <span v-if="describe(skill)" class="skill-option-desc">{{ describe(skill) }}</span>
-        </span>
-      </label>
-    </div>
-
-    <div v-if="selectedSkills.length > 0" class="skill-chips">
-      <span v-for="skill in selectedSkills" :key="skill.id" class="skill-chip">
-        <span class="skill-chip-name" :title="displayName(skill)">{{ displayName(skill) }}</span>
-        <button
-          class="skill-chip-remove"
-          type="button"
-          :disabled="disabled"
-          :title="t('common.skillRemove')"
-          @click="remove(skill.id)"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-        </button>
-      </span>
-    </div>
+  </div>
+  <div v-if="chips.length > 0" class="skill-chips" :class="{ 'skill-chips-row': row }">
+    <span v-for="chip in chips" :key="chip.id" class="skill-chip" :class="{ missing: chip.missing }">
+      <span class="skill-chip-name" :title="chip.name">{{ chip.name }}</span>
+      <span v-if="chip.imported" class="skill-chip-badge">{{ t('common.skillBadgeImported') }}</span>
+      <span v-if="chip.missing" class="skill-chip-badge warn">{{ t('common.skillBadgeInactive') }}</span>
+      <button
+        class="skill-chip-remove"
+        type="button"
+        :disabled="disabled"
+        :title="t('common.skillRemove')"
+        :aria-label="`${t('common.skillRemove')} ${chip.name}`"
+        @click="remove(chip.id)"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+    </span>
   </div>
 </template>
 
@@ -257,60 +267,10 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.skill-options {
-  align-self: stretch;
-  margin-top: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--bg-card);
-  padding: 4px;
-}
 
-.skill-empty {
-  padding: 8px 10px;
-  font-size: 12.5px;
+.skill-total {
   color: var(--text-tertiary);
-}
-
-.skill-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.skill-option:hover {
-  background: var(--bg-hover);
-}
-
-.skill-option input {
-  margin-top: 2px;
-  accent-color: var(--teal-600);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.skill-option-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.skill-option-name {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.skill-option-desc {
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  line-height: 1.4;
+  font-size: 12px;
 }
 
 .skill-chips {
@@ -331,6 +291,29 @@ onBeforeUnmount(() => {
   background: var(--bg-card);
   font-size: 12.5px;
   font-family: var(--font-body);
+}
+
+.skill-chips-row {
+  padding: 0 16px 8px;
+  margin-top: 0;
+}
+
+.skill-chip.missing {
+  border-color: var(--amber-500, #f59e0b);
+}
+
+.skill-chip-badge {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.skill-chip-badge.warn {
+  color: var(--amber-600, #d97706);
 }
 
 .skill-chip-name {
