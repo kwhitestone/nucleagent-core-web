@@ -7,13 +7,15 @@ export class DefinitionEditor {
   current: Detail | null = null;
   changes: Changes = {};
   bindings: Binding[] | undefined;
+  /** Pending tool selection (tool_bindings); undefined = untouched. */
+  tools: number[] | undefined;
   busy = false;
   denied = false;
   error = "";
   verificationRequired = false;
   private generation = 0;
 
-  get dirty(): boolean { return Object.keys(this.changes).length > 0 || this.bindings !== undefined; }
+  get dirty(): boolean { return Object.keys(this.changes).length > 0 || this.bindings !== undefined || this.tools !== undefined; }
   get bindingConflict(): boolean {
     return !!this.record && !!this.current && this.bindings !== undefined
       && bindingKey(this.record.skillBindings) !== bindingKey(this.current.skillBindings)
@@ -21,12 +23,12 @@ export class DefinitionEditor {
   }
   open(record: Detail): void {
     this.generation++;
-    this.record = record; this.current = null; this.changes = {}; this.bindings = undefined;
+    this.record = record; this.current = null; this.changes = {}; this.bindings = undefined; this.tools = undefined;
     this.busy = false; this.denied = false; this.error = ""; this.verificationRequired = false;
   }
   clear(): void {
     this.generation++; this.record = null; this.current = null; this.changes = {};
-    this.bindings = undefined; this.busy = false; this.denied = false; this.error = ""; this.verificationRequired = false;
+    this.bindings = undefined; this.tools = undefined; this.busy = false; this.denied = false; this.error = ""; this.verificationRequired = false;
   }
   revokeRead(): void {
     this.clear(); this.denied = true; this.error = "readDenied";
@@ -52,6 +54,7 @@ export class DefinitionEditor {
       ...(!record.capabilities.readSkills ? { skills: [], skillBindings: [] } : {}),
       ...(!record.capabilities.readTools ? { tools: [] } : {}) };
     if (!record.capabilities.readSkills) this.bindings = undefined;
+    if (!record.capabilities.readTools || record.capabilities.writeToolBindings !== true) this.tools = undefined;
     if (this.dirty && changed) {
       // An identical re-read (412 reread, then the event poll) keeps the open comparison and the user's choices.
       if (JSON.stringify(record) !== JSON.stringify(this.current)) this.current = record;
@@ -75,7 +78,7 @@ export class DefinitionEditor {
     const record = this.record;
     this.busy = true; this.error = "";
     try {
-      const saved = await api.patch(record, this.changes, this.bindings);
+      const saved = await api.patch(record, this.changes, this.bindings, this.tools);
       if (generation !== this.generation) return null;
       this.open(saved);
       return saved;

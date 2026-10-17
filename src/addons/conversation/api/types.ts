@@ -136,6 +136,12 @@ export interface CreateConversationRequest {
    * （dispatch 阶段 MatchSkills）。显式选了技能才关掉自动匹配。
    */
   skillIds?: number[];
+  /**
+   * G-TASK-TOOL-PICK-1900: extra tools from GET /tool/catalog, written to
+   * tool_bindings(owner_type=conversation). Omitted = current behavior; the
+   * server rejects any id that is not selectable (400).
+   */
+  toolIds?: number[];
   /** Agent definition: core runs the session in the caller's personal instance. */
   agentTemplateId?: number;
 }

@@ -9,6 +9,8 @@ import { useI18n } from "vue-i18n";
 import { trapDialogFocus } from "../../administration/agents/definition/focus";
 import { LIMITS, emptyDraft, validateDraft, type Draft, type UserAgentBackend } from "../api/userAgent";
 import { USER_AVATAR_CONTRACT, checkAvatarFile } from "../api/userAvatar";
+import { coveredBySkills, effectiveToolIds, toolLabel, type ToolCatalogItem } from "../api/toolCatalog";
+import type { Skill } from "../api/types";
 
 const props = defineProps<{
   models: string[];
@@ -16,13 +18,16 @@ const props = defineProps<{
   backends?: UserAgentBackend[];
   /** Generation models per enabled kind (GET /mine/gen-models); its keys are the kinds shown. */
   genModels?: Record<string, string[]>;
+  /** G-TASK-TOOL-PICK-1900: enabled skills (GET /skill) and pickable tools (GET /tool/catalog). */
+  skills?: Skill[];
+  tools?: ToolCatalogItem[];
   busy: boolean;
   /** Already-translated messages per field, plus `form`; shown as text only. */
   errors: Record<string, string>;
   initial?: Partial<Draft> & { id: number; slug?: string };
 }>();
 const emit = defineEmits<{ submit: [draft: Draft, avatar?: File]; cancel: [] }>();
-const { t, te } = useI18n();
+const { t, te, locale } = useI18n();
 
 const draft = reactive<Draft>(emptyDraft(props.initial));
 const local = ref<Partial<Record<string, string>>>({});
@@ -40,6 +45,21 @@ for (const k of kinds.value) draft.gen[k] ??= "";
 const genOptions = (kind: string) => keep(draft.gen[kind] ?? "", props.genModels?.[kind] ?? []);
 const kindLabel = (kind: string) => (te(`agents.mine.gen_${kind}`) ? t(`agents.mine.gen_${kind}`) : kind);
 const count = (s: string) => [...s].length;
+// Picked ids no longer listed stay visible (checked, flagged) so the owner can untick them.
+const withMissing = <T extends { id: number }>(list: T[], picked: number[], stub: (id: number) => T) =>
+  [...list, ...picked.filter((id) => !list.some((x) => x.id === id)).map(stub)];
+const skillRows = computed(() => withMissing((props.skills ?? []).map((s) => ({ id: s.id, label: skillName(s), missing: false })),
+  draft.skillIds, (id) => ({ id, label: `#${id}`, missing: true })));
+const toolRows = computed(() => withMissing((props.tools ?? []).map((x) => ({ id: x.id, label: toolLabel(x, locale.value), missing: false,
+  covered: coveredBySkills(x, draft.skillIds) })), draft.toolIds, (id) => ({ id, label: `#${id}`, missing: true, covered: false })));
+function skillName(s: Skill): string {
+  const bundle = s.i18n?.[locale.value];
+  const name = bundle && typeof bundle === "object" ? (bundle as Record<string, unknown>).name : undefined;
+  return (typeof name === "string" && name) || s.name || s.slug;
+}
+function toggle(list: "skillIds" | "toolIds", id: number, on: boolean): void {
+  draft[list] = on ? [...new Set([...draft[list], id])] : draft[list].filter((x) => x !== id);
+}
 const message = (field: string) => (local.value[field] ? t(local.value[field]!) : props.errors[field] ?? "");
 
 // Avatar: picked here, uploaded by the parent only on submit (cancel stores nothing).
@@ -68,7 +88,9 @@ function submit() {
   if (props.busy) return;
   local.value = validateDraft(draft, !editing.value);
   if (Object.keys(local.value).length) return;
-  emit("submit", { ...draft, gen: { ...draft.gen } }, avatarFile.value);
+  // A tool a picked skill brings is dropped (the server refuses the pair: tool_covered_by_skill).
+  emit("submit", { ...draft, gen: { ...draft.gen }, skillIds: [...draft.skillIds],
+    toolIds: effectiveToolIds(draft.toolIds, props.tools ?? [], draft.skillIds) }, avatarFile.value);
 }
 </script>
 
@@ -141,6 +163,28 @@ function submit() {
           </select>
         </template>
         <p id="ua-gen-err" class="ua-row"><span class="ua-err">{{ message("gen") }}</span></p>
+      </fieldset>
+
+      <fieldset class="ua-gen" data-testid="ua-skills">
+        <legend>{{ t("agents.mine.skills") }}</legend>
+        <p class="ua-row"><span>{{ t("agents.mine.bindingsHint") }}</span></p>
+        <p v-if="!skillRows.length" class="ua-row"><span>{{ t("agents.mine.bindingsEmpty") }}</span></p>
+        <label v-for="s in skillRows" :key="s.id" class="ua-check" :data-testid="`ua-skill-${s.id}`">
+          <input type="checkbox" :checked="draft.skillIds.includes(s.id)" :disabled="s.missing && !draft.skillIds.includes(s.id)"
+            @change="toggle('skillIds', s.id, ($event.target as HTMLInputElement).checked)"> {{ s.label }}
+          <small v-if="s.missing" class="ua-err">{{ t("agents.mine.bindingUnavailable") }}</small>
+        </label>
+      </fieldset>
+      <fieldset class="ua-gen" data-testid="ua-tools">
+        <legend>{{ t("agents.mine.tools") }}</legend>
+        <p v-if="!toolRows.length" class="ua-row"><span>{{ t("agents.mine.bindingsEmpty") }}</span></p>
+        <label v-for="x in toolRows" :key="x.id" class="ua-check" :data-testid="`ua-tool-${x.id}`">
+          <input type="checkbox" :checked="draft.toolIds.includes(x.id) && !x.covered" :disabled="x.covered || (x.missing && !draft.toolIds.includes(x.id))"
+            @change="toggle('toolIds', x.id, ($event.target as HTMLInputElement).checked)"> {{ x.label }}
+          <small v-if="x.covered">{{ t("common.toolCoveredBySkill") }}</small>
+          <small v-else-if="x.missing" class="ua-err">{{ t("agents.mine.bindingUnavailable") }}</small>
+        </label>
+        <p id="ua-bindings-err" class="ua-row"><span class="ua-err">{{ message("bindings") }}</span></p>
       </fieldset>
 
       <p v-if="errors.form" class="ua-form-err" role="alert" data-testid="ua-form-error">{{ errors.form }}</p>

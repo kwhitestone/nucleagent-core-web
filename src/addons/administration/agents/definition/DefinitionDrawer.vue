@@ -9,7 +9,7 @@ import ToolEditor from "./ToolEditor.vue";
 import SkillPicker from "./SkillPicker.vue";
 import AgentPreview from "./AgentPreview.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, initial, type Group } from "./groups";
-import { DefinitionError, type Catalog, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
+import { DefinitionError, type Catalog, type CatalogTool, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
 import { definitionFields, genModelPaths, readPath, reconcileBindings, validateChanges } from "./draft";
 import { errorKey, text, type MessageKey } from "./messages";
@@ -41,6 +41,7 @@ const page = ref(0);
 const total = ref(0);
 const pageLoading = ref(false);
 const toolId = ref<number>();
+const toolCatalog = ref<CatalogTool[] | null>(null);
 let mounted = true;
 let readGeneration = 0;
 let pageGeneration = 0;
@@ -65,6 +66,19 @@ const readonlyFields = computed<ReadonlyField[]>(() => {
 const selectedSkills = computed(() => (editor.bindings ?? record.value.skillBindings).map(item => item.skillId));
 const availableSkills = computed(() => record.value.capabilities.readSkills
   ? [...new Map([...record.value.skills, ...(props.catalog?.skills ?? [])].map(skill => [skill.id, skill])).values()] : []);
+// L6 tool_bindings: pending selection, else the stored one; a stored id missing from the catalog stays listed (flagged).
+const selectedTools = computed(() => editor.tools ?? record.value.toolBindings ?? []);
+const canPickTools = computed(() => writable.value && record.value.capabilities.writeToolBindings === true);
+const toolRows = computed(() => {
+  const list = toolCatalog.value ?? [];
+  const chosenSkills = selectedSkills.value;
+  return [...list.map(t => ({ id: t.id, name: t.name, missing: false, covered: t.skillIds.some(id => chosenSkills.includes(id)) })),
+    ...selectedTools.value.filter(id => !list.some(t => t.id === id)).map(id => ({ id, name: `#${id}`, missing: true, covered: false }))];
+});
+function selectTool(id: number, checked: boolean) {
+  if (!canPickTools.value) return;
+  editor.tools = checked ? [...new Set([...selectedTools.value, id])] : selectedTools.value.filter(x => x !== id);
+}
 const impactKeys = ["instances", "conversations", "conversations_7d", "skill_bindings", "im_groups", "deliverables"] as const;
 
 function failure(error: unknown) {
@@ -194,6 +208,9 @@ function beforeUnload(event: BeforeUnloadEvent) { if (editor.dirty) { event.prev
 onMounted(async () => {
   dialog.value?.showModal();
   window.addEventListener("beforeunload", beforeUnload);
+  if (record.value.capabilities.readTools && record.value.capabilities.writeToolBindings === true) {
+    props.api.toolCatalog().then(list => { if (mounted) toolCatalog.value = list; }, () => { if (mounted) toolCatalog.value = null; });
+  }
   const results = await Promise.allSettled([props.api.models(), props.api.backends()]);
   if (!mounted || !editor.record) return;
   if (results[0].status === "fulfilled") models.value = results[0].value;
@@ -217,8 +234,8 @@ const groupLabel: Record<Group, MessageKey> = { basic: "basic", persona: "person
 const allPaths = definitionFields.map(field => field.path);
 const activeGroup = ref<Group>("basic");
 const body = ref<HTMLElement>();
-const dirtyGroupSet = computed(() => dirtyGroups(editor.changes, editor.bindings));
-const pending = computed(() => changeCount(editor.changes, editor.bindings));
+const dirtyGroupSet = computed(() => dirtyGroups(editor.changes, editor.bindings, editor.tools));
+const pending = computed(() => changeCount(editor.changes, editor.bindings, editor.tools));
 // Backend refuses enabling without an explicit model (422); gate it here instead of failing late.
 const needsModel = computed(() => !record.value.definition.isActive && !String(draftValue("/config/defaults/model") ?? "").trim());
 const canSave = computed(() => record.value.capabilities.write && writable.value && editor.dirty && !editor.current && !editor.verificationRequired && !Object.keys(errors.value).length);
@@ -319,6 +336,20 @@ onUnmounted(() => clearTimeout(toastTimer));
           <h4>{{ label('skills') }}</h4>
           <p v-if="!record.capabilities.readSkills" class="muted">{{ label('readonly') }}</p>
           <SkillPicker v-else :skills="availableSkills" :selected="selectedSkills" :editable="writable && record.capabilities.writeSkillBindings" :install-path="installPath" @toggle="selectSkill" />
+          <template v-if="record.capabilities.writeToolBindings === true && record.capabilities.readTools">
+            <h4>{{ label('selectedTools') }}</h4>
+            <p class="muted small">{{ label('selectedToolsNote') }}</p>
+            <p v-if="toolCatalog === null" class="notice warn small">{{ label('toolCatalogError') }}</p>
+            <ul class="skill-options" data-testid="admin-tool-bindings">
+              <li v-for="row in toolRows" :key="row.id">
+                <label class="skill-option" :class="{ off: row.covered || row.missing }">
+                  <input type="checkbox" :checked="selectedTools.includes(row.id)" :disabled="!canPickTools || ((row.covered || row.missing) && !selectedTools.includes(row.id))"
+                    @change="selectTool(row.id, ($event.target as HTMLInputElement).checked)" />
+                  <span><strong>{{ row.name }}</strong><small v-if="row.covered">{{ label('toolCovered') }}</small><small v-else-if="row.missing">{{ label('toolUnavailable') }}</small></span>
+                </label>
+              </li>
+            </ul>
+          </template>
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
           <p v-if="!record.tools.length" class="muted">{{ label('emptyResources') }}</p>

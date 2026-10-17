@@ -168,7 +168,7 @@ describe("wizard", () => {
   before(async () => { Wizard = (await vite.ssrLoadModule("/src/addons/conversation/components/UserAgentWizard.vue")).default; });
   const props = { models: ["m1", "m2"], busy: false, errors: {} };
 
-  test("labelled controls, model whitelist options, counters, default avatar, no skills", async () => {
+  test("labelled controls, model whitelist options, counters, default avatar, skill/tool sections (G-TASK-TOOL-PICK-1900)", async () => {
     const html = await render(Wizard, props);
     for (const id of ["ua-name", "ua-desc", "ua-model", "ua-prompt"]) {
       assert.match(html, new RegExp(`<label[^>]*for="${id}"`));
@@ -177,7 +177,8 @@ describe("wizard", () => {
     assert.match(html, /<option value="m1">m1<\/option>/);
     assert.match(html, /0\/4000/);
     assert.match(html, /data-testid="ua-avatar-default"/);
-    assert.doesNotMatch(html, /skill/i);
+    assert.match(html, /data-testid="ua-skills"/);
+    assert.match(html, /data-testid="ua-tools"/);
     assert.match(html, /创建并启用/);
   });
 
@@ -458,8 +459,8 @@ describe("edit fields (UA-EDIT-FIELDS-1230)", () => {
 
   test("prefill from the owner config: backend, memory (unset = on), <kind>Model per kind", () => {
     assert.deepEqual(ua.draftFromConfig({ executionBackend: "codex", memory: false, imageModel: "img-1", providerId: 3 }, ["image", "video"]),
-      { executionBackend: "codex", memory: false, gen: { image: "img-1", video: "" } });
-    assert.deepEqual(ua.draftFromConfig(undefined, ["image"]), { executionBackend: "", memory: true, gen: { image: "" } });
+      { executionBackend: "codex", memory: false, gen: { image: "img-1", video: "" }, skillIds: [], toolIds: [] });
+    assert.deepEqual(ua.draftFromConfig(undefined, ["image"]), { executionBackend: "", memory: true, gen: { image: "" }, skillIds: [], toolIds: [] });
   });
 
   test("error mapping: off-list backend / incompatible / gen type mismatch / gen unavailable", () => {
