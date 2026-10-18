@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 // Run under both shared CDP locks; attach only to the existing synthetic browser.
 const fixture = name => fileURLToPath(new URL(name, import.meta.url));
 const children = [];
+const failures = [];
 function run(name, env, log) {
   const output = createWriteStream(log, { mode: 0o600 });
   const child = spawn(process.execPath, [fixture(name)], {
@@ -36,7 +37,7 @@ async function server(name, port) {
 async function test(name, env, log) {
   const { child, done } = run(name, env, log);
   const timer = setTimeout(() => child.kill("SIGTERM"), 300_000);
-  try { assert.equal(await done, 0, log); }
+  try { if (await done !== 0) failures.push(log); }
   finally { clearTimeout(timer); }
 }
 try {
@@ -52,6 +53,7 @@ try {
       FIXTURE_URL: "http://127.0.0.1:5304/tests/browser/session-renewal/", RESULT_PATH: "mounted-green.json",
     }, "mounted-green.log");
   }
+  assert.deepEqual(failures, [], "Browser gate failures");
 } finally {
   for (const { child } of children) if (child.exitCode === null) child.kill("SIGTERM");
   await Promise.all(children.map(({ done }) => done));
