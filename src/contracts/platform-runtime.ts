@@ -26,6 +26,7 @@ export interface PlatformRuntime {
     token: string | null,
     incomingVersion: number,
     incomingPermissions?: readonly unknown[],
+    incomingPrincipal?: unknown,
   ) => { accepted: boolean; changed: boolean };
   readonly setAuthRequiredNotifier: (
     notifier: ((payload: AuthRequiredPayload) => boolean) | undefined,
@@ -45,10 +46,15 @@ export const SESSION_CHANGE_EVENT = "nucleagent:session-change";
  * contract rather than inside platform-api because the embed host channel
  * installs before any addon does and must be able to release the same views.
  */
-export function emitSessionChange(authenticated: boolean): void {
+export function emitSessionChange(authenticated: boolean, businessBoundaryChanged = true): void {
   window.dispatchEvent(new CustomEvent(SESSION_CHANGE_EVENT, {
-    detail: { authenticated },
+    detail: { authenticated, businessBoundaryChanged },
   }));
+}
+
+/** Legacy/non-shell session events remain destructive by default. */
+export function isBusinessBoundaryChange(event: Event): boolean {
+  return (event as CustomEvent).detail?.businessBoundaryChanged !== false;
 }
 
 export class ApiError extends Error {
@@ -94,10 +100,12 @@ export const applyShellSession = (
   token: string | null,
   incomingVersion: number,
   incomingPermissions?: readonly unknown[],
+  incomingPrincipal?: unknown,
 ): { accepted: boolean; changed: boolean } => getPlatformRuntime().applyShellSession(
   token,
   incomingVersion,
   incomingPermissions,
+  incomingPrincipal,
 );
 export const setAuthRequiredNotifier = (
   notifier: ((payload: AuthRequiredPayload) => boolean) | undefined,
