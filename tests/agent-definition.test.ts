@@ -72,6 +72,7 @@ test("field policy exposes complete supported fields, not invented sampling cont
   assert.deepEqual(definitionFields.map((f) => f.path), [
     "/name", "/slug", "/config/description", "/config/avatar", "/config/prompt",
     "/config/memory", "/config/defaults/executionBackend", "/config/defaults/providerId", "/config/defaults/model",
+    "/config/defaults/imageModel", "/config/defaults/videoModel",
   ]);
 });
 test("unsafe avatar protocols and invalid slug are rejected", () => {

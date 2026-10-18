@@ -5,6 +5,9 @@ import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { createSSRApp, h } from "vue";
+import { renderToString } from "vue/server-renderer";
 
 // Pure modules load natively so the test:unit coverage gate measures them.
 import * as options from "../src/addons/conversation/components/modelPickerOptions.ts";
@@ -22,7 +25,7 @@ const src = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url),
 const tOf = (locale: "zh" | "en") => createI18n({ legacy: false, locale, messages: { zh, en } }).global.t;
 
 before(async () => {
-  vite = await createServer({ configFile: false, envFile: false, resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } }, appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  vite = await createServer({ configFile: false, envFile: false, plugins: [vue()], resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } }, appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   catalog = await vite.ssrLoadModule("/src/addons/model-catalog/api/catalog.ts");
   ({ ApiError: ViteApiError } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts"));
   ({ default: zh } = await vite.ssrLoadModule("/src/i18n/zh.ts"));
@@ -166,19 +169,70 @@ test("W4 a 400 im_invalid_provider_model or model_type_mismatch on save becomes 
   assert.equal(errors.modelFieldError(new Error("net"), tOf("zh")), "");
 });
 
-test("W4 AdminAgents: defaults use authorized chat catalog selectors, save errors land in the form", () => {
-  const page = src("addons/administration/agents/definition/DefinitionDrawer.vue");
-  const fields = src("addons/administration/agents/definition/DefinitionFields.vue");
-  const api = src("addons/administration/agents/definition/api.ts");
-  assert.match(api, /provider\/models\?type=chat/);
-  assert.match(api, /typesAvailable !== true/);
-  assert.match(fields, /<select/);
-  assert.match(page, /providerChoices/);
-  assert.match(page, /modelChoices/);
-  assert.doesNotMatch(page, /v-model="form\.providerId"/, "no free-text provider id");
-  assert.doesNotMatch(page, /v-model="form\.model"/, "no free-text model");
-  assert.match(page, /editor\.error \|\| status/);
-  assert.match(page, /role="alert"/);
+test("W4 AdminAgents: defaults use authorized chat catalog selectors, save errors land in the form", async () => {
+  const { default: Drawer } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/DefinitionDrawer.vue");
+  const { createDefinitionApi } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/api.ts");
+  const { text } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/messages.ts");
+  const calls: string[] = [];
+  let typesAvailable = true;
+  const api = createDefinitionApi(async (url: string, init: RequestInit) => {
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (init?.method === "PATCH") return { status: 422, headers: {}, body: { code: "model_type_mismatch" } };
+    assert.equal(url, "/api/v1/addons/provider/models?type=chat");
+    return { status: 200, headers: {}, body: { code: 0, typesAvailable, data: [
+      { providerId: 7, model: "authorized-chat", type: "chat" },
+      { providerId: 8, model: "other-provider-chat", type: "chat" },
+    ] } };
+  });
+  const models = await api.models();
+  typesAvailable = false;
+  await assert.rejects(api.models(), /catalog unavailable/);
+  const detail = {
+    definition: { id: 9001, revision: "1", name: "Synthetic definition", slug: "synthetic", isActive: false,
+      config: { defaults: { providerId: 7, model: "legacy-model" } } },
+    capabilities: { read: true, write: true, readSkills: false, writeSkillBindings: false, readTools: false, writeTools: false },
+    fieldPolicy: { editablePaths: ["/name", "/config/defaults/providerId", "/config/defaults/model"],
+      readOnlyPaths: [], protectedPaths: [], unknownPaths: [], reasons: {} },
+    skills: [], tools: [], skillBindings: [], identity: { status: "ready" },
+    effective: { revision: "1", definitionRevision: "1" }, etag: '"agent-9001-1"',
+  };
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null } });
+  try {
+    for (const writable of [true, false]) {
+      const component = { ...Drawer, async setup(props: any, context: any) {
+        const state = Drawer.setup(props, context);
+        state.models.value = models;
+        if (writable) {
+          state.editor.change("/name", "Synthetic changed");
+          await state.editor.save(api);
+          assert.equal(state.editor.error, "error", "save failure must reach the editor");
+        }
+        return state;
+      } };
+      const app = createSSRApp({ render: () => h(component, {
+        api, detail: { ...detail, capabilities: { ...detail.capabilities, write: writable } },
+      }) });
+      app.use(createI18n({ legacy: false, locale: "en", messages: { en } }));
+      const html = await renderToString(app);
+      const select = (id: string) => {
+        const match = html.match(new RegExp(`<select([^>]*id="${id}"[^>]*)>([\\s\\S]*?)</select>`));
+        assert.ok(match, `${id} must be a rendered select`);
+        return { attrs: match[1], options: [...match[2].matchAll(/<option([^>]*)>([\s\S]*?)<\/option>/g)] };
+      };
+      const provider = select("definition-config-defaults-providerId");
+      const model = select("definition-config-defaults-model");
+      assert.deepEqual(provider.options.map(m => /value="([^"]*)"/.exec(m[1])![1]), ["", "7", "8"]);
+      assert.deepEqual(model.options.map(m => /value="([^"]*)"/.exec(m[1])![1]), ["", "legacy-model", "authorized-chat"]);
+      assert.match(model.options[1][1], /disabled/);
+      for (const field of [provider, model]) assert.equal(/\bdisabled\b/.test(field.attrs), !writable);
+      assert.doesNotMatch(html, /<input[^>]*id="definition-config-defaults-(providerId|model)"/);
+      if (writable) {
+        const alert = html.match(/<p[^>]*role="alert"[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? "";
+        assert.ok(alert.includes(text("error", "en")), "save error is rendered inside the form alert");
+      }
+    }
+    assert.equal(calls.filter(call => call.startsWith("PATCH ")).length, 1, "readonly does not write");
+  } finally { Reflect.deleteProperty(globalThis, "document"); }
 });
 
 // ---- W5 gateway type labels
