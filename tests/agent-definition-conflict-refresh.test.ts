@@ -125,7 +125,7 @@ test("same-revision refresh keeps the skill-binding conflict resolvable", () => 
 test("drawer: same-revision detail refresh keeps the skill-binding choice", async () => {
   const theirs = [{ skillId: 2, installPath: "" }];
   const props = reactive({ detail: record("1", "original"),
-    api: { models: async () => [], backends: async () => [] } as unknown });
+    api: { models: async () => [], backends: async () => [], genModels: async () => [] } as unknown });
   let instance: ComponentInternalInstance | null = null;
   const app = renderer.createApp({ render: () => h(drawer, { ...props,
     onVnodeMounted: (vnode: { component: ComponentInternalInstance | null }) => { instance = vnode.component; } }) });
