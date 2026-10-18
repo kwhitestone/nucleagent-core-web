@@ -4,7 +4,7 @@
  * minus server-managed ones). Presentational: the parent submits, uploads the picked avatar and maps errors.
  * Every pickable value comes from a server list; "" = platform default. Nothing is stored until submit.
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { trapDialogFocus } from "../../administration/agents/definition/focus";
 import { LIMITS, emptyDraft, validateDraft, type Draft, type UserAgentBackend } from "../api/userAgent";
@@ -77,6 +77,32 @@ const message = (field: string) => (local.value[field] ? t(local.value[field]!) 
 const avatarFile = ref<File>();
 
 const dialog = ref<HTMLElement>();
+const errorTargets = computed(() => [
+  { field: "avatar", group: "basic", id: "ua-avatar" },
+  { field: "name", group: "basic", id: "ua-name" },
+  { field: "description", group: "basic", id: "ua-desc" },
+  { field: "prompt", group: "persona", id: "ua-prompt" },
+  { field: "memory", group: "persona", id: "ua-memory" },
+  { field: "executionBackend", group: "model", id: "ua-backend" },
+  { field: "model", group: "model", id: "ua-model" },
+  ...(kinds.value.length ? [{ field: "gen", group: "model", id: `ua-gen-${kinds.value[0]}` }] : []),
+  { field: "bindings", group: "skills", id: "ua-bindings-err" },
+] as { field: string; group: Group; id: string }[]);
+const formErrors = computed(() => Object.entries(props.errors)
+  .filter(([field, error]) => error && !errorTargets.value.some(target => target.field === field))
+  .map(([, error]) => error));
+async function locateErrors(errors: Partial<Record<string, string>>) {
+  const target = errorTargets.value.find(target => errors[target.field]);
+  if (target) active.value = target.group;
+  await nextTick();
+  const element = dialog.value?.querySelector<HTMLElement>(target ? `#${target.id}` : ".ua-form-err");
+  // Scroll the whole field so its hint stays visible alongside the focused control.
+  (element?.closest(".edit-field") ?? element)?.scrollIntoView({ behavior: "auto", block: "center" });
+  element?.focus({ preventScroll: true });
+}
+watch(() => props.errors, errors => {
+  if (Object.values(errors).some(Boolean)) void locateErrors(errors);
+}, { deep: true, immediate: true });
 const previousFocus = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
 onMounted(() => dialog.value?.querySelector<HTMLInputElement>("#ua-name")?.focus());
 onBeforeUnmount(() => { previousFocus?.focus?.(); });
@@ -84,7 +110,7 @@ onBeforeUnmount(() => { previousFocus?.focus?.(); });
 function submit() {
   if (props.busy) return;
   local.value = validateDraft(draft, !editing.value);
-  if (Object.keys(local.value).length) return;
+  if (Object.keys(local.value).length) { void locateErrors(local.value); return; }
   // A tool a picked skill brings is dropped (the server refuses the pair: tool_covered_by_skill).
   emit("submit", { ...draft, gen: { ...draft.gen }, skillIds: [...draft.skillIds],
     toolIds: effectiveToolIds(draft.toolIds, props.tools ?? [], draft.skillIds) }, avatarFile.value);
@@ -125,7 +151,7 @@ function submit() {
         <template #hint><span class="ua-row"><span class="ua-err">{{ message("prompt") }}</span><span>{{ count(draft.prompt) }}/{{ LIMITS.prompt }}</span></span></template>
       </EditField>
       <EditField id="ua-memory" :label="t('agents.mine.memory')" v-model="draft.memory" kind="boolean" :control-attrs="{ 'data-testid': 'ua-memory' }">
-        <template #hint>{{ t("agents.mine.memoryHint") }}</template>
+        <template #hint>{{ message("memory") || t("agents.mine.memoryHint") }}</template>
       </EditField>
       </section>
       <section id="ua-group-model" @focusin="active = 'model'">
@@ -165,12 +191,14 @@ function submit() {
         <ToolBindings :rows="toolRows" :selected="draft.toolIds" :editable="!busy" omit-covered
           :covered-label="t('common.toolCoveredBySkill')" :unavailable-label="t('agents.mine.bindingUnavailable')"
           @toggle="(id, checked) => toggle('toolIds', id, checked)" />
-        <p id="ua-bindings-err" class="ua-row"><span class="ua-err">{{ message("bindings") }}</span></p>
+        <p id="ua-bindings-err" class="ua-row" tabindex="-1"><span class="ua-err">{{ message("bindings") }}</span></p>
       </fieldset>
       </section>
       </div>
       </div>
-      <p v-if="errors.form" class="ua-form-err" role="alert" data-testid="ua-form-error">{{ errors.form }}</p>
+      <div v-if="formErrors.length" class="ua-form-err" role="alert" tabindex="-1" data-testid="ua-form-error">
+        <p v-for="(error, index) in formErrors" :key="index">{{ error }}</p>
+      </div>
       <div class="ua-actions">
         <button type="button" class="btn-ghost" @click="emit('cancel')">{{ t("agents.mine.cancel") }}</button>
         <button type="submit" class="btn-primary" :disabled="busy" :aria-busy="busy" data-testid="ua-submit">
