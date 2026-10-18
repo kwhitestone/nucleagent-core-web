@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { definitionFields, genModelState, readPath, validateChanges, type Changes } from "./draft";
 import type { MediaModel } from "../../../conversation/composables/generation.ts";
 import { text, type MessageKey } from "./messages";
+import EditField from "../../../../components/agent-edit/EditField.vue";
 
 export interface Choice { value: string | number; label: string }
 export interface ReadonlyField { path: string; type: string; reason: string; value?: unknown; hidden?: boolean }
@@ -34,9 +35,17 @@ const choices = (kind: string) => kind === "backend" ? props.backends : kind ===
 const genList = (kind?: string) => kind ? props.genModels?.[kind] : undefined;
 const genState = (path: string, kind?: string) => genModelState(value(path), genList(kind));
 const reason = (path: string) => props.readonlyFields.find((field) => field.path === path)?.reason || label("readonly");
-function change(path: string, event: Event, kind: string) {
-  const target = event.target as HTMLInputElement;
-  emit("change", path, kind === "boolean" ? target.checked : kind === "provider" ? (target.value ? Number(target.value) : null) : target.value);
+function change(path: string, value: string | boolean, kind: string) {
+  if (!allowed(path)) return;
+  emit("change", path, kind === "provider" ? (value ? Number(value) : null) : value);
+}
+function fieldChoices(field: typeof definitionFields[number]) {
+  const current = value(field.path);
+  const list = field.kind === "genModel"
+    ? (genList(field.genKind) ?? []).map(m => ({ value: m.model, label: `${m.model} · ${label(m.kind as MessageKey)} · ${m.verified ? label('genVerified') : label('genUnverified')}` }))
+    : choices(field.kind);
+  return current && !list.some(c => c.value === current)
+    ? [{ value: String(current), label: field.kind === "genModel" ? String(current) : `${current} (${label("unavailable")})`, disabled: true }, ...list] : list;
 }
 function errorLabel(error: string) {
   const key = ({ slug: "slugError", avatar: "avatarError", provider: "providerError" } as Record<string, MessageKey>)[error] ?? error;
@@ -49,42 +58,21 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
 <template>
   <div class="definition-fields">
     <div v-for="field in fields" :key="field.path" class="definition-field" :class="{ toggle: field.kind === 'boolean' }" :data-path="field.path" :title="field.path" @focusout="touched.add(field.path)">
-      <label :for="id(field.path)">{{ label(field.label as MessageKey) }}</label>
-      <input v-if="field.kind === 'boolean'" :id="id(field.path)" type="checkbox" role="switch" class="switch"
-        :checked="value(field.path) !== false" :disabled="!allowed(field.path)"
-        :aria-describedby="`${id(field.path)}-hint`" @change="change(field.path, $event, field.kind)" />
-      <textarea v-else-if="field.kind === 'textarea'" :id="id(field.path)" :value="String(value(field.path) ?? '')"
-        :readonly="!allowed(field.path)" :rows="field.label === 'prompt' ? 8 : 3"
-        :aria-invalid="!!shownError(field.path)" :aria-describedby="`${id(field.path)}-hint`"
-        @input="change(field.path, $event, field.kind)" />
-      <select v-else-if="['backend', 'provider', 'model'].includes(field.kind)" :id="id(field.path)"
-        :value="value(field.path) ?? ''" :disabled="!allowed(field.path)"
-        :aria-invalid="!!shownError(field.path)" :aria-describedby="`${id(field.path)}-hint`"
-        @change="change(field.path, $event, field.kind)">
-        <option value="">{{ label('inherit') }}</option>
-        <option v-if="value(field.path) && !choices(field.kind).some(c => c.value === value(field.path))"
-          :value="String(value(field.path))" disabled>{{ value(field.path) }} ({{ label('unavailable') }})</option>
-        <option v-for="choice in choices(field.kind)" :key="choice.value" :value="choice.value">{{ choice.label }}</option>
-      </select>
-      <select v-else-if="field.kind === 'genModel'" :id="id(field.path)" :value="value(field.path) ?? ''" :disabled="!allowed(field.path)"
-        :aria-invalid="genState(field.path, field.genKind) === 'delisted'" :aria-describedby="`${id(field.path)}-hint`"
-        @change="change(field.path, $event, field.kind)">
-        <option value="">{{ label('genInherit') }}</option>
-        <option v-if="genState(field.path, field.genKind) !== 'ok' && value(field.path)" :value="String(value(field.path))" disabled>{{ value(field.path) }}</option>
-        <option v-for="m in genList(field.genKind) ?? []" :key="m.model" :value="m.model">
-          {{ m.model }} · {{ label(m.kind as MessageKey) }} · {{ m.verified ? label('genVerified') : label('genUnverified') }}</option>
-      </select>
-      <input v-else :id="id(field.path)" :value="value(field.path) ?? ''" :readonly="!allowed(field.path)"
-        :aria-invalid="!!shownError(field.path)" :aria-describedby="`${id(field.path)}-hint`"
-        :autocomplete="field.label === 'name' ? 'off' : undefined"
-        @input="change(field.path, $event, field.kind)" />
-      <small :id="`${id(field.path)}-hint`" :class="{ 'definition-error': shownError(field.path) }">
+      <EditField :id="id(field.path)" :label="label(field.label as MessageKey)" :model-value="value(field.path)"
+        :kind="field.kind === 'boolean' ? 'boolean' : field.kind === 'textarea' ? 'textarea' : ['backend', 'provider', 'model', 'genModel'].includes(field.kind) ? 'select' : 'text'"
+        :editable="allowed(field.path)" :rows="field.label === 'prompt' ? 8 : 3" :choices="fieldChoices(field)"
+        :empty-label="field.kind === 'genModel' ? label('genInherit') : label('inherit')"
+        :invalid="!!shownError(field.path) || (field.kind === 'genModel' && genState(field.path, field.genKind) === 'delisted')"
+        :control-attrs="{ autocomplete: field.label === 'name' ? 'off' : undefined }"
+        @update:model-value="change(field.path, $event, field.kind)">
+      <template #hint>
         <template v-if="field.kind === 'genModel' && genState(field.path, field.genKind) === 'delisted'"><span class="definition-error">{{ label('genDelisted') }}</span></template>
         <template v-else-if="shownError(field.path)">{{ errorLabel(shownError(field.path)!) }}</template>
         <template v-else-if="!props.editablePaths.includes(field.path)">{{ reason(field.path) }}</template>
         <template v-else-if="field.label === 'memory'">{{ label('memoryNote') }}</template>
         <template v-else-if="field.max">{{ [...String(value(field.path) ?? '')].length }} / {{ field.max }}</template>
-      </small>
+      </template>
+      </EditField>
     </div>
     <details v-if="readonlyFields.length && !only?.length" class="definition-metadata">
       <summary>{{ label('metadata') }}</summary>
@@ -103,20 +91,10 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
 .definition-field { display: grid; gap: 6px; min-width: 0; }
 label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; font-weight: 600; font-size: 13px; color: var(--text-primary); }
 code, small { font-size: 12px; font-weight: 400; overflow-wrap: anywhere; color: var(--text-secondary); }
-input:not([type=checkbox]), textarea, select { width: 100%; box-sizing: border-box; min-width: 0; min-height: 44px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: inherit; font: inherit; font-size: 13.5px; transition: border-color .2s var(--ease), box-shadow .2s var(--ease); }
-input:not([type=checkbox]):hover, textarea:hover, select:hover { border-color: var(--border-strong); }
-input:not([type=checkbox]):focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--teal-50); outline: none; }
-.toggle { grid-template-columns: 1fr auto; align-items: center; } .toggle small { grid-column: 1 / -1; }
-.switch { appearance: none; width: 44px; height: 24px; margin: 0; border-radius: var(--r-full); background: var(--slate-300); position: relative; cursor: pointer; transition: background .2s var(--ease); }
-.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-xs); transition: transform .2s var(--ease); }
-.switch:checked { background: var(--accent); } .switch:checked::after { transform: translateX(20px); } .switch:disabled { opacity: .5; cursor: not-allowed; }
-textarea { resize: vertical; }
-input[readonly], textarea[readonly] { background: var(--bg-subtle); color: var(--text-secondary); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .definition-error { color: var(--rose-500); }
 .definition-metadata { border-top: 1px solid var(--border); padding-top: 12px; }
 summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 dl { margin: 0; } dt { margin-top: 14px; } dd { margin: 4px 0 0; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 4px 0; }
-@media (max-width: 600px) { input, textarea, select { font-size: 16px !important; } }
 </style>
