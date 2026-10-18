@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
 import { registerPlatformRuntime } from "../src/contracts/platform-runtime.ts";
-import { getSessionBindings, updateSessionBindings } from "../src/addons/conversation/api/sessionBindings.ts";
+import { getSessionBindings, syncSessionBindings, updateSessionBindings, BINDINGS_DEADLINE_MS } from "../src/addons/conversation/api/sessionBindings.ts";
 
 const source = (name: string) => readFileSync(new URL(`../src/addons/conversation/${name}`, import.meta.url), "utf8");
 const run = (script: string, context: Record<string, unknown>) =>
@@ -52,17 +52,44 @@ test("Conversation uses shared editor on desktop/mobile and blocks unsaved sends
 
 test("bindings API uses the session path, sends explicit clears, and rejects malformed readback", async () => {
   const calls: unknown[] = [];
-  let data: unknown = { skillIds: [7], toolIds: [8], editable: true };
+  let data: unknown = { skillIds: [7], toolIds: [8], editable: true, revision: "1", principal: "71" };
   const off = registerPlatformRuntime({ http: {
     get: async (path: string) => { calls.push(path); return { data: { data } }; },
     put: async (path: string, body: unknown) => { calls.push([path, body]); return { data: { data } }; },
+    post: async (path: string) => { calls.push(path); return { data: { data } }; },
   } } as never);
   try {
     assert.deepEqual(await getSessionBindings("11"), data);
-    await updateSessionBindings("11", { skillIds: [], toolIds: [] });
+    await updateSessionBindings("11", { skillIds: [], toolIds: [], revision: "1" });
+    await syncSessionBindings("11");
     assert.deepEqual(calls, ["/api/v1/addons/conversation/11/bindings",
-      ["/api/v1/addons/conversation/11/bindings", { skillIds: [], toolIds: [] }]]);
-    data = {};
-    await assert.rejects(getSessionBindings("11"), /Invalid session bindings/);
+      ["/api/v1/addons/conversation/11/bindings", { skillIds: [], toolIds: [], revision: "1" }],
+      "/api/v1/addons/conversation/11/bindings/sync"]);
+    for (const invalid of [{}, { revision: "01" }, { revision: "18446744073709551616" }, { principal: "" }, { revision: 1 }]) {
+      data = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "71", ...invalid };
+      if (Object.keys(invalid).length === 0) data = {};
+      await assert.rejects(getSessionBindings("11"), /Invalid session bindings/);
+    }
   } finally { off(); }
+});
+
+test("bindings deadline bounds adapters that never settle; cancellation also settles locally", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let aborted = false;
+  const off = registerPlatformRuntime({ http: {
+    post: (_path: string, _body: unknown, config: any) => {
+      config.signal.addEventListener("abort", () => { aborted = true; });
+      return new Promise(() => {});
+    },
+  } } as never);
+  try {
+    const timed = assert.rejects(syncSessionBindings("11"), /result unknown/);
+    t.mock.timers.tick(BINDINGS_DEADLINE_MS);
+    await timed;
+    assert.equal(aborted, true);
+    const controller = new AbortController();
+    const canceled = assert.rejects(syncSessionBindings("11", controller.signal), /result unknown/);
+    controller.abort();
+    await canceled;
+  } finally { off(); t.mock.timers.reset(); }
 });

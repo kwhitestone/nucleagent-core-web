@@ -7,7 +7,7 @@ import BindingPickers from "./BindingPickers.vue";
 const props = defineProps<{ id: string; disabled?: boolean; row?: boolean; state?: ReturnType<typeof useSessionBindings> }>();
 const emit = defineEmits<{ pending: [pending: boolean] }>();
 const { t } = useI18n();
-const { skillIds, toolIds, tools, toolsLoading, toolsFailed, loadTools, saved, loading, saving, error, dirty, pending, load, save, discard } =
+const { skillIds, toolIds, tools, toolsLoading, toolsFailed, loadTools, saved, loading, saving, error, dirty, uncertain, pending, load, save, discard } =
   props.state ?? useSessionBindings(() => props.id, () => !!props.disabled);
 watch(pending, (value) => emit("pending", value), { immediate: true });
 </script>
@@ -16,11 +16,12 @@ watch(pending, (value) => emit("pending", value), { immediate: true });
   <section v-if="loading || error || saved?.editable" class="session-bindings" data-testid="session-bindings" :aria-busy="loading || saving">
     <span v-if="loading">{{ t('common.loading') }}</span>
     <BindingPickers v-if="saved?.editable" v-model:skill-ids="skillIds" v-model:tool-ids="toolIds" :tools="tools"
-      :loading="toolsLoading" :failed="toolsFailed" :disabled="disabled || saving" :row="row" @retry="loadTools" />
+      :loading="toolsLoading" :failed="toolsFailed" :disabled="disabled || saving || uncertain" :row="row" @retry="loadTools" />
     <p v-if="error" role="alert" class="session-bindings-error">{{ error }}</p>
     <div class="conversation-settings-actions">
       <button v-if="!saved && error" type="button" @click="load">{{ t('common.retry') }}</button>
-      <template v-if="dirty">
+      <button v-if="uncertain && !saving" type="button" data-testid="bindings-sync" @click="load">{{ t('common.bindingsSync') }}</button>
+      <template v-if="dirty && (!uncertain || saving)">
         <button type="button" :disabled="disabled || saving" data-testid="bindings-save" @click="save">{{ t(saving ? 'common.applying' : 'common.applySettings') }}</button>
         <button type="button" :disabled="saving" data-testid="bindings-discard" @click="discard">{{ t('common.discardSettings') }}</button>
       </template>

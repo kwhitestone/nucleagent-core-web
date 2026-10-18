@@ -44,6 +44,9 @@ export function useBindingSelection() {
   });
   onBeforeUnmount(() => {
     gate.invalidate();
+    skillIds.value = [];
+    toolIds.value = [];
+    tools.value = [];
     window.removeEventListener(SESSION_CHANGE_EVENT, onSessionChange);
   });
   return { skillIds, toolIds, tools, toolsLoading, toolsFailed, loadTools, pickedTools, createBindings };
