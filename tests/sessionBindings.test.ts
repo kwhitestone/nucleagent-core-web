@@ -43,7 +43,10 @@ test("Conversation uses shared editor on desktop/mobile and blocks unsaved sends
   const src = source("views/Conversation.vue");
   assert.equal((src.match(/<SessionBindingsEditor /g) ?? []).length, 2);
   assert.match(src, /send: !bindingsPending/);
-  assert.match(src, /@pending="bindingsPending = \$event"/);
+  assert.match(src, /const bindings = useSessionBindings\(\(\) => props.id, \(\) => bindingsBusy.value\)/);
+  assert.match(src, /const bindingsPending = bindings.pending/);
+  assert.equal((src.match(/:state="bindings"/g) ?? []).length, 2);
+  assert.doesNotMatch(src, /@pending="bindingsPending = \$event"/);
   assert.match(source("components/SessionBindingsEditor.vue"), /<BindingPickers /);
 });
 
