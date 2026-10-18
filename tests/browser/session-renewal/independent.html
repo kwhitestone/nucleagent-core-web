@@ -95,11 +95,14 @@ window.independent = {
   recover:()=>{failInfo=false;return shell.restore()},
   loginFailure:async(id=nextId)=>{nextId=id;failInfo=true;await shell.login({username:"synthetic",password:"synthetic-only"});await new Promise(r=>setTimeout(r,0));failInfo=false},
   switchAccount:async()=>{nextId=42;await shell.login({username:"synthetic-B",password:"synthetic-only"})},
-  mismatch:async(method="refreshAuthorization")=>{
-    localStorage.setItem("nucleagent_access_token",nextId === 41 ? "synthetic-B" : "synthetic-A");
+  mismatch:async(method="refreshAuthorization",samePrincipal=false)=>{
+    localStorage.setItem("nucleagent_access_token",
+      samePrincipal ? `synthetic-rotated-${nextId}-manual` :
+      nextId === 41 ? "synthetic-B" : "synthetic-A");
     localStorage.setItem("nucleagent_session_version",String(shell.sessionVersion+1));
     await shell[method]();
   },
+  manualRefresh:()=>shell.refreshAuthorization(),
 };
 </script>
 </html>
