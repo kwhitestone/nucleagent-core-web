@@ -1,0 +1,16 @@
+{
+  "namespace": "gca6bf37f",
+  "capturedDate": "2026-10-18",
+  "shellMain": "97b7e229e035f822d6f12882c3173bac952268e8",
+  "shellRed": "a0a0ae1816b9d52c4c8c86f566ccb3a5149b7384",
+  "shellFixed": "fc74808ce6d6766bb4db38b67a63983f545057af",
+  "webMaster": "4641314d350068fffcf76a02e7c30957a220fd52",
+  "webBindings": "66e2f4427ded1d6f3afd72bf7f7c9b1b3bd06930",
+  "webPrincipalConsumer": "4014ef95d479a5519d39644dfcbe72a80fc87fbf",
+  "webCombined": "94f9aeff8ea716c6240197031ce1471f7ce2e262",
+  "coreMain": "c6768811778d6e536c129f06279ff0adb6c98905",
+  "coreTree": "8028109c66df4858d0b465d22bd9237f7c4a4006",
+  "shellFramework": "894bd823028076d6b43e4edd08a3823e8820149f",
+  "coreFramework": "c57f20b262e8d92b3c0ee5321a53fd9870b39f93",
+  "releaseAcceptance": "NOT_RUN"
+}

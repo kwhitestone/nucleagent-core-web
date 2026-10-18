@@ -56,7 +56,7 @@ import {
 import { executionTimingLabel, executionTimings } from "./executionTiming";
 import { executionPhaseLabel, isExecutionPhaseData } from "./executionPhasePresentation";
 import { useConversation } from "./useConversation";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { isBusinessBoundaryChange, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { useNarrow } from "@/composables/useNarrow";
 
 defineOptions({ name: "TaskConversation" });
@@ -647,6 +647,7 @@ const openArtifact = (attachment: ConversationAttachment) => {
 const onSessionChange = (event: Event) => {
   const authenticated = (event as CustomEvent<{ authenticated?: unknown }>).detail
     ?.authenticated === true;
+  if (authenticated && !isBusinessBoundaryChange(event) && controller.authoritativeReady.value) return;
   if (authenticated) void controller.initialize();
   else controller.dispose();
 };

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { after, before, test } from "node:test";
-import { createSSRApp, h, type Component } from "vue";
+import { createSSRApp, h, nextTick, ssrContextKey, type Component } from "vue";
 import { renderToString } from "vue/server-renderer";
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
 import type { ConversationAdapter, ConversationSnapshot } from "../src/addons/conversation/task-conversation/core/types.ts";
+import { hostNode, renderer } from "./vueComponentHarness.ts";
 
 let vite: ViteDevServer;
 let useConversation: typeof import("../src/addons/conversation/task-conversation/vue/useConversation.ts").useConversation;
@@ -263,3 +264,55 @@ test("the first rendered conversation view shows loading rather than the empty i
   assert.doesNotMatch(html, /开始一段新对话/);
   assert.doesNotMatch(html, /class="atc-empty"/);
 });
+
+for (const ready of [false, true]) {
+  test(`actual TaskConversation renewal preserves ready subscription but retries pending history: ready=${ready}`, async () => {
+    const media = Object.assign(new EventTarget(), { matches: false });
+    Object.defineProperty(globalThis, "window", { configurable: true,
+      value: Object.assign(new EventTarget(), { matchMedia: () => media }) });
+    const first = deferred<ConversationSnapshot>();
+    let calls = 0, subscriptions = 0, aborted = 0, bindings: any;
+    const base = adapterFor(async () => ++calls === 1 && !ready ? first.promise : snapshot("current"));
+    const adapter = { ...base, async *subscribe(request: Parameters<ConversationAdapter["subscribe"]>[0]) {
+      subscriptions++;
+      try { yield* base.subscribe(request); } finally { aborted++; }
+    } };
+    // Execute the real SFC setup/lifecycle. Rendering itself is covered by the
+    // unchanged parent/child-frame browser acceptance, not a copied controller.
+    const component = { ...TaskConversation as any, setup(props: any, context: any) {
+      bindings = (TaskConversation as any).setup(props, context);
+      return () => h("span");
+    } };
+    const app = renderer.createApp(component, { conversationKey: "A", adapter });
+    app.provide(ssrContextKey, { modules: new Set() });
+    const settle = async () => { for (let i = 0; i < 8; i++) { await new Promise(resolve => setImmediate(resolve)); await nextTick(); } };
+    const emit = (detail: any) => window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail }));
+    try {
+      app.mount(hostNode("root"));
+      await settle();
+      bindings.composer.value = "protected draft";
+      emit({ authenticated: true, businessBoundaryChanged: false });
+      await settle();
+      assert.equal(calls, ready ? 1 : 2);
+      assert.equal(subscriptions, 1);
+      assert.equal(aborted, 0, "ready renewal must not retire the live subscription");
+      assert.equal(bindings.composer.value, "protected draft");
+      first.resolve(snapshot("obsolete"));
+      await settle();
+      assert.ok(bindings.controller.state.value.items.current);
+      assert.equal(bindings.controller.state.value.items.obsolete, undefined);
+      emit({ authenticated: false });
+      await settle();
+      assert.equal(aborted, 1);
+      assert.deepEqual(bindings.controller.state.value.items, {});
+      emit({ authenticated: true });
+      await settle();
+      assert.equal(calls, ready ? 2 : 3, "legacy/relogin events remain destructive");
+      assert.equal(subscriptions, 2);
+    } finally {
+      first.resolve(snapshot());
+      app.unmount();
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+}
