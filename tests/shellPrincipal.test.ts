@@ -28,6 +28,7 @@ test("trusted principal and canonical grants separate request and business gener
   const apply = session.applyShellSession;
   apply("synthetic-one", 1, ["core:admin:read", "core:admin:write"], { id: "41" });
   const initial = session.sessionGenerations();
+  assert.equal(initial.businessBoundaryGeneration, 1);
   const signal = session.sessionRequestSignal();
   apply("synthetic-two", 2, [" core:admin:write ", "core:admin:read", "core:admin:read"], { id: "41" });
   assert.equal(token.getAccessToken(), "synthetic-two");
@@ -44,6 +45,7 @@ test("trusted principal and canonical grants separate request and business gener
   assert.equal(events.at(-1).businessBoundaryChanged, true);
   apply("synthetic-two", 4, ["core:admin:read"], { id: "42" });
   assert.equal(events.at(-1).businessBoundaryChanged, true);
+  assert.equal(session.sessionGenerations().businessBoundaryGeneration, initial.businessBoundaryGeneration + 2);
   apply("synthetic-two", 5, ["core:admin:read"], { id: "42" });
   assert.equal(events.at(-1).businessBoundaryChanged, false);
   session.handleEmbeddedUnauthorized("rejected");

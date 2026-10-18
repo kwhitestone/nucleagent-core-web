@@ -15,7 +15,7 @@ await loadRuntimeConfig("https://core.renewal.test", async () => new Response(JS
   VITE_STORAGE_URL: "https://storage.renewal.test",
   VITE_AUTH_BACKEND_URL: "https://auth.renewal.test",
   VITE_EMBED_HOST_ORIGINS: "",
-  VITE_SHELL_ALLOWED_ORIGINS: location.origin,
+  VITE_SHELL_ALLOWED_ORIGINS: `http://127.0.0.1:${location.port}`,
 }), { status: 200 }));
 
 const { platformRuntime } = await import("../../../src/addons/platform-api/runtime");
@@ -29,7 +29,8 @@ registerPlatformRuntime(platformRuntime);
 i18n.global.locale.value = "en";
 
 const definition = { id: 9001, name: "Synthetic record", slug: "synthetic-record", revision: "1",
-  isActive: true, config: { model: "synthetic-model", description: "Synthetic description" } };
+  isActive: true, config: { model: "synthetic-model", description: "Synthetic description",
+    avatar: "https://image.renewal.test/avatar.png" } };
 const capabilities = { read: true, write: true, writeIdentity: true, delete: true, restore: true,
   readSkills: true, writeSkillBindings: true, readTools: true, writeTools: true, create: true };
 const fieldPolicy = { editablePaths: ["/name", "/config/description"], readOnlyPaths: [],
@@ -42,6 +43,7 @@ let sessionEvents = 0;
 window.addEventListener(SESSION_CHANGE_EVENT, () => sessionEvents++);
 const waiting: (() => void)[] = [];
 let hold = new URLSearchParams(location.search).has("hold");
+let syntheticWrite = false;
 platformRuntime.http.defaults.adapter = async config => {
   const method = (config.method ?? "get").toUpperCase();
   const path = (config.url ?? "").split("?")[0];
@@ -51,7 +53,10 @@ platformRuntime.http.defaults.adapter = async config => {
     data: { code: status === 200 ? 0 : "forbidden", data }, status, statusText: "Synthetic",
     headers: { etag: '"agent-9001-1"' }, config,
   });
-  if (method !== "GET") throw new Error("Synthetic fixture forbids business writes");
+  if (method !== "GET") {
+    if (!syntheticWrite) throw new Error("Synthetic fixture forbids business writes");
+    return response(definition);
+  }
   if (path === "/synthetic/session-check") {
     throw new AxiosError("Synthetic unauthorized", "ERR_BAD_REQUEST", config, undefined, response(null, 401));
   }
@@ -88,6 +93,7 @@ Object.assign(window, { renewalFixture: {
   deny: () => { denied = true; },
   rejectCurrent: () => platformRuntime.http.get("/synthetic/session-check").catch(() => undefined),
   hold: () => { hold = true; },
+  allowSyntheticWrite: () => { syntheticWrite = true; },
   release: () => { hold = false; waiting.splice(0).forEach(resolve => resolve()); },
   signal: () => sessionRequestSignal(),
 } });
