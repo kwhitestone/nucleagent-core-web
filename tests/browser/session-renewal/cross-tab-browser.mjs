@@ -9,6 +9,7 @@ const nativeOnly = process.env.NATIVE_ONLY === "1";
 const crossOnly = process.env.CROSS_ONLY === "1";
 const naturalOnly = process.env.NATURAL_ONLY === "1";
 const forcedOnly = process.env.FORCED_ONLY === "1";
+const manualOnly = process.env.MANUAL_ONLY === "1";
 const endpoint = process.env.CDP_ENDPOINT ?? "http://127.0.0.1:9229";
 const version = await (await fetch(`${endpoint}/json/version`)).json();
 const ws = new WebSocket(version.webSocketDebuggerUrl);
@@ -117,7 +118,7 @@ try {
       }
       throw Error("Synthetic peer navigation readiness timeout");
     };
-    for (const natural of naturalOnly ? [true] : red || forcedOnly ? [false] : [false,true]) for (const width of [1280,390]) for (const consumer of ["owner","admin"]) {
+    for (const natural of manualOnly ? [] : naturalOnly ? [true] : red || forcedOnly ? [false] : [false,true]) for (const width of [1280,390]) for (const consumer of ["owner","admin"]) {
       await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
       if (natural) {
         const started = performance.now();
@@ -265,7 +266,7 @@ try {
     }
     if (!red) assert.ok(results.every(r=>r.pass),"Cross-tab revalidation must preserve original editor/draft/focus");
     else assert.ok(results.every(r=>!r.pass),"Baseline must reproduce the real cross-tab loss");
-    if (!red && !naturalOnly) for (const consumer of ["owner","admin"]) for (const scenario of [
+    if (!red && !naturalOnly && !manualOnly) for (const consumer of ["owner","admin"]) for (const scenario of [
       "account-equal-claims","claims-change","revoked","logout","401","failure","timeout","late-success","late-error","busy","route",
     ]) {
       await page("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
@@ -344,7 +345,7 @@ try {
       results.push({consumer,scenario,pass:true,pendingWriteBlocked:true,oldSignalAborted:true,...outcome});
     }
   }
-  for(const width of nativeOnly || crossOnly ? [] : [1280,390]) for(const consumer of ["owner","admin"]) for(const reverse of [false,true]) {
+  for(const width of nativeOnly || crossOnly || manualOnly ? [] : [1280,390]) for(const consumer of ["owner","admin"]) for(const reverse of [false,true]) {
     await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
     await page("Page.navigate",{url:`${base}?consumer=${consumer}${reverse?"&reverse=1":""}`});
     const selector = consumer==="owner"?"#ua-name":"#definition-name";
@@ -372,12 +373,22 @@ try {
     await evaluate(`independent.mismatch("${reverse ? "restore" : "refreshAuthorization"}")`);
     const mismatched = await evaluate("independent.state()");
     const expectedId = reverse ? 41 : 42;
-    assert.equal(mismatched.token,beforeMismatch.token);
     if(red) {
+      assert.equal(mismatched.token,beforeMismatch.token);
       assert.equal(mismatched.sentHeader,reverse?"synthetic-A":"synthetic-B");
       assert.deepEqual(mismatched.lastAuth.principal,{id:String(expectedId)});
       assert.notEqual(mismatched.sentHeader,mismatched.lastAuth.token);
+    } else if(!reverse) {
+      await wait(`independent.state().principal===${expectedId}`);
+      const synced = await evaluate("independent.state()");
+      assert.notEqual(synced.token,beforeMismatch.token);
+      assert.equal(synced.token,"synthetic-B");
+      assert.deepEqual(synced.lastAuth.principal,{id:String(expectedId)});
+      const calls = synced.infoCalls;
+      await evaluate("independent.sync()");
+      assert.equal((await evaluate("independent.state()")).infoCalls,calls);
     } else {
+      assert.equal(mismatched.token,beforeMismatch.token);
       assert.equal(mismatched.sentHeader,beforeMismatch.token);
       assert.equal(mismatched.principal,null);
       await waitChild("!w.renewalFixture.state().authenticated");
@@ -396,6 +407,42 @@ try {
       observations:{captured:beforeMismatch,response:mismatched},
       credentialMismatch:red,contract:red?"RED":"GREEN",expectedId,
       immutableHeader:!red,lateStorageEventReproved:!red,duplicateStorageEventNoop:!red,oldEditorRemoved:true});
+  }
+  for(const width of [1280,390]) for(const consumer of ["owner","admin"]) {
+    await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
+    await page("Page.navigate",{url:`${base}?native=1&cross=1&consumer=${consumer}`});
+    const selector = consumer==="owner"?"#ua-name":"#definition-name";
+    await waitChild(`!!d.querySelector("${selector}")`);
+    await child("Promise.all(d.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))");
+    await child(`(w.saved=d.querySelector("${selector}"),w.saved.focus(),w.saved.select())`);
+    await page("Input.insertText",{text:"Manual F1 same-principal draft"});
+    await child("w.saved.setSelectionRange(1,4)");
+    const beforeManual = await evaluate("independent.state()");
+    await evaluate('independent.mismatch("refreshAuthorization",true)');
+    const afterManual = await evaluate("independent.state()");
+    if(red) {
+      assert.equal(afterManual.token,beforeManual.token);
+      assert.equal(afterManual.principal,null);
+      await waitChild("!w.saved.isConnected");
+      assert.equal(await child("w.saved.isConnected"),false);
+      results.push({width,consumer,scenario:"manual F1 same-principal pre-storage mismatch",
+        contract:"RED",draftLost:true,writes:await child("w.renewalFixture.state().writes")});
+    } else {
+      await wait(`independent.state().principal===${beforeManual.principal}`);
+      await waitChild("w.renewalFixture.state().authenticated");
+      assert.notEqual(afterManual.token,beforeManual.token);
+      const resumed = await child(`({same:w.saved===d.querySelector("${selector}"),draft:w.saved.value,
+        focused:d.activeElement===w.saved,selected:w.saved.selectionEnd-w.saved.selectionStart,
+        writes:w.renewalFixture.state().writes})`);
+      assert.equal(resumed.same,true);
+      assert.equal(resumed.draft,"Manual F1 same-principal draft");
+      assert.equal(resumed.focused,true);
+      assert.equal(resumed.selected,3);
+      assert.equal(resumed.writes,0);
+      results.push({width,consumer,scenario:"manual F1 same-principal pre-storage mismatch",
+        contract:"GREEN",draftPreserved:true,oldEditorRetained:true,nativeStorage:true,
+        writes:resumed.writes,observations:{before:beforeManual,after:afterManual}});
+    }
   }
   if(!red && !nativeOnly && !crossOnly) {
   await page("Page.navigate",{url:base});
