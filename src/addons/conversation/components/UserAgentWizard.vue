@@ -8,7 +8,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { trapDialogFocus } from "../../administration/agents/definition/focus";
 import { LIMITS, emptyDraft, validateDraft, type Draft, type UserAgentBackend } from "../api/userAgent";
-import { USER_AVATAR_CONTRACT, checkAvatarFile } from "../api/userAvatar";
+import AgentAvatarPicker from "../../../shared/AgentAvatarPicker.vue";
 import { coveredBySkills, effectiveToolIds, toolLabel, type ToolCatalogItem } from "../api/toolCatalog";
 import type { Skill } from "../api/types";
 
@@ -64,25 +64,12 @@ const message = (field: string) => (local.value[field] ? t(local.value[field]!) 
 
 // Avatar: picked here, uploaded by the parent only on submit (cancel stores nothing).
 const avatarFile = ref<File>();
-const avatarPreview = ref("");
-function onAvatar(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  const bad = checkAvatarFile(file);
-  local.value = { ...local.value, avatar: bad ? `agents.avatar_${bad}` : "" };
-  if (bad) return;
-  avatarFile.value = file;
-  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value);
-  avatarPreview.value = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
-}
 
 const dialog = ref<HTMLElement>();
 const nameInput = ref<HTMLInputElement>();
 const previousFocus = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
 onMounted(() => nameInput.value?.focus());
-onBeforeUnmount(() => { previousFocus?.focus?.(); if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value); });
+onBeforeUnmount(() => { previousFocus?.focus?.(); });
 
 function submit() {
   if (props.busy) return;
@@ -101,16 +88,7 @@ function submit() {
       <h2 id="ua-title">{{ editing ? t("agents.mine.editTitle") : t("agents.mine.wizardTitle") }}</h2>
       <p class="ua-hint">{{ t("agents.mine.wizardHint") }}</p>
 
-      <div class="ua-avatar" :data-testid="avatarFile ? 'ua-avatar-picked' : 'ua-avatar-default'">
-        <span class="ua-av" aria-hidden="true">
-          <img v-if="avatarPreview" :src="avatarPreview" alt="">
-          <template v-else>{{ [...(draft.name.trim() || "?")][0] }}</template>
-        </span>
-        <label class="ua-avatar-pick" for="ua-avatar">{{ t("agents.mine.avatar") }} · {{ avatarFile ? avatarFile.name : t("agents.mine.avatarPick") }}</label>
-        <input id="ua-avatar" class="ua-file" type="file" :accept="USER_AVATAR_CONTRACT.types.join(',')" data-testid="ua-avatar-input"
-          aria-describedby="ua-avatar-err" @change="onAvatar">
-      </div>
-      <p id="ua-avatar-err" class="ua-row"><span class="ua-err">{{ local.avatar ? t(local.avatar, { mb: USER_AVATAR_CONTRACT.maxBytes >> 20, side: USER_AVATAR_CONTRACT.maxSide }) : errors.avatar ?? "" }}</span></p>
+      <AgentAvatarPicker id="ua-avatar" v-model="avatarFile" :name="draft.name" :disabled="busy" :error="errors.avatar" />
 
       <template v-if="editing && initial?.slug">
         <label for="ua-slug">{{ t("agents.mine.slug") }}</label>
@@ -211,12 +189,6 @@ function submit() {
 .ua-row { margin: 0 0 4px; min-height: 16px; display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-tertiary); }
 .ua-err, .ua-form-err { color: var(--rose-500); }
 .ua-form-err { margin: 0; font-size: 12.5px; }
-.ua-avatar { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; color: var(--text-tertiary); }
-.ua-av { width: 40px; height: 40px; border-radius: var(--r-lg); display: grid; place-items: center; background: var(--grad-brand); color: #fff; font-weight: 600; overflow: hidden; }
-.ua-av img { width: 100%; height: 100%; object-fit: cover; }
-.ua-avatar-pick { cursor: pointer; text-decoration: underline; }
-.ua-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
-.ua-file:focus-visible + * , .ua-avatar:focus-within .ua-avatar-pick { outline: 2px solid var(--teal-500); outline-offset: 2px; }
 .ua-wizard input[readonly] { background: var(--bg-subtle, var(--bg-card)); color: var(--text-tertiary); }
 .ua-check { display: flex; align-items: center; gap: 8px; }
 .ua-wizard .ua-check input { width: auto; }

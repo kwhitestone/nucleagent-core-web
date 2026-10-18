@@ -50,7 +50,8 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
   <div class="definition-fields">
     <div v-for="field in fields" :key="field.path" class="definition-field" :class="{ toggle: field.kind === 'boolean' }" :data-path="field.path" :title="field.path" @focusout="touched.add(field.path)">
       <label :for="id(field.path)">{{ label(field.label as MessageKey) }}</label>
-      <input v-if="field.kind === 'boolean'" :id="id(field.path)" type="checkbox" role="switch" class="switch"
+      <slot v-if="field.path === '/config/avatar' && $slots.avatar" name="avatar" />
+      <input v-else-if="field.kind === 'boolean'" :id="id(field.path)" type="checkbox" role="switch" class="switch"
         :checked="value(field.path) !== false" :disabled="!allowed(field.path)"
         :aria-describedby="`${id(field.path)}-hint`" @change="change(field.path, $event, field.kind)" />
       <textarea v-else-if="field.kind === 'textarea'" :id="id(field.path)" :value="String(value(field.path) ?? '')"
@@ -81,7 +82,7 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
       <small :id="`${id(field.path)}-hint`" :class="{ 'definition-error': shownError(field.path) }">
         <template v-if="field.kind === 'genModel' && genState(field.path, field.genKind) === 'delisted'"><span class="definition-error">{{ label('genDelisted') }}</span></template>
         <template v-else-if="shownError(field.path)">{{ errorLabel(shownError(field.path)!) }}</template>
-        <template v-else-if="!props.editablePaths.includes(field.path)">{{ reason(field.path) }}</template>
+        <template v-else-if="!props.editablePaths.includes(field.path) && !(field.path === '/config/avatar' && $slots.avatar)">{{ reason(field.path) }}</template>
         <template v-else-if="field.label === 'memory'">{{ label('memoryNote') }}</template>
         <template v-else-if="field.max">{{ [...String(value(field.path) ?? '')].length }} / {{ field.max }}</template>
       </small>
