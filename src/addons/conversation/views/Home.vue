@@ -21,6 +21,8 @@ import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vu
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import BroadcastOptions from "@/addons/conversation/components/BroadcastOptions.vue";
+import BindingPickers from "@/addons/conversation/components/BindingPickers.vue";
+import { useBindingSelection } from "@/addons/conversation/composables/useBindingSelection";
 import { useNarrow } from "@/composables/useNarrow";
 import { broadcastRoute } from "@/addons/conversation/composables/broadcastViewPolicy";
 import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskDesk";
@@ -51,6 +53,7 @@ const executionBackend = ref<string | null>(null);
 const backendCompatible = ref(false);
 const broadcast = ref(false);
 const eligibleCount = ref(0);
+const { skillIds, toolIds, tools, toolsLoading, toolsFailed, loadTools, createBindings } = useBindingSelection();
 /** UI-IMPL-3 / 6H: image or video mode — sending creates a new chat (conversationId 0) with the generation in it. */
 const genKind = ref<GenKind>(route.query.gen === "video" ? "video" : "image");
 const genOn = ref(route.query.gen === "image" || route.query.gen === "video");
@@ -115,7 +118,7 @@ async function handleCreate(): Promise<void> {
       ? await store.createBroadcast(payload).then(result => ({
         path: `/b/${result.groupId}`, query: { conversationId: String(result.conversations[0].id) },
       }))
-      : await store.create({ ...payload, executionBackend: executionBackend.value ?? undefined })
+      : await store.create({ ...payload, ...createBindings.value, executionBackend: executionBackend.value ?? undefined })
         .then(created => ({ path: `/c/${created.id}` }));
     input.value = "";
     attachments.value = [];
@@ -144,7 +147,11 @@ function openTask(conversation: (typeof store.sorted)[number]): void {
 /** 「更多设置」: upgrade the quick path to the full form without losing the text. */
 function moreSettings(): void {
   runSheet.value = false;
-  void router.push({ name: "tasks", query: input.value.trim() ? { input: input.value.trim() } : {} });
+  void router.push({ name: "tasks", query: {
+    ...(input.value.trim() ? { input: input.value.trim() } : {}),
+    skillIds: skillIds.value.join(","),
+    toolIds: toolIds.value.join(","),
+  } });
 }
 
 function fillSuggestion(card: HomeCard): void {
@@ -261,6 +268,8 @@ onMounted(() => {
               <span class="picker-row-k">{{ t('broadcast.toggle') }}</span>
               <input v-model="broadcast" type="checkbox" role="switch" :disabled="submitting" />
             </label>
+            <BindingPickers v-if="!broadcast && !genOn" v-model:skill-ids="skillIds" v-model:tool-ids="toolIds" :tools="tools"
+              :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" row @retry="loadTools" />
             <button type="button" class="picker-row" data-testid="run-more" @click="moreSettings">
               <span class="picker-row-k">{{ t('home.runMore') }}</span>
               <svg class="picker-row-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
@@ -305,6 +314,8 @@ onMounted(() => {
             </button>
           </div>
           <BroadcastOptions v-if="broadcast" :model-choice="modelChoice" @eligible-change="eligibleCount = $event" />
+          <BindingPickers v-if="!broadcast && !genOn" v-model:skill-ids="skillIds" v-model:tool-ids="toolIds" :tools="tools"
+            :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" @retry="loadTools" />
         </div>
 
         <AttachmentChips

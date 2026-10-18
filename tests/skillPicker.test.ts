@@ -129,8 +129,11 @@ async function clientComponent(path: string, children: Record<string, Component>
 let vite: ViteDevServer;
 let sheet: Component;
 let picker: Component;
+let toolPicker: Component;
+let bindingPickers: Component;
+let editor: Component;
 let unregister: () => void;
-let respond: () => Promise<unknown> = async () => ({ code: 0, data: [] });
+let respond: (config?: any) => Promise<unknown> = async () => ({ code: 0, data: [] });
 
 before(async () => {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => null, setItem() {}, removeItem() {} } });
@@ -143,9 +146,12 @@ before(async () => {
   const { platformRuntime } = await vite.ssrLoadModule("/src/addons/platform-api/runtime.ts");
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime(platformRuntime);
-  http.defaults.adapter = async (config: unknown) => ({ config, data: await respond(), headers: {}, status: 200, statusText: "OK" });
+  http.defaults.adapter = async (config: unknown) => ({ config, data: await respond(config), headers: {}, status: 200, statusText: "OK" });
   sheet = await clientComponent("/src/addons/conversation/components/OptionSheet.vue");
   picker = await clientComponent("/src/addons/conversation/components/SkillPicker.vue", { OptionSheet: sheet });
+  toolPicker = await clientComponent("/src/addons/conversation/components/ToolPicker.vue", { OptionSheet: sheet });
+  bindingPickers = await clientComponent("/src/addons/conversation/components/BindingPickers.vue", { SkillPicker: picker, ToolPicker: toolPicker });
+  editor = await clientComponent("/src/addons/conversation/components/SessionBindingsEditor.vue", { BindingPickers: bindingPickers });
   const win = new EventTarget();
   Object.defineProperty(win, "parent", { value: win });
   Object.defineProperty(globalThis, "window", { configurable: true, value: win });
@@ -274,5 +280,206 @@ test("skill picker load failure shows a retryable error, then recovers", async (
     fail = false;
     click(all(body, "osheet-more")[0]); await flush();
     assert.equal(all(body, "osheet-row").length, 1);
+  } finally { app.unmount(); }
+});
+
+for (const kind of ["skill", "tool"] as const) {
+  test(`${kind} picker caps additions at 50 but permits removal`, async () => {
+    respond = async () => ({ data: Array.from({ length: 51 }, (_, i) => skill(i + 1)) });
+    const selected = ref(Array.from({ length: 50 }, (_, i) => i + 1));
+    const tools = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, name: `t${i + 1}` }));
+    const { root, app } = mount(kind === "skill" ? picker : toolPicker, () => ({
+      modelValue: selected.value, ...(kind === "tool" ? { tools } : {}), "onUpdate:modelValue": (ids: number[]) => { selected.value = ids; },
+    }));
+    try {
+      await flush();
+      assert.match(textOf(root), /Maximum 50/);
+      click(all(root, `${kind}-toggle`)[0]); await nextTick();
+      click(all(body, "osheet-more")[0]); await nextTick();
+      assert.equal(all(body, "osheet-row").at(-1)?.props.disabled, true);
+      assert.equal(all(body, "osheet-row")[0].props.disabled, false);
+      click(all(root, `${kind}-chip-remove`)[0]); await nextTick();
+      assert.equal(selected.value.length, 49);
+      assert.equal(all(body, "osheet-row").at(-1)?.props.disabled, false);
+    } finally { app.unmount(); }
+  });
+}
+
+const sessionResponse = (config: any) => config.url.endsWith("/bindings")
+  ? { data: { skillIds: [1], toolIds: [2], editable: true } }
+  : { data: config.url.endsWith("/catalog") ? [{ id: 2, name: "tool-2" }] : [skill(1), skill(3)] };
+
+test("session editor reads chips, applies [] to clear, then uses server readback", async () => {
+  const writes: any[] = [];
+  const pending: boolean[] = [];
+  respond = async (config) => {
+    if (config.method === "put") {
+      writes.push(JSON.parse(config.data));
+      return { data: { ...writes.at(-1), editable: true } };
+    }
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11", onPending: (v: boolean) => pending.push(v) }));
+  try {
+    await flush();
+    assert.equal(all(root, "skill-chip").length, 1);
+    assert.equal(all(root, "tool-chip").length, 1);
+    click(all(root, "skill-chip-remove")[0]);
+    click(all(root, "tool-chip-remove")[0]); await nextTick();
+    assert.equal(pending.at(-1), true);
+    const actions = all(root, "conversation-settings-actions")[0];
+    click(actions.children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.deepEqual(writes, [{ skillIds: [], toolIds: [] }]);
+    assert.equal(pending.at(-1), false);
+    assert.equal(all(root, "skill-chip").length + all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session save refusal keeps draft; discard restores persisted selection", async () => {
+  respond = async (config) => {
+    if (config.method === "put") throw new Error("busy");
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.match(textOf(root), /Could not save/);
+    assert.equal(all(root, "skill-chip").length, 0);
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-discard")!);
+    await nextTick();
+    assert.equal(all(root, "skill-chip").length, 1);
+    assert.doesNotMatch(textOf(root), /Could not save/);
+  } finally { app.unmount(); }
+});
+
+test("session id change retires an earlier read; ineligible session has no controls", async () => {
+  let resolveOld!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.url.includes("/11/bindings")) return new Promise((resolve) => { resolveOld = resolve; });
+    if (config.url.endsWith("/bindings")) return { data: { skillIds: [], toolIds: [], editable: false } };
+    return sessionResponse(config);
+  };
+  const id = ref("11");
+  const { root, app } = mount(editor, () => ({ id: id.value }));
+  try {
+    await flush();
+    id.value = "12"; await flush();
+    resolveOld({ data: { skillIds: [1], toolIds: [2], editable: true } }); await flush();
+    assert.equal(all(root, "binding-pickers").length, 0);
+    assert.equal(all(root, "skill-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session id change retires a pending save", async () => {
+  let resolveSave!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { resolveSave = resolve; });
+    if (config.url.includes("/12/bindings")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+    return sessionResponse(config);
+  };
+  const id = ref("11");
+  const { root, app } = mount(editor, () => ({ id: id.value }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    id.value = "12"; await flush();
+    resolveSave({ data: { skillIds: [], toolIds: [2], editable: true } }); await flush();
+    assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+    assert.equal(all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session editor shows 409 and keeps the draft for a later retry", async () => {
+  respond = async (config) => {
+    if (config.method === "put") throw {
+      isAxiosError: true, config, message: "busy",
+      response: { status: 409, data: { detail: "conversation_busy" } },
+    };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.match(textOf(root), /conversation is busy/);
+    assert.equal(all(root, "skill-chip").length, 0);
+    assert.equal(all(root, "tool-chip").length, 1);
+  } finally { app.unmount(); }
+});
+
+test("session editor drops tools covered by the newly selected skill on save", async () => {
+  const writes: any[] = [];
+  respond = async (config) => {
+    if (config.method === "put") {
+      writes.push(JSON.parse(config.data));
+      return { data: { ...writes.at(-1), editable: true } };
+    }
+    if (config.url.endsWith("/catalog")) return { data: [{ id: 2, name: "tool-2", skillIds: [3] }] };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-toggle")[0]); await nextTick();
+    click(all(body, "osheet-row").find((n) => textOf(n).includes("skill-3"))!); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.deepEqual(writes, [{ skillIds: [1, 3], toolIds: [] }]);
+    assert.equal(all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session editor disables changing and applying selections during a turn", async () => {
+  let writes = 0;
+  respond = async (config) => {
+    if (config.method === "put") writes++;
+    return sessionResponse(config);
+  };
+  const disabled = ref(false);
+  const { root, app } = mount(editor, () => ({ id: "11", disabled: disabled.value }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    disabled.value = true; await nextTick();
+    assert.equal(all(root, "skill-toggle")[0].props.disabled, true);
+    assert.equal(all(root, "tool-toggle")[0].props.disabled, true);
+    const save = all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!;
+    assert.equal(save.props.disabled, true);
+    click(save); await flush();
+    assert.equal(writes, 0, "handler also guards programmatic submission");
+  } finally { app.unmount(); }
+});
+
+test("account switch clears old chips and ignores the former account's pending save", async () => {
+  let resolveSave!: (value: unknown) => void;
+  let switched = false;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { resolveSave = resolve; });
+    if (switched && config.url.endsWith("/bindings")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: false } }));
+    await nextTick();
+    assert.equal(all(root, "binding-pickers").length, 0);
+    switched = true;
+    window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: true } }));
+    await flush();
+    resolveSave({ data: { skillIds: [1], toolIds: [2], editable: true } }); await flush();
+    assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+    assert.equal(all(root, "tool-chip").length, 0);
   } finally { app.unmount(); }
 });
