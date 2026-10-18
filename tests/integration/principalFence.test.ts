@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { initializeRuntimeFixture } from "../fixtures/runtimeConfig.ts";
 
 // Run explicitly against an OWNED tree containing PR16 + this candidate.
-test("real mounted bindings composable keeps unknown writes fenced across renewal and principal switches", async () => {
+for (const crossTab of [false, true]) test(`real mounted bindings composable keeps unknown writes fenced across ${crossTab ? "cross-tab pending" : "renewal"} and principal switches`, async () => {
   assert.ok(process.env.FENCE_ROOT, "FENCE_ROOT must name the owned combined verification tree");
   const window = Object.assign(new EventTarget(), { parent: {} });
   Object.defineProperty(globalThis, "window", { configurable: true, value: window });
@@ -64,9 +64,16 @@ test("real mounted bindings composable keeps unknown writes fenced across renewa
     await settle();
     assert.equal(writes, 1);
     const oldSignal = session.sessionRequestSignal();
+    if (crossTab) {
+      runtime.applyShellSession(null, 2, [], null, { previousVersion: 1 });
+      await settle();
+      assert.equal(runtime.getAccessToken(), "");
+      await state.save();
+      assert.equal(writes, 1, "Pending proof cannot start another write");
+    }
     runtime.applyShellSession("synthetic-a-renewed", 2, [], { id: "41" });
     await settle();
-    assert.equal(mounts, 1, "Natural renewal must not remount the bindings owner");
+    assert.equal(mounts, crossTab ? 2 : 1, "Only audited editor routes retain mounted state during pending");
     assert.equal(oldSignal.aborted, true);
     assert.equal(state.saved.value, null, "Same-revision sync cannot clear an unknown write barrier");
     assert.equal(state.pending.value, true);
@@ -82,7 +89,7 @@ test("real mounted bindings composable keeps unknown writes fenced across renewa
     principal = "42";
     runtime.applyShellSession("synthetic-b", 3, [], { id: principal });
     await settle();
-    assert.equal(mounts, 2);
+    assert.equal(mounts, crossTab ? 3 : 2);
     assert.equal(state.saved.value.principal, "42");
     assert.deepEqual(state.skillIds.value, []);
     assert.equal(state.uncertain.value, false, "A's unknown barrier must not contaminate B");

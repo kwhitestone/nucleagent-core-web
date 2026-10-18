@@ -43,7 +43,7 @@ const conversation: PluginModule = {
     {
       path: "/agents",
       name: "agent-list",
-      component: authenticatedRoute(() => import("./views/AgentList.vue")),
+      component: authenticatedRoute(() => import("./views/AgentList.vue"), ["/agents"]),
       meta: { requiresAuth: true },
     },
     {

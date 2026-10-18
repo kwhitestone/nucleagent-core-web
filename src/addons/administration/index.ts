@@ -16,7 +16,7 @@ const administration: PluginModule = {
     { path: "/providers", redirect: "/admin/providers" },
     {
       path: "/admin",
-      component: authenticatedRoute(() => import("./views/admin/AdminLayout.vue")),
+      component: authenticatedRoute(() => import("./views/admin/AdminLayout.vue"), ["/admin/agents"]),
       meta: { requiresAuth: true },
       children: [
         { path: "", redirect: "/admin/providers" },

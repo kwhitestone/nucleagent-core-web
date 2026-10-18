@@ -35,6 +35,7 @@ const tabs = computed(() => filterEmbeddedAuthorizedItems([
 ], embedded, authorization.can));
 
 watchEffect(() => {
+  if (authorization.revalidating?.value) return;
 	if (!embedded) return;
   if (!route.path.startsWith("/admin")) return;
   if (tabs.value.some((tab) => route.path.startsWith(tab.to))) return;

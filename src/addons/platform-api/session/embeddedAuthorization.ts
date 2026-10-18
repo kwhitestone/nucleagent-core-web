@@ -1,6 +1,7 @@
 import { readonly, ref } from "vue";
 
 const permissions = ref<string[]>([]);
+export const revalidating = ref(false);
 
 function validPermission(value: unknown): value is string {
   return typeof value === "string" && value.length <= 128 && value.trim().split(":").length === 3;
@@ -39,6 +40,7 @@ export function filterEmbeddedAuthorizedItems<T extends { permission: string }>(
 
 export function useEmbeddedAuthorization() {
   return {
+    revalidating: readonly(revalidating),
     permissions: readonly(permissions),
     can: hasEmbeddedPermission,
   };

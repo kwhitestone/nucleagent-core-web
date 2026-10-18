@@ -54,6 +54,7 @@ export default {
     networkError: "Network error, please try again later",
     sessionExpired: "Session expired, please sign in again",
     signInRequired: "Sign in on the main page to continue",
+    sessionRevalidating: "Verifying your session. Editing is paused. If verification fails, reload the main page to sign in again.",
     attachment: "Attachment",
     attachmentUploading: "Uploading...",
     attachmentUploadFailed: "Attachment upload failed",

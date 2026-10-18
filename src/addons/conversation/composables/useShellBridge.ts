@@ -103,6 +103,7 @@ export function installShellBridge(router: Router): () => void {
       sessionVersion?: number;
       permissions?: unknown[];
       principal?: unknown;
+      revalidation?: unknown;
       locale?: unknown;
     };
     if (d?.source !== "shell") return;
@@ -113,7 +114,7 @@ export function installShellBridge(router: Router): () => void {
       if (d.token !== null && d.token !== undefined &&
           (typeof d.token !== "string" || d.token.length === 0 || d.token.length > 8192)) return;
       if (d.permissions !== undefined && (!Array.isArray(d.permissions) || d.permissions.length > 512)) return;
-      const result = applyShellSession(d.token ?? null, d.sessionVersion as number, d.permissions ?? [], d.principal);
+      const result = applyShellSession(d.token ?? null, d.sessionVersion as number, d.permissions ?? [], d.principal, d.revalidation);
       if (result.accepted && result.changed && getPlatformRuntime().getAccessToken()) {
         void loadHistory();
       }

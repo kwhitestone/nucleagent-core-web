@@ -2,6 +2,7 @@ import type { AxiosInstance } from "axios";
 import type { Component } from "vue";
 
 export interface AuthorizationSnapshot {
+  readonly revalidating?: { readonly value: boolean };
   readonly permissions: { readonly value: readonly string[] };
   readonly can: (permission: string) => boolean;
 }
@@ -14,7 +15,7 @@ export interface AuthRequiredPayload {
 }
 
 export interface PlatformRuntime {
-  readonly authenticatedView: (view: Component) => Component;
+  readonly authenticatedView: (view: Component, suspendPaths?: readonly string[]) => Component;
   readonly http: AxiosInstance;
   readonly apiBase: () => string;
   readonly authHeaders: () => Record<string, string>;
@@ -27,6 +28,7 @@ export interface PlatformRuntime {
     incomingVersion: number,
     incomingPermissions?: readonly unknown[],
     incomingPrincipal?: unknown,
+    revalidation?: unknown,
   ) => { accepted: boolean; changed: boolean };
   readonly setAuthRequiredNotifier: (
     notifier: ((payload: AuthRequiredPayload) => boolean) | undefined,
@@ -88,8 +90,8 @@ export function getPlatformRuntime(): PlatformRuntime {
 }
 
 export const apiBase = (): string => getPlatformRuntime().apiBase();
-export const authenticatedRoute = (loader: () => Promise<{ default: Component }>) => async () => (
-  getPlatformRuntime().authenticatedView((await loader()).default)
+export const authenticatedRoute = (loader: () => Promise<{ default: Component }>, suspendPaths?: readonly string[]) => async () => (
+  getPlatformRuntime().authenticatedView((await loader()).default, suspendPaths)
 );
 export const authHeaders = (): Record<string, string> => getPlatformRuntime().authHeaders();
 export const handleUnauthorizedResponse = (requestAuthorization?: string): void => {
@@ -101,11 +103,13 @@ export const applyShellSession = (
   incomingVersion: number,
   incomingPermissions?: readonly unknown[],
   incomingPrincipal?: unknown,
+  revalidation?: unknown,
 ): { accepted: boolean; changed: boolean } => getPlatformRuntime().applyShellSession(
   token,
   incomingVersion,
   incomingPermissions,
   incomingPrincipal,
+  revalidation,
 );
 export const setAuthRequiredNotifier = (
   notifier: ((payload: AuthRequiredPayload) => boolean) | undefined,

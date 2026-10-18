@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Independent synthetic store and frame review</title>
+<style>html,body,#host,iframe{margin:0;width:100%;height:100%;border:0;display:block}</style>
+<div id="host"></div>
+<script type="module">
+import { createApp, defineComponent, h, ref } from "vue";
+import { createPinia, setActivePinia } from "pinia";
+import { useShellStore } from "binding-store";
+import { useRemoteSession } from "binding-producer";
+import lifecycle from "binding-lifecycle";
+const originalFetch = window.fetch.bind(window);
+const params = new URLSearchParams(location.search);
+const childOrigin = "http://127.0.0.1:5303";
+params.set("hostOrigin", location.origin);
+const grants = ["core:admin:read", "core:admin:write"];
+let failInfo = params.has("fail"), nextId = params.has("reverse") ? 42 : 41, rotation = 0, infoCalls = 0;
+let sentHeader = "", lastAuth = null;
+let heldInfo = false;
+let infoOverride = null;
+const infoWaiters = [];
+const authTimeline = [];
+const user = id => ({id,username:`synthetic-${id}`,permissions:grants,menus:[]});
+if (!params.has("persist") || !localStorage.getItem("nucleagent_access_token")) {
+  localStorage.clear();
+  const initialToken = params.has("natural")
+    ? `synthetic.${btoa(JSON.stringify({exp:Date.now()/1000+308}))}.synthetic`
+    : nextId === 41 ? "synthetic-A" : "synthetic-B";
+  localStorage.setItem("nucleagent_access_token",initialToken);
+  localStorage.setItem("nucleagent_session_version","1");
+}
+let nativeStorageEvents = 0;
+window.addEventListener("storage", event => {
+  if (event.isTrusted && event.storageArea === localStorage) nativeStorageEvents++;
+});
+window.fetch = async (url, init) => {
+  if (!String(url).includes("/api/v1/addons/auth/")) return originalFetch(url,init);
+  let data;
+  if (String(url).endsWith("/user-info")) {
+    infoCalls++;
+    sentHeader = new Headers(init?.headers).get("Authorization");
+    const header = sentHeader;
+    if (heldInfo) await new Promise(resolve => infoWaiters.push(resolve));
+    const status = infoOverride?.status ?? (failInfo ? 503 : 200);
+    if(status !== 200) return new Response(JSON.stringify({code:status,message:"Synthetic unavailable"}),{status});
+    data = {...user(header === "synthetic-B" || header?.startsWith("synthetic-rotated-42-") ? 42 : header === "synthetic-A" || header?.startsWith("synthetic-rotated-41-") ? 41 : nextId), ...infoOverride};
+  } else data = {accessToken:params.has("native") && !params.has("cross") ? (nextId === 41 ? "synthetic-A" : "synthetic-B") : `synthetic-rotated-${nextId}-${++rotation}`,user:user(nextId)};
+  return new Response(JSON.stringify({code:0,data}),{status:200});
+};
+const pinia = createPinia();
+setActivePinia(pinia);
+const shell = useShellStore(pinia);
+await shell.restore();
+lifecycle.setup();
+const instanceId = crypto.randomUUID();
+let api;
+createApp(defineComponent({setup(){
+  const frame = ref(null);
+  const send = (type,payload) => {
+    if(type==="auth") { lastAuth = payload; authTimeline.push({principal:payload.principal,version:payload.sessionVersion,revalidation:payload.revalidation}); }
+    frame.value?.contentWindow.postMessage({protocol:"prism-fusion/remote",version:1,appId:"core",instanceId,type,payload},childOrigin);
+    return true;
+  };
+  api = useRemoteSession(ref({send}),{includePermissions:true});
+  window.addEventListener("message", event=>{
+    if(event.source!==frame.value?.contentWindow||event.origin!==childOrigin)return;
+    if(event.data?.fixtureReady)send("host:init");
+    if(event.data?.instanceId===instanceId&&event.data?.type==="child:ready")api.sendAuth();
+    if(event.data?.type==="auth-required")api.handleAuthRequired(event.data.payload);
+  });
+  return ()=>h("iframe",{ref:frame,title:"Independent real consumer",src:`${childOrigin}/tests/browser/session-renewal/independent-child.html?${params}`});
+}})).use(pinia).mount("#host");
+window.independent = {
+  state:()=>({token:shell.token,version:shell.sessionVersion,principal:shell.verifiedUserId,
+    authenticated:shell.isAuthenticated,notice:shell.sessionNotice,infoCalls,rotation,sentHeader,lastAuth,nativeStorageEvents,pendingInfo:infoWaiters.length,authTimeline}),
+  holdInfo:()=>{heldInfo=true},
+  infoResult: value=>{infoOverride=value},
+  releaseInfo:()=>{heldInfo=false;infoWaiters.splice(0).forEach(resolve=>resolve())},
+  renew:()=>shell.refreshIfNeeded(true),
+  sync:async()=>{
+    window.dispatchEvent(new StorageEvent("storage",{key:"nucleagent_access_token",newValue:"ignored-stale-event"}));
+    await shell.syncSessionFromStorage();
+  },
+  logout:()=>shell.logout(),
+  recover:()=>{failInfo=false;return shell.restore()},
+  loginFailure:async(id=nextId)=>{nextId=id;failInfo=true;await shell.login({username:"synthetic",password:"synthetic-only"});await new Promise(r=>setTimeout(r,0));failInfo=false},
+  switchAccount:async()=>{nextId=42;await shell.login({username:"synthetic-B",password:"synthetic-only"})},
+  mismatch:async(method="refreshAuthorization")=>{
+    localStorage.setItem("nucleagent_access_token",nextId === 41 ? "synthetic-B" : "synthetic-A");
+    localStorage.setItem("nucleagent_session_version",String(shell.sessionVersion+1));
+    await shell[method]();
+  },
+};
+</script>
+</html>

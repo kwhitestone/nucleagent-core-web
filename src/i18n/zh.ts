@@ -54,6 +54,7 @@ export default {
     networkError: "网络异常，请稍后重试",
     sessionExpired: "会话已过期，请重新登录",
     signInRequired: "请在主页面登录后继续",
+    sessionRevalidating: "正在验证登录状态，编辑已暂停。验证失败后，请刷新主页面重新登录。",
     attachment: "附件",
     attachmentUploading: "上传中...",
     attachmentUploadFailed: "附件上传失败",
