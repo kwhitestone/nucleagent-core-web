@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { isBusinessBoundaryChange, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { syncSessionBindings, updateSessionBindings, type SessionBindings } from "../api/sessionBindings";
 import { bindingSnapshotConfirmed, bindingSnapshotCurrent, bindingWriteStarted } from "./bindingWriteCoordinator";
 import { useBindingSelection } from "./useBindingSelection";
@@ -78,6 +78,7 @@ export function useSessionBindings(id: () => string, disabled: () => boolean) {
   }
   function onSessionChange(event: Event): void {
     authenticated = (event as CustomEvent<{ authenticated?: boolean }>).detail?.authenticated === true;
+    if (authenticated && !isBusinessBoundaryChange(event)) return;
     void load();
   }
   watch(id, load, { immediate: true, flush: "sync" });

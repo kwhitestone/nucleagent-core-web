@@ -772,7 +772,8 @@ async function realAuth() {
   const auth = await vite.ssrLoadModule("/src/addons/platform-api/session/embeddedSession.ts");
   const { authenticatedView } = await vite.ssrLoadModule("/src/addons/platform-api/session/authenticatedView.ts");
   let version = auth.sessionVersion();
-  const change = (account: string | null) => auth.applyShellSession(account, ++version);
+  const change = (account: string | null) => auth.applyShellSession(account, ++version, [],
+    account ? { id: account === "synthetic-account-a" ? "41" : "42" } : undefined);
   change("synthetic-account-a");
   resize(false);
   observePending = () => {};
@@ -929,6 +930,7 @@ test("CONCURRENCY R1: real auth scopes isolate accounts and reject stale readbac
     assert.equal(syncs, 2);
     assert.equal(capabilities.send, true, "B revision 1 is independent of A's unresolved revision 1");
     delay = true;
+    auth.change(null); await flush();
     auth.change("synthetic-account-b-refreshed"); await flush();
     assert.equal(capabilities.send, false);
     current = a; delay = false;

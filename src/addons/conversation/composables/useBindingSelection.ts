@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { isBusinessBoundaryChange, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { effectiveToolIds, listToolCatalog, type ToolCatalogItem } from "../api/toolCatalog";
 import { createLatestRequestGate } from "./latestRequestGate";
 
@@ -30,6 +30,10 @@ export function useBindingSelection() {
     }
   }
   function onSessionChange(event: Event): void {
+    if ((event as CustomEvent).detail?.authenticated === true && !isBusinessBoundaryChange(event)) {
+      void loadTools();
+      return;
+    }
     gate.invalidate();
     skillIds.value = [];
     toolIds.value = [];
