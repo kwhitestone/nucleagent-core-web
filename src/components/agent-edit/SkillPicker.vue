@@ -2,8 +2,12 @@
 import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Plus, X, Search, Sparkles } from "@lucide/vue";
-import type { Skill } from "./api";
-import { text, type MessageKey } from "./messages";
+import { text, type MessageKey } from "../../addons/administration/agents/definition/messages";
+
+export interface Skill {
+  id: number; name: string; slug: string; isActive: boolean;
+  version?: string; sourceSHA256?: string; missing?: boolean;
+}
 
 const props = defineProps<{ skills: Skill[]; selected: number[]; editable: boolean; installPath?: (id: number) => string }>();
 const emit = defineEmits<{ toggle: [skillId: number, checked: boolean] }>();
@@ -12,8 +16,10 @@ const label = (key: MessageKey) => text(key, locale.value);
 const open = ref(false);
 const query = ref("");
 const search = ref<HTMLInputElement>();
-const chosen = computed(() => props.selected.map(id => props.skills.find(skill => skill.id === id)).filter((skill): skill is Skill => !!skill));
-const matches = computed(() => props.skills.filter(skill =>
+const rows = computed<Skill[]>(() => [...props.skills, ...props.selected.filter(id => !props.skills.some(s => s.id === id))
+  .map(id => ({ id, name: `#${id}`, slug: "", isActive: false, missing: true }))]);
+const chosen = computed(() => props.selected.map(id => rows.value.find(skill => skill.id === id)).filter((skill): skill is Skill => !!skill));
+const matches = computed(() => rows.value.filter(skill =>
   `${skill.name}\n${skill.slug}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
 async function toggleList() { open.value = !open.value; if (open.value) { await nextTick(); search.value?.focus(); } }
 </script>
@@ -24,7 +30,7 @@ async function toggleList() { open.value = !open.value; if (open.value) { await 
     <ul v-else class="skill-chips">
       <li v-for="skill in chosen" :key="skill.id" class="skill-chip">
         <span class="chip-icon" aria-hidden="true"><Sparkles :size="14" /></span>
-        <span class="chip-copy"><strong>{{ skill.name }}</strong><small :title="skill.sourceSHA256">{{ installPath?.(skill.id) || skill.slug }}</small></span>
+        <span class="chip-copy"><strong>{{ skill.name }}</strong><small :title="skill.sourceSHA256">{{ skill.missing ? label('skillDisabled') : installPath?.(skill.id) || skill.slug }}</small></span>
         <button v-if="editable" type="button" class="chip-remove" :aria-label="`${label('removeSkill')} ${skill.name}`" :title="label('removeSkill')" @click="emit('toggle', skill.id, false)"><X :size="14" /></button>
       </li>
     </ul>
@@ -36,7 +42,7 @@ async function toggleList() { open.value = !open.value; if (open.value) { await 
           <label class="skill-option" :class="{ off: !skill.isActive && !selected.includes(skill.id) }">
             <input type="checkbox" :checked="selected.includes(skill.id)" :disabled="!skill.isActive && !selected.includes(skill.id)"
               @change="emit('toggle', skill.id, ($event.target as HTMLInputElement).checked)" />
-            <span><strong>{{ skill.name }}</strong><small>{{ !skill.isActive && !selected.includes(skill.id) ? label('skillDisabled') : `${skill.slug} · ${skill.version}` }}</small></span>
+            <span><strong>{{ skill.name }}</strong><small>{{ !skill.isActive ? label('skillDisabled') : [skill.slug, skill.version].filter(Boolean).join(' · ') }}</small></span>
           </label>
         </li>
         <li v-if="!matches.length" class="skill-empty">{{ label('emptyResources') }}</li>

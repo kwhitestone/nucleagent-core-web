@@ -21,7 +21,9 @@ test("form: inline error field and disabled save wire to the shared guard", () =
   const src = readFileSync(new URL("../src/addons/administration/agents/definition/DefinitionDrawer.vue", import.meta.url), "utf8");
   const fields = readFileSync(new URL("../src/addons/administration/agents/definition/DefinitionFields.vue", import.meta.url), "utf8");
   assert.match(src, /validateChanges\(record\.value\.definition, editor\.changes\)/);
-  assert.match(fields, /aria-invalid/);
+  const control = readFileSync(new URL("../src/components/agent-edit/EditField.vue", import.meta.url), "utf8");
+  assert.match(fields, /:invalid="!!shownError\(field.path\)/);
+  assert.match(control, /:aria-invalid="!!invalid"/);
   assert.match(src, /Object\.keys\(errors\)\.length/);
   assert.match(src, /role="alert"/);
 });

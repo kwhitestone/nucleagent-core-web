@@ -20,6 +20,7 @@ export type HostNode = {
   tag: string; text: string; props: Record<string, any>; children: HostNode[];
   parent: HostNode | null; focused?: boolean; focus: () => void;
   querySelector: (selector: string) => HostNode | undefined;
+  addEventListener: (event: string, listener: EventListener) => void;
 };
 
 export function descendants(node: HostNode): HostNode[] {
@@ -30,6 +31,7 @@ export function hostNode(tag: string, text = ""): HostNode {
   const node: HostNode = {
     tag, text, props: {}, children: [], parent: null,
     focus() { node.focused = true; },
+    addEventListener(event, listener) { node.props[`listener:${event}`] = listener; },
     querySelector(selector) {
       const group = selector.match(/data-group="([^"]+)"/)?.[1];
       return descendants(node).find(child => child.props.role === "tab" && child.props["data-group"] === group);

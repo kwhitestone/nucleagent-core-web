@@ -6,10 +6,11 @@ import { X, Save, RefreshCw, Power, Trash2, RotateCcw, ChevronLeft, ChevronRight
 import DefinitionFields, { type ReadonlyField } from "./DefinitionFields.vue";
 import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
-import SkillPicker from "./SkillPicker.vue";
+import SkillPicker from "../../../../components/agent-edit/SkillPicker.vue";
+import ToolBindings from "../../../../components/agent-edit/ToolBindings.vue";
 import AgentPreview from "./AgentPreview.vue";
 import EditSidebar from "../../../../components/agent-edit/EditSidebar.vue";
-import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, initial, type Group } from "./groups";
+import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, groupLabels, initial, type Group } from "./groups";
 import { DefinitionError, type Catalog, type CatalogTool, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
 import { definitionFields, genModelPaths, readPath, reconcileBindings, validateChanges } from "./draft";
@@ -231,7 +232,7 @@ onUnmounted(() => {
 // --- presentation only (UI-IMPL-2): no request, ETag or idempotency logic below ---
 const closing = ref(false);
 function leave() { if (closing.value) return; closing.value = true; setTimeout(() => emit("close"), 200); }
-const groupLabel: Record<Group, MessageKey> = { basic: "basic", persona: "persona", model: "groupModel", skills: "groupSkills", visibility: "visibility", history: "history", advanced: "advanced" };
+const groupLabel = groupLabels;
 const allPaths = definitionFields.map(field => field.path);
 const activeGroup = ref<Group>("basic");
 const body = ref<HTMLElement>();
@@ -333,15 +334,9 @@ onUnmounted(() => clearTimeout(toastTimer));
             <h4>{{ label('selectedTools') }}</h4>
             <p class="muted small">{{ label('selectedToolsNote') }}</p>
             <p v-if="toolCatalog === null" class="notice warn small">{{ label('toolCatalogError') }}</p>
-            <ul class="skill-options" data-testid="admin-tool-bindings">
-              <li v-for="row in toolRows" :key="row.id">
-                <label class="skill-option" :class="{ off: row.covered || row.missing }">
-                  <input type="checkbox" :checked="selectedTools.includes(row.id)" :disabled="!canPickTools || ((row.covered || row.missing) && !selectedTools.includes(row.id))"
-                    @change="selectTool(row.id, ($event.target as HTMLInputElement).checked)" />
-                  <span><strong>{{ row.name }}</strong><small v-if="row.covered">{{ label('toolCovered') }}</small><small v-else-if="row.missing">{{ label('toolUnavailable') }}</small></span>
-                </label>
-              </li>
-            </ul>
+            <ToolBindings :rows="toolRows" :selected="selectedTools" :editable="canPickTools"
+              :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
+              data-testid="admin-tool-bindings" @toggle="selectTool" />
           </template>
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
