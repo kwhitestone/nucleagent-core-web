@@ -692,6 +692,7 @@ test("SAFETY: breakpoint changes during a live turn keep the stream mounted and 
     for (let i = 0; i < 4; i++) {
       narrow.value = !narrow.value; await flush();
       const save = all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!;
+      assert.ok(save, "the live turn must not discard the binding draft on resize");
       assert.equal(save.props.disabled, true);
       click(save); await flush();
       assert.equal(capabilities.send, false);
