@@ -70,6 +70,20 @@ test("admin renders every supported field and retains server-derived readonly po
   assert.doesNotMatch(html, /只有你自己能看到和使用/);
 });
 
+test("integrated admin avatar slot preserves shared fields and replaces only the avatar input", async () => {
+  const app = createSSRApp({ render: () => h(Fields, {
+    baseline: { name: "Synthetic", config: {} }, changes: {}, editablePaths: ["/name"],
+    readonlyFields: [], backends: [], providers: [], models: [],
+  }, { avatar: () => h(Avatar, { id: "definition-config-avatar", name: "Synthetic" }) }) });
+  app.use(i18n());
+  const html = await renderToString(app);
+  assert.equal((html.match(/type="file"/g) ?? []).length, 1);
+  assert.equal((html.match(/id="definition-config-avatar"/g) ?? []).length, 1);
+  assert.match(html, /class="edit-field"/);
+  assert.match(html, /id="definition-name"/);
+  assert.deepEqual([...html.matchAll(/data-path="([^"]+)"/g)].map(m => m[1]), definitionFields.map(f => f.path));
+});
+
 test("editor surfaces import one implementation of every shared control", () => {
   const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
   const user = source("addons/conversation/components/UserAgentWizard.vue");
