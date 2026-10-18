@@ -142,7 +142,7 @@ try {
         await child("w.renewalFixture.deny()");
       }
       if (boundary === "current-401") await child("w.renewalFixture.rejectCurrent()");
-      else if (boundary === "account-switch") await evaluate('renewalHost.auth(2, "synthetic-other-account")');
+      else if (boundary === "account-switch") await evaluate('renewalHost.auth(2, "synthetic-other-account", renewalHost.grants, 42)');
       else if (boundary === "permission-revoked") await evaluate('renewalHost.auth(2, "synthetic-revoked", [])');
       else await evaluate("renewalHost.auth(2, null, [])");
       await wait(boundary === "current-401"

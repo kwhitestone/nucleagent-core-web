@@ -40,7 +40,7 @@ type HttpClient = Awaited<ReturnType<ViteDevServer["ssrLoadModule"]>>["default"]
 let vite: ViteDevServer;
 let http: HttpClient;
 let handleEmbeddedUnauthorized: (reason: "missing" | "rejected") => void;
-let applyShellSession: (token: string | null, version: number) => unknown;
+let applyShellSession: (token: string | null, version: number, permissions?: unknown[], principal?: unknown) => unknown;
 let setAuthRequiredNotifier: (notifier: ((payload: unknown) => boolean) | undefined) => void;
 let apiBase: () => string;
 let authHeaders: () => Record<string, string>;
@@ -217,7 +217,7 @@ test("an embedded rejection sends one credential-free notification to the shell"
     messages.push(message);
     return true;
   });
-  applyShellSession("current-token", 7);
+  applyShellSession("current-token", 7, [], { id: "41" });
 
   handleEmbeddedUnauthorized("rejected");
   handleEmbeddedUnauthorized("rejected");
@@ -258,7 +258,7 @@ test("embedded requests without a trusted session never reach the adapter", asyn
 
 test("logout cancels in-flight requests and a later session gets a fresh scope", async () => {
   embeddedWindow();
-  applyShellSession("session-before-logout", 101);
+  applyShellSession("session-before-logout", 101, [], { id: "41" });
   let release!: () => void;
   let started!: () => void;
   let requestSignal: AbortSignal | undefined;
@@ -279,7 +279,7 @@ test("logout cancels in-flight requests and a later session gets a fresh scope",
   } finally { release(); }
   try {
     assert.ok(isCancel(await pending));
-    applyShellSession("next-session", 103);
+    applyShellSession("next-session", 103, [], { id: "42" });
     await http.get("/private");
     assert.equal(requestSignal?.aborted, false);
     const caller = new AbortController();

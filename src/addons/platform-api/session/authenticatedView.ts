@@ -1,6 +1,6 @@
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, type Component } from "vue";
 import { useI18n } from "vue-i18n";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { SESSION_CHANGE_EVENT, isBusinessBoundaryChange } from "@/contracts/platform-runtime";
 import { getAccessToken } from "@/utils/token";
 
 /** Defer business setup/requests until this iframe receives trusted auth. */
@@ -12,9 +12,9 @@ export function authenticatedView(view: Component): Component {
       const { t } = useI18n();
       const authenticated = ref(Boolean(getAccessToken()));
       const generation = ref(0);
-      const update = () => {
+      const update = (event: Event) => {
         authenticated.value = Boolean(getAccessToken());
-        generation.value += 1;
+        if (isBusinessBoundaryChange(event)) generation.value += 1;
       };
       onMounted(() => window.addEventListener(SESSION_CHANGE_EVENT, update));
       onBeforeUnmount(() => window.removeEventListener(SESSION_CHANGE_EVENT, update));

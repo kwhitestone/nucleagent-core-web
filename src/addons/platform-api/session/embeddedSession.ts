@@ -16,6 +16,20 @@ let notifyAuthRequired:
 // reset independently and legitimately restart from version zero.
 let currentVersion = 0;
 let requestScope = new AbortController();
+let principalId: string | null = null;
+let requestGeneration = 0;
+let businessBoundaryGeneration = 0;
+
+export function sessionGenerations() {
+  return { requestGeneration, businessBoundaryGeneration };
+}
+
+function principal(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const id = (value as { id?: unknown }).id;
+  return typeof id === "string" && /^[1-9][0-9]{0,15}$/.test(id) &&
+    Number.isSafeInteger(Number(id)) ? id : null;
+}
 
 /** Every trusted session owns its in-flight HTTP requests. */
 export function sessionRequestSignal(): AbortSignal {
@@ -23,6 +37,7 @@ export function sessionRequestSignal(): AbortSignal {
 }
 
 function retireRequests(): void {
+  requestGeneration++;
   requestScope.abort();
   requestScope = new AbortController();
 }
@@ -45,6 +60,7 @@ export function applyShellSession(
   token: string | null,
   incomingVersion: number,
   incomingPermissions: readonly unknown[] = [],
+  incomingPrincipal?: unknown,
 ): { accepted: boolean; changed: boolean } {
   const previousVersion = sessionVersion();
   if (!shouldAcceptShellSession(
@@ -55,8 +71,15 @@ export function applyShellSession(
   )) return { accepted: false, changed: false };
 
   const previousToken = getAccessToken();
+  const nextPrincipal = token ? principal(incomingPrincipal) : null;
+  // An old/unknown producer cannot prove ownership of any protected state.
+  if (!nextPrincipal) token = null;
   const authorizationChanged = replaceEmbeddedPermissions(token ? incomingPermissions : []);
-  const changed = previousToken !== (token ?? "") || previousVersion !== incomingVersion || authorizationChanged;
+  const businessBoundaryChanged = !nextPrincipal || !previousToken ||
+    nextPrincipal !== principalId || authorizationChanged;
+  const changed = previousToken !== (token ?? "") || previousVersion !== incomingVersion ||
+    businessBoundaryChanged;
+  principalId = nextPrincipal;
   currentVersion = incomingVersion;
   localStorage.setItem(SESSION_VERSION_KEY, String(incomingVersion));
   // A refresh credential belongs only to the shell and must never survive in
@@ -68,8 +91,9 @@ export function applyShellSession(
   if (incomingVersion > previousVersion || !token) rejectedVersion = null;
   lastNotification = "";
   if (changed) {
+    if (businessBoundaryChanged) businessBoundaryGeneration++;
     retireRequests();
-    emitSessionChange(Boolean(token));
+    emitSessionChange(Boolean(token), businessBoundaryChanged);
   }
   return { accepted: true, changed };
 }
@@ -78,6 +102,9 @@ export function handleEmbeddedUnauthorized(reason: "missing" | "rejected"): void
   const version = sessionVersion();
   if (reason === "rejected") {
     clearAccessToken();
+    principalId = null;
+    replaceEmbeddedPermissions([]);
+    businessBoundaryGeneration++;
     retireRequests();
     rejectedVersion = version;
     emitSessionChange(false);
