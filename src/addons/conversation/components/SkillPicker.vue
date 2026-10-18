@@ -21,6 +21,7 @@ import { toast } from "@/composables/useToast";
 import type { Skill } from "@/addons/conversation/api/types";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createLatestRequestGate } from "@/addons/conversation/composables/latestRequestGate";
+import { BINDINGS_MAX } from "../api/sessionBindings";
 import OptionSheet, { type SheetGroup, type SheetOption } from "./OptionSheet.vue";
 import { SKILL_SOURCES, skillSource, type SkillSource } from "./pickerSearch.ts";
 
@@ -94,13 +95,15 @@ const sheetOptions = computed<SheetOption[]>(() => skills.value.map((s) => {
     keywords: [s.name, s.slug, typeof category === "string" ? category : ""].join(" "),
     group: source,
     badges: source === "imported" ? [t("common.skillBadgeImported")] : undefined,
+    disabled: props.disabled || (props.modelValue.length >= BINDINGS_MAX && !props.modelValue.includes(s.id)),
   };
 }));
 const rowValue = computed(() => chips.value.length
   ? chips.value.map((c) => c.name).join("、")
   : t("common.skillAuto"));
 function onSheet(value: string | string[]): void {
-  if (!props.disabled) emit("update:modelValue", (Array.isArray(value) ? value : [value]).map(Number));
+  const ids = (Array.isArray(value) ? value : [value]).map(Number);
+  if (!props.disabled && (ids.length <= BINDINGS_MAX || ids.length < props.modelValue.length)) emit("update:modelValue", ids);
 }
 
 function remove(id: number): void {
@@ -210,6 +213,7 @@ onBeforeUnmount(() => {
       </button>
     </span>
   </div>
+  <p v-if="modelValue.length >= BINDINGS_MAX" class="binding-limit" role="status">{{ t('common.bindingsLimit', { n: BINDINGS_MAX }) }}</p>
 </template>
 
 <style scoped>

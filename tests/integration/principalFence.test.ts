@@ -36,6 +36,7 @@ for (const crossTab of [false, true]) test(`real mounted bindings composable kee
       if (config.method === "put") {
         writes++;
         await new Promise<void>(resolve => { finish = resolve; });
+        throw new Error("Synthetic unknown write outcome");
       }
       if (config.url.endsWith("/bindings/sync")) syncs++;
       return { config, data: { data: config.url.includes("/bindings") ? data : [] },
@@ -75,16 +76,24 @@ for (const crossTab of [false, true]) test(`real mounted bindings composable kee
     await settle();
     assert.equal(mounts, crossTab ? 2 : 1, "Only audited editor routes retain mounted state during pending");
     assert.equal(oldSignal.aborted, true);
-    assert.equal(state.saved.value, null, "Same-revision sync cannot clear an unknown write barrier");
+    if (crossTab) {
+      assert.equal(state.saved.value, null, "An equal revision cannot confirm a retired write after pending remount");
+      assert.deepEqual(state.skillIds.value, []);
+      assert.equal(state.saving.value, false);
+    } else {
+      assert.equal(state.saved.value.revision, "1", "Renewal preserves the editable snapshot without confirming the write");
+      assert.deepEqual(state.skillIds.value, [7]);
+      assert.equal(state.saving.value, true);
+    }
     assert.equal(state.pending.value, true);
-    assert.ok(state.error.value);
-    assert.ok(syncs >= 2, "Renewal still emits the session event needed for fence/sync");
+    assert.equal(syncs, crossTab ? 2 : 1, "Only destructive pending remount requires a fresh fence");
     await state.save();
     assert.equal(writes, 1, "Unknown write blocks a second write even after transport cancellation");
     finish();
     await saving;
     await settle();
-    assert.equal(state.saved.value, null, "Late old write response cannot restore protected selection");
+    assert.equal(state.uncertain.value, !crossTab, "Remounted state has no snapshot; retained state is uncertain");
+    assert.ok(state.error.value);
     assert.equal(coordinator.bindingSnapshotCurrent("9001", snapshot()), false);
     principal = "42";
     runtime.applyShellSession("synthetic-b", 3, [], { id: principal });
