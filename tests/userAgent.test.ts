@@ -174,7 +174,7 @@ describe("wizard", () => {
       assert.match(html, new RegExp(`<label[^>]*for="${id}"`));
       assert.match(html, new RegExp(`id="${id}"`));
     }
-    assert.match(html, /<option value="m1">m1<\/option>/);
+    assert.match(html, /<option value="m1"[^>]*>m1<\/option>/);
     assert.match(html, /0\/4000/);
     assert.match(html, /data-testid="ua-avatar-default"/);
     assert.match(html, /data-testid="ua-skills"/);
@@ -482,10 +482,10 @@ describe("edit fields (UA-EDIT-FIELDS-1230)", () => {
     }
     assert.match(html, /id="ua-slug"[^>]*readonly|readonly[^>]*id="ua-slug"/);
     assert.match(html, /value="u-abc"/);
-    assert.match(html, /<option value="codex" selected>Codex<\/option>/);
-    assert.match(html, /<option value="img-1" selected>img-1<\/option>/);
-    assert.match(html, /<option value="vid-1">vid-1<\/option>/);
-    assert.match(html, new RegExp(`<option value="" selected>${zh.agents.mine.platformDefault}</option>`), "empty video = platform default");
+    assert.match(html, /<option value="codex" selected[^>]*>Codex<\/option>/);
+    assert.match(html, /<option value="img-1" selected[^>]*>img-1<\/option>/);
+    assert.match(html, /<option value="vid-1"[^>]*>vid-1<\/option>/);
+    assert.match(html, new RegExp(`<option value="" selected[^>]*>${zh.agents.mine.platformDefault}</option>`), "empty video = platform default");
     assert.match(html, new RegExp(zh.agents.mine.gen_image));
     assert.match(html, new RegExp(zh.agents.mine.gen_video));
     assert.doesNotMatch(html, /type="checkbox"[^>]*checked[^>]*data-testid="ua-memory"/, "memory off");
@@ -497,8 +497,8 @@ describe("edit fields (UA-EDIT-FIELDS-1230)", () => {
   test("wizard keeps a stored value selectable after it left the list; no gen section on a core without media", async () => {
     const html = await render(Wizard, { ...props, backends: [], genModels: { image: [] },
       initial: { id: 3, name: "n", description: "", model: "m1", prompt: "", executionBackend: "gone", gen: { image: "old-img" } } });
-    assert.match(html, /<option value="gone" selected>gone<\/option>/);
-    assert.match(html, /<option value="old-img" selected>old-img<\/option>/);
+    assert.match(html, /<option value="gone" selected[^>]*>gone<\/option>/);
+    assert.match(html, /<option value="old-img" selected[^>]*>old-img<\/option>/);
     assert.doesNotMatch(await render(Wizard, { ...props, genModels: {} }), /data-testid="ua-gen"/);
   });
 });

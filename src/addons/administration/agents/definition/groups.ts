@@ -1,6 +1,6 @@
 // Presentation-only helpers for the grouped editor. Reads editor state, never writes it.
-export const groups = ["basic", "persona", "model", "skills", "visibility", "history", "advanced"] as const;
-export type Group = typeof groups[number];
+import type { Group } from "../../../../components/agent-edit/groups.ts";
+export { groups, groupLabels, type Group } from "../../../../components/agent-edit/groups.ts";
 
 export function fieldGroup(path: string): Group {
   if (["/name", "/slug", "/config/description", "/config/avatar"].includes(path)) return "basic";
