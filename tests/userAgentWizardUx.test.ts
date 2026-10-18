@@ -26,10 +26,10 @@ async function html(extra: any) {
 }
 function mount(extra: any = {}) {
   let state: any;
-  const props = reactive({ ...base(), ...extra }), events: string[] = [], saves: any[] = [];
+  const props = reactive({ ...base(), ...extra }), events: string[] = [], saves: any[] = [], cancels: boolean[] = [];
   const component = { ...Wizard, render: () => null };
   const app = renderer.createApp({ render: () => h(component, {
-    ...props, onSubmit: (d: any) => saves.push(d),
+    ...props, onSubmit: (d: any) => saves.push(d), onCancel: () => cancels.push(true),
     onVnodeMounted: (v: any) => { state = v.component.setupState; },
   }) });
   app.use(i18n()); app.provide(ssrContextKey, {}); app.mount(hostNode("root"));
@@ -38,7 +38,7 @@ function mount(extra: any = {}) {
     closest: () => ({ scrollIntoView: () => events.push(`scroll:${selector}`) }),
     focus: () => events.push(`focus:${selector}`),
   }) };
-  return { app, props, state, events, saves };
+  return { app, props, state, events, saves, cancels };
 }
 
 test("invalid name from skills navigates after render and keeps all other drafts", async () => {
@@ -104,4 +104,24 @@ test("global and unmapped errors remain visible, including generation without a 
   for (const text of ["Synthetic global failure", "Synthetic unknown field", "Synthetic gen failure"])
     assert.ok(rendered.includes(text), text);
   assert.match(rendered, /role="alert"/);
+});
+test("busy ordinary fields and cancel expose the same lock as skills/tools/save", async () => {
+  const rendered = await html({ busy: true });
+  for (const id of ["ua-name", "ua-desc", "ua-prompt", "ua-model", "ua-memory", "ua-backend", "ua-gen-image"]) {
+    const tag = rendered.match(new RegExp(`<[^>]+id="${id}"[^>]*>`))?.[0] ?? "";
+    assert.ok(tag, id);
+    assert.match(tag, ["ua-name", "ua-desc", "ua-prompt"].includes(id) ? /readonly/ : /disabled/, id);
+  }
+  assert.match(rendered, /<button[^>]*data-testid="ua-cancel"[^>]*disabled|<button[^>]*disabled[^>]*data-testid="ua-cancel"/);
+});
+test("busy prevents submit and cancel; unlocking restores both commands", async () => {
+  const f = mount({ busy: true });
+  try {
+    f.state.draft.name = "Fixture"; f.state.draft.model = "fixture-model";
+    f.state.submit(); assert.equal(f.saves.length, 0);
+    f.state.cancel(); assert.equal(f.cancels.length, 0);
+    f.props.busy = false; await nextTick();
+    f.state.submit(); assert.equal(f.saves.length, 1);
+    f.state.cancel(); assert.equal(f.cancels.length, 1);
+  } finally { f.app.unmount(); }
 });

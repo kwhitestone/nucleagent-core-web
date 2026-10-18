@@ -107,6 +107,9 @@ const previousFocus = typeof document === "undefined" ? null : (document.activeE
 onMounted(() => dialog.value?.querySelector<HTMLInputElement>("#ua-name")?.focus());
 onBeforeUnmount(() => { previousFocus?.focus?.(); });
 
+function cancel() {
+  if (!props.busy) emit("cancel");
+}
 function submit() {
   if (props.busy) return;
   local.value = validateDraft(draft, !editing.value);
@@ -118,9 +121,9 @@ function submit() {
 </script>
 
 <template>
-  <div class="ua-scrim" @click.self="emit('cancel')">
+  <div class="ua-scrim" @click.self="cancel">
     <form ref="dialog" class="ua-wizard" role="dialog" aria-modal="true" aria-labelledby="ua-title" data-testid="ua-wizard" novalidate
-      @submit.prevent="submit" @keydown.esc="emit('cancel')" @keydown="trapDialogFocus">
+      @submit.prevent="submit" @keydown.esc="cancel" @keydown="trapDialogFocus">
       <h2 id="ua-title">{{ editing ? t("agents.mine.editTitle") : t("agents.mine.wizardTitle") }}</h2>
       <div class="ua-layout">
       <!-- @vue-generic {Group} -->
@@ -137,31 +140,31 @@ function submit() {
         </EditField>
       </template>
 
-      <EditField id="ua-name" :label="`${t('agents.mine.name')} *`" v-model="draft.name" required :invalid="!!message('name')">
+      <EditField id="ua-name" :label="`${t('agents.mine.name')} *`" v-model="draft.name" :editable="!busy" required :invalid="!!message('name')">
         <template #hint><span class="ua-row"><span class="ua-err">{{ message("name") }}</span><span>{{ count(draft.name) }}/{{ LIMITS.name }}</span></span></template>
       </EditField>
-      <EditField id="ua-desc" :label="t('agents.mine.description')" v-model="draft.description" kind="textarea" :rows="3" :invalid="!!message('description')">
+      <EditField id="ua-desc" :label="t('agents.mine.description')" v-model="draft.description" :editable="!busy" kind="textarea" :rows="3" :invalid="!!message('description')">
         <template #hint><span class="ua-row"><span class="ua-err">{{ message("description") }}</span><span>{{ count(draft.description) }}/{{ LIMITS.description }}</span></span></template>
       </EditField>
       </section>
       <section id="ua-group-persona" @focusin="active = 'persona'">
       <h3>{{ text(groupLabels.persona, locale) }}</h3>
-      <EditField id="ua-prompt" :label="t('agents.mine.prompt')" v-model="draft.prompt" kind="textarea" :rows="8"
+      <EditField id="ua-prompt" :label="t('agents.mine.prompt')" v-model="draft.prompt" :editable="!busy" kind="textarea" :rows="8"
         :placeholder="editing ? t('agents.mine.promptKeep') : ''" :invalid="!!message('prompt')">
         <template #hint><span class="ua-row"><span class="ua-err">{{ message("prompt") }}</span><span>{{ count(draft.prompt) }}/{{ LIMITS.prompt }}</span></span></template>
       </EditField>
-      <EditField id="ua-memory" :label="t('agents.mine.memory')" v-model="draft.memory" kind="boolean" :control-attrs="{ 'data-testid': 'ua-memory' }">
+      <EditField id="ua-memory" :label="t('agents.mine.memory')" v-model="draft.memory" :editable="!busy" kind="boolean" :control-attrs="{ 'data-testid': 'ua-memory' }">
         <template #hint>{{ message("memory") || t("agents.mine.memoryHint") }}</template>
       </EditField>
       </section>
       <section id="ua-group-model" @focusin="active = 'model'">
       <h3>{{ text(groupLabels.model, locale) }}</h3>
-      <EditField id="ua-backend" :label="t('agents.mine.backend')" v-model="draft.executionBackend" kind="select"
+      <EditField id="ua-backend" :label="t('agents.mine.backend')" v-model="draft.executionBackend" :editable="!busy" kind="select"
         :choices="backendOptions.map(b => ({ value: b.id, label: b.displayName }))" :empty-label="t('agents.mine.platformDefault')"
         :invalid="!!message('executionBackend')" :control-attrs="{ 'data-testid': 'ua-backend' }">
         <template #hint>{{ message("executionBackend") }}</template>
       </EditField>
-      <EditField id="ua-model" :label="`${t('agents.mine.model')} *`" v-model="draft.model" kind="select" required
+      <EditField id="ua-model" :label="`${t('agents.mine.model')} *`" v-model="draft.model" :editable="!busy" kind="select" required
         :choices="options.map(m => ({ value: m, label: m }))" :empty-label="t('agents.mine.modelPlaceholder')" empty-disabled :invalid="!!message('model')">
         <template #hint>{{ message("model") }}</template>
       </EditField>
@@ -169,7 +172,7 @@ function submit() {
       <fieldset v-if="kinds.length" class="ua-gen" data-testid="ua-gen">
         <legend>{{ t("agents.mine.genModels") }}</legend>
         <template v-for="kind in kinds" :key="kind">
-          <EditField :id="`ua-gen-${kind}`" :label="kindLabel(kind)" v-model="draft.gen[kind]" kind="select"
+          <EditField :id="`ua-gen-${kind}`" :label="kindLabel(kind)" v-model="draft.gen[kind]" :editable="!busy" kind="select"
             :choices="genOptions(kind).map(m => ({ value: m, label: m }))" :empty-label="t('agents.mine.platformDefault')"
             :control-attrs="{ 'data-testid': `ua-gen-${kind}` }" :invalid="!!message('gen')">
             <template #hint>{{ message("gen") }}</template>
@@ -200,7 +203,7 @@ function submit() {
         <p v-for="(error, index) in formErrors" :key="index">{{ error }}</p>
       </div>
       <div class="ua-actions">
-        <button type="button" class="btn-ghost" @click="emit('cancel')">{{ t("agents.mine.cancel") }}</button>
+        <button type="button" class="btn-ghost" :disabled="busy" data-testid="ua-cancel" @click="cancel">{{ t("agents.mine.cancel") }}</button>
         <button type="submit" class="btn-primary" :disabled="busy" :aria-busy="busy" data-testid="ua-submit">
           {{ editing ? t("agents.mine.submitSave") : t("agents.mine.submitCreate") }}
         </button>
