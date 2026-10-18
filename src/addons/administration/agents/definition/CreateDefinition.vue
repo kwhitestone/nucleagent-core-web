@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { X, Plus, RefreshCw } from "@lucide/vue";
 import DefinitionFields from "./DefinitionFields.vue";
-import SkillPicker from "./SkillPicker.vue";
+import SkillPicker from "../../../../components/agent-edit/SkillPicker.vue";
 import { CreationDraft } from "./creation";
 import { buildChanges, reconcileBindings, validateChanges } from "./draft";
 import type { Catalog, DefinitionApi, Detail } from "./api";
