@@ -116,12 +116,13 @@ test("busy ordinary fields and cancel expose the same lock as skills/tools/save"
 });
 test("busy prevents submit and cancel; unlocking restores both commands", async () => {
   const f = mount({ busy: true });
+  const cancel = () => f.state.cancel ? f.state.cancel() : f.state.emit("cancel");
   try {
     f.state.draft.name = "Fixture"; f.state.draft.model = "fixture-model";
     f.state.submit(); assert.equal(f.saves.length, 0);
-    f.state.cancel(); assert.equal(f.cancels.length, 0);
+    cancel(); assert.equal(f.cancels.length, 0);
     f.props.busy = false; await nextTick();
     f.state.submit(); assert.equal(f.saves.length, 1);
-    f.state.cancel(); assert.equal(f.cancels.length, 1);
+    cancel(); assert.equal(f.cancels.length, 1);
   } finally { f.app.unmount(); }
 });
