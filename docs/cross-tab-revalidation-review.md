@@ -114,6 +114,12 @@ definition or permission mutation is part of this task.
 The timer-driven cases seed a clearly synthetic expiring credential and wait
 for the real shell refresh scheduler. The fixture asserts that the peer, not
 the receiving editor, initiated renewal. This is not live DEV acceptance.
+The first timer run timed out before pending-info; its failure is retained in
+the task report. Navigation readiness now requires the exact peer URL and a
+new initialized fixture, but this harness correction still needs a browser
+rerun. Do not treat the timer or pending-route cases as passing evidence.
+With `FULL=1`, independent original gates continue after a cross-tab failure;
+the runner reports every failed gate and still exits nonzero.
 Browser-specific learning is kept in this task-owned package: after detaching
 and reattaching a native dialog, test `:modal`, not merely `[open]` or visibility.
 The shared localhost notes cover unrelated tasks and were not modified.

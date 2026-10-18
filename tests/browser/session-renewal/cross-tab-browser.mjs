@@ -95,19 +95,29 @@ try {
       if(r.exceptionDetails)throw Error("Synthetic peer failed");
       return r.result.value;
     };
+    const navigatePeer = async url => {
+      await send("Page.navigate", { url }, peerSession);
+      const until = Date.now() + 10_000;
+      while (Date.now() < until) {
+        try {
+          if (await peerEval(`location.href===${JSON.stringify(url)}&&!!window.independent`)) return;
+        } catch { /* Navigation can retire the previous execution context. */ }
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      throw Error("Synthetic peer navigation readiness timeout");
+    };
     for (const natural of red ? [false] : [false,true]) for (const width of [1280,390]) for (const consumer of ["owner","admin"]) {
       await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
       if (natural) {
         await page("Page.navigate",{url:"about:blank"});
-        await send("Page.navigate",{url:`${base}?native=1&cross=1&natural=1`},peerSession);
-        await peerEval(`new Promise(resolve=>{const t=setInterval(()=>{if(window.independent){clearInterval(t);resolve()}},20)})`);
+        const peerUrl = `${base}?native=1&cross=1&natural=1&case=${width}-${consumer}`;
+        await navigatePeer(peerUrl);
       }
       await page("Page.navigate",{url:`${base}?native=1&cross=1&consumer=${consumer}${natural?"&natural=1&persist=1":""}`});
       const selector = consumer === "owner" ? "#ua-name" : "#definition-name";
       await waitChild(`!!d.querySelector("${selector}")`);
       if (!natural) {
-        await send("Page.navigate",{url:`${base}?persist=1&native=1&cross=1`},peerSession);
-        await peerEval(`new Promise((resolve,reject)=>{let n=0;const timer=setInterval(()=>{if(window.independent){clearInterval(timer);resolve()}else if(n++>400){clearInterval(timer);reject(Error("peer readiness"))}},25)})`);
+        await navigatePeer(`${base}?persist=1&native=1&cross=1&case=forced-${width}-${consumer}`);
       }
       await child("Promise.all(d.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))");
       const point = await child(`(w.saved=d.querySelector("${selector}"),w.oldSignal=w.renewalFixture.signal(),w.saved.scrollIntoView(),({x:w.saved.getBoundingClientRect().x+15,y:w.saved.getBoundingClientRect().y+15}))`);
@@ -120,7 +130,12 @@ try {
       await evaluate("independent.holdInfo()");
       const prior = await evaluate("independent.state()");
       if (!natural) await peerEval("independent.renew()");
-      await wait("independent.state().pendingInfo>0");
+      try { await wait("independent.state().pendingInfo>0"); }
+      catch (error) {
+        results.push({ width, consumer, natural, pass: false, phase: "pending readiness",
+          receiver: await evaluate("independent.state()"), peer: await peerEval("independent.state()") });
+        throw error;
+      }
       if (natural) {
         assert.equal(await peerEval("independent.state().rotation"),1,"Peer's real refresh timer initiated renewal");
         assert.equal(await evaluate("independent.state().rotation"),0,"Receiver did not initiate renewal");
@@ -162,8 +177,7 @@ try {
       await page("Page.navigate",{url:`${base}?native=1&cross=1&consumer=${consumer}${scenario==="late-error"?"&lateFail=1":""}`});
       const selector = consumer==="owner" ? "#ua-name" : "#definition-name";
       await waitChild(`!!d.querySelector("${selector}")`);
-      await send("Page.navigate",{url:`${base}?persist=1&native=1&cross=1`},peerSession);
-      await peerEval(`new Promise(resolve=>{const t=setInterval(()=>{if(window.independent){clearInterval(t);resolve()}},20)})`);
+      await navigatePeer(`${base}?persist=1&native=1&cross=1&case=${consumer}-${scenario}`);
       await child(`(w.saved=d.querySelector("${selector}"),w.saved.focus(),w.saved.select(),w.oldSignal=w.renewalFixture.signal())`);
       await page("Input.insertText",{text:"Synthetic isolated draft"});
       const stale = scenario.startsWith("late-");
