@@ -242,9 +242,15 @@ export function createDefinitionApi(transport: Transport) {
         throw new DefinitionError(response.status, typeof body?.code === "string" ? body.code : "avatar_upload_failed");
       }
       if (!body?.fileId || body.path !== USER_AVATAR_CONTRACT.pathPrefix + body.fileId) throw new Error("Invalid avatar response");
-      const saved = aggregate(await request<Omit<Detail, "etag">>(path));
-      if (saved.definition.config?.avatar !== body.path) throw new Error("Avatar readback mismatch");
-      return saved;
+      try {
+        const saved = aggregate(await request<Omit<Detail, "etag">>(path));
+        if (saved.definition.config?.avatar !== body.path) throw new Error("Avatar readback mismatch");
+        return saved;
+      } catch (error) {
+        if (error instanceof DefinitionError && [401, 403].includes(error.status)) throw error;
+        // The POST committed; a failed GET must not allow an automatic second upload.
+        throw new Error("Avatar readback unavailable");
+      }
     },
     async patch(record: Detail, changes: Changes, skillBindings?: Binding[], toolBindings?: number[]): Promise<Detail> {
       if (!record.capabilities.write || (skillBindings !== undefined && !record.capabilities.writeSkillBindings)

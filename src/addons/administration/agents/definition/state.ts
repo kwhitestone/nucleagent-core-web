@@ -69,7 +69,10 @@ export class DefinitionEditor {
   resolve(choices: Record<string, "mine" | "current">, bindingChoice?: "mine" | "current"): void {
     if (!this.record || !this.current) return;
     if (this.bindingConflict && !bindingChoice) throw new Error("Explicit binding choice required");
+    if (this.avatar && this.record.definition.config?.avatar !== this.current.definition.config?.avatar
+      && !choices["/config/avatar"]) throw new Error("Explicit avatar choice required");
     this.changes = rebaseChanges(this.record.definition, this.changes, this.current.definition, choices);
+    if (choices["/config/avatar"] === "current") this.avatar = undefined;
     if (bindingChoice === "current" || (this.bindings && bindingKey(this.bindings) === bindingKey(this.current.skillBindings))) {
       this.bindings = undefined;
     }
