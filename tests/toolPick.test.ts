@@ -71,9 +71,9 @@ test("task draft keeps only positive integer toolIds; none = field absent", () =
 
 test("TaskSetup: no pick = no toolIds field; picks filtered by selected skills before create", () => {
   const src = readFileSync(new URL("../src/addons/conversation/views/TaskSetup.vue", import.meta.url), "utf8");
-  assert.match(src, /toolIds: pickedTools\.length > 0 \? pickedTools : undefined/);
-  assert.match(src, /effectiveToolIds\(toolIds\.value, tools\.value, skillIds\.value\)/);
-  assert.equal((src.match(/<ToolPicker /g) ?? []).length, 2); // phone row + desktop form
+  assert.match(src, /\.\.\.createBindings\.value/);
+  assert.match(src, /useBindingSelection\(\)/);
+  assert.equal((src.match(/<BindingPickers /g) ?? []).length, 2); // phone row + desktop form
 });
 
 test("my agent: create body carries non-empty skillIds/toolIds only", () => {

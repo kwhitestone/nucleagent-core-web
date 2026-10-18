@@ -10,6 +10,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { coveredBySkills, toolLabel, toolOptions, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
 import OptionSheet from "./OptionSheet.vue";
+import { BINDINGS_MAX } from "../api/sessionBindings";
 
 const props = withDefaults(defineProps<{
   modelValue: number[];
@@ -24,14 +25,17 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ "update:modelValue": [value: number[]]; retry: [] }>();
 const { t, locale } = useI18n();
 const open = ref(false);
-const options = computed(() => toolOptions(props.tools, locale.value, t("common.skillBadgeImported"), props.skillIds, t("common.toolCoveredBySkill")));
+const options = computed(() => toolOptions(props.tools, locale.value, t("common.skillBadgeImported"), props.skillIds, t("common.toolCoveredBySkill")).map((option) => ({
+  ...option, disabled: props.disabled || option.disabled || (props.modelValue.length >= BINDINGS_MAX && !props.modelValue.includes(Number(option.value))),
+})));
 const chips = computed(() => props.modelValue.map((id) => {
   const tool = props.tools.find((x) => x.id === id);
   return { id, name: tool ? toolLabel(tool, locale.value) : `#${id}`, missing: !tool && !props.loading, covered: coveredBySkills(tool, props.skillIds) };
 }));
 const rowValue = computed(() => chips.value.length ? chips.value.map((c) => c.name).join("、") : t("common.toolNone"));
 function onSheet(value: string | string[]): void {
-  if (!props.disabled) emit("update:modelValue", [value].flat().map(Number));
+  const ids = [value].flat().map(Number);
+  if (!props.disabled && (ids.length <= BINDINGS_MAX || ids.length < props.modelValue.length)) emit("update:modelValue", ids);
 }
 function remove(id: number): void {
   if (!props.disabled) emit("update:modelValue", props.modelValue.filter((x) => x !== id));
@@ -79,6 +83,7 @@ function remove(id: number): void {
       </button>
     </span>
   </div>
+  <p v-if="modelValue.length >= BINDINGS_MAX" class="binding-limit" role="status">{{ t('common.bindingsLimit', { n: BINDINGS_MAX }) }}</p>
 </template>
 
 <style scoped>

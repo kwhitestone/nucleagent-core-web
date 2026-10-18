@@ -149,7 +149,7 @@ test("conversation view binds loading and atomic settings saves to current lifec
   assert.match(source, /updateConversationSettings\(conversationId, nextModel, nextBackend\)/);
   assert.match(source, /settingsSaving\.value = true/);
   assert.match(source, /:disabled="modelLoading \|\| settingsSaving \|\| status === 'running'"/);
-  assert.match(source, /send: genOn \? !!genModel && !agentDeleted : !modelLoading && !backendLoading && !settingsSaving && !settingsDirty/);
+  assert.match(source, /send: !bindingsPending && \(genOn \? !!genModel && !agentDeleted : !modelLoading && !backendLoading && !settingsSaving && !settingsDirty/);
 });
 
 test("an unavailable persisted model remains visible as the current selection", async () => {
