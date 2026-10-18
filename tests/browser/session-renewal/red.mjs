@@ -20,6 +20,7 @@ function send(method, params = {}, sessionId) {
 }
 const blocked = [];
 const exceptions = [];
+const syntheticPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=";
 ws.onmessage = ({ data }) => {
   const event = JSON.parse(data);
   if (event.id) {
@@ -33,7 +34,13 @@ ws.onmessage = ({ data }) => {
     exceptions.push(event.params.exceptionDetails.exception?.description ?? event.params.exceptionDetails.text);
   } else if (event.method === "Fetch.requestPaused") {
     const { requestId, request } = event.params;
-    const allowed = request.url.startsWith(new URL(base).origin + "/");
+    if (request.url === "https://image.renewal.test/avatar.png") {
+      void send("Fetch.fulfillRequest", { requestId, responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "image/png" }], body: syntheticPng }, event.sessionId);
+      return;
+    }
+    const allowed = request.url.startsWith(new URL(base).origin + "/") ||
+      request.url.startsWith(new URL(base).origin.replace("127.0.0.1", "localhost") + "/");
     if (!allowed) blocked.push({ external: true, method: request.method });
     void send(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
       allowed ? { requestId } : { requestId, errorReason: "BlockedByClient" }, event.sessionId);
@@ -44,6 +51,7 @@ const { browserContextId } = await send("Target.createBrowserContext");
 let targetId, sessionId;
 const results = [];
 const negatives = [];
+const extended = [];
 const page = (method, params) => send(method, params, sessionId);
 async function evaluate(expression) {
   const response = await page("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
@@ -51,6 +59,18 @@ async function evaluate(expression) {
   return response.result.value;
 }
 const child = expression => evaluate(`(()=>{const w=document.querySelector("iframe").contentWindow; const d=w.document; return (${expression});})()`);
+async function prepareImage(consumer) {
+  if (consumer === "owner") {
+    // Synthetic in-memory file exercises the real picker without accessing user files.
+    await child(`(()=>{const transfer=new w.DataTransfer();transfer.items.add(new w.File([
+      Uint8Array.from(w.atob(${JSON.stringify(syntheticPng)}),c=>c.charCodeAt(0))
+    ],"synthetic.png",{type:"image/png"}));const input=d.querySelector("#ua-avatar");
+    input.files=transfer.files;input.dispatchEvent(new w.Event("change",{bubbles:true}));})()`);
+  }
+  await wait('!!document.querySelector("iframe").contentDocument.querySelector(".agent-avatar-picker img, img.head-avatar")');
+  await child('(w.savedImage=d.querySelector(".agent-avatar-picker img, img.head-avatar"),w.savedImage.decode())');
+  assert.equal(await child("w.savedImage.naturalWidth > 0"), true);
+}
 async function wait(expression) {
   await evaluate(`new Promise((resolve,reject)=>{const until=performance.now()+8000;
     function poll(){try{if(${expression})return resolve(true)}catch{} if(performance.now()>until)return reject(Error("Fixture condition timed out"));requestAnimationFrame(poll)}poll()})`);
@@ -80,6 +100,7 @@ try {
       await page("Page.navigate", { url: `${base}?consumer=${consumer}` });
       await wait('document.querySelector("iframe")?.contentWindow?.renewalFixture?.state().version === 1');
       await wait(`document.querySelector("iframe").contentDocument.querySelector(${JSON.stringify(selector)})`);
+      await prepareImage(consumer);
       await child('Promise.all(d.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))');
       const { frameTree } = await page("Page.getFrameTree");
       const visible = await page("Accessibility.getFullAXTree", { frameId: frameTree.childFrames[0].frame.id });
@@ -100,16 +121,17 @@ try {
       await child("new Promise(resolve=>w.requestAnimationFrame(()=>w.requestAnimationFrame(resolve)))");
       assert.equal(await child("w.renewalFixture.state().version"), 1);
       assert.equal(await child("d.activeElement===w.savedEditor && w.savedEditor.isConnected"), true);
-      // Same synthetic authority and grants, naturally rotated credential/version.
-      // This missing trusted authority proof is precisely the protocol blocker.
+      // Same authenticated principal and grants, rotated credential/version.
       await evaluate('renewalHost.auth(2, "synthetic-session-two")');
       await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().version === 2');
       const actual = await child(`(()=>{const e=d.querySelector(${JSON.stringify(selector)});return {
         sameEditor:e===w.savedEditor, draft:e?.value==="Synthetic unsaved draft",
+        imagePreserved:w.savedImage.isConnected && w.savedImage.naturalWidth > 0,
         focused:d.activeElement===w.savedEditor, selected:e?.selectionEnd-e?.selectionStart || 0,
         oldSignalAborted:w.oldSignal.aborted, ...w.renewalFixture.state()};})()`);
       assert.equal(actual.writes, 0);
       assert.equal(actual.oldSignalAborted, true);
+      assert.equal(actual.imagePreserved, true);
       const preserved = actual.sameEditor && actual.draft && actual.focused && actual.selected === 2;
       results.push({ consumer, width, initial, actual, renewalPreserved: preserved,
         staleVersionRejected: true, durationMs: Math.round(performance.now() - started) });
@@ -117,6 +139,7 @@ try {
       await child("w.renewalFixture.rejectCurrent()");
       await wait('!document.querySelector("iframe").contentWindow.renewalFixture.state().authenticated');
       assert.equal(await child('!!d.querySelector("#ua-name, #definition-name")'), false);
+      assert.equal(await child("w.savedImage.isConnected"), false);
       await evaluate('renewalHost.auth(2, "synthetic-session-two")');
       await child("new Promise(resolve=>w.requestAnimationFrame(()=>w.requestAnimationFrame(resolve)))");
       assert.equal(await child("w.renewalFixture.state().authenticated"), false);
@@ -134,6 +157,7 @@ try {
         await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().pending >= 2');
       } else {
         await wait(`document.querySelector("iframe").contentDocument.querySelector(${JSON.stringify(selector)})`);
+        await prepareImage(consumer);
         await child(`w.savedEditor=d.querySelector(${JSON.stringify(selector)})`);
       }
       if (boundary === "account-switch" || boundary === "permission-revoked") {
@@ -153,20 +177,97 @@ try {
       assert.equal(await child(`!!d.querySelector(${JSON.stringify(selector)})`), false);
       assert.equal(await child('!!d.querySelector("[data-template-id], [data-definition-id]")'), false);
       if (!late) assert.equal(await child("w.savedEditor.isConnected"), false);
+      if (!late) assert.equal(await child("w.savedImage.isConnected"), false);
       const state = await child("w.renewalFixture.state()");
       assert.equal(state.writes, 0);
       assert.equal(state.pending, 0);
       negatives.push({ consumer, boundary, cleared: true, writes: 0, durationMs: Math.round(performance.now() - started) });
     }
   }
+  for (const consumer of ["owner", "admin"]) {
+    const selector = consumer === "owner" ? "#ua-name" : "#definition-name";
+    const settle = () => child("new Promise(resolve=>w.requestAnimationFrame(()=>w.requestAnimationFrame(resolve)))");
+    async function open() {
+      await page("Page.navigate", { url: `${base}?consumer=${consumer}` });
+      await wait(`document.querySelector("iframe")?.contentDocument?.querySelector(${JSON.stringify(selector)})`);
+      await child(`w.savedEditor=d.querySelector(${JSON.stringify(selector)})`);
+    }
+    for (const boundary of ["unknown", "absent", "malformed", "same-token-other-principal", "grants-added", "grants-removed"]) {
+      await open();
+      await child("w.renewalFixture.deny()");
+      if (boundary === "unknown") await evaluate('renewalHost.auth(2, "synthetic-session-one", renewalHost.grants, null)');
+      if (boundary === "absent") await evaluate('renewalHost.send("auth", {source:"shell",type:"auth",token:"synthetic-session-one",sessionVersion:2,permissions:renewalHost.grants})');
+      if (boundary === "malformed") await evaluate('renewalHost.send("auth", {source:"shell",type:"auth",token:"synthetic-session-one",sessionVersion:2,permissions:renewalHost.grants,principal:{id:"041"}})');
+      if (boundary === "same-token-other-principal") await evaluate('renewalHost.auth(2, "synthetic-session-one", renewalHost.grants, 42)');
+      if (boundary === "grants-added") await evaluate('renewalHost.auth(2, "synthetic-session-one", [...renewalHost.grants,"core:tool:read"])');
+      if (boundary === "grants-removed") await evaluate('renewalHost.auth(2, "synthetic-session-one", ["core:admin:read"])');
+      await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().version===2');
+      await settle();
+      assert.equal(await child("w.savedEditor.isConnected"), false);
+      assert.equal(await child('!!d.querySelector("[data-template-id], [data-definition-id], #ua-name, #definition-name")'), false);
+      extended.push({ consumer, boundary, pass: true });
+    }
+    await open();
+    for (const invalid of ["source", "protocol-version", "instance", "app", "stale"]) {
+      const envelope = await evaluate(`({protocol:"prism-fusion/remote",version:1,appId:"core",
+        instanceId:renewalHost.instanceId,type:"auth",payload:{source:"shell",type:"auth",
+        token:null,sessionVersion:2,permissions:[],principal:null}})`);
+      if (invalid === "protocol-version") envelope.version = 2;
+      if (invalid === "instance") envelope.instanceId = "another-handshake";
+      if (invalid === "app") envelope.appId = "other";
+      if (invalid === "stale") envelope.payload.sessionVersion = 0;
+      if (invalid === "source") {
+        // A real message sent from the child itself, not the bound parent.
+        await child(`w.eval(${JSON.stringify(`window.postMessage(${JSON.stringify(envelope)}, location.origin)`)})`);
+      } else {
+        await evaluate(`document.querySelector("iframe").contentWindow.postMessage(${JSON.stringify(envelope)},location.origin)`);
+      }
+      await settle();
+      assert.equal(await child("w.renewalFixture.state().version"), 1);
+      assert.equal(await child("w.savedEditor.isConnected"), true);
+      extended.push({ consumer, invalid, pass: true });
+    }
+    // Hold a real component operation, rotate auth, then release an old result.
+    await child(`(()=>{const e=w.savedEditor;e.value="Synthetic busy draft";e.dispatchEvent(new w.Event("input",{bubbles:true}));})()`);
+    await child("(w.renewalFixture.hold(),w.renewalFixture.allowSyntheticWrite())");
+    await settle();
+    await child('w.savedForm=d.querySelector(".ua-wizard, .definition-drawer")');
+    if (consumer === "owner") await child('d.querySelector(".ua-wizard").requestSubmit()');
+    else await child('d.querySelector(".definition-drawer footer .primary").click()');
+    await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().pending>0');
+    assert.equal(await child('!!w.savedForm.querySelector("button:disabled")'), true);
+    await evaluate('renewalHost.auth(2, "synthetic-session-two")');
+    await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().version===2');
+    assert.equal(await child("w.savedForm.isConnected"), true);
+    await child("w.renewalFixture.release()");
+    await wait(`document.querySelector("iframe").contentDocument.querySelector(${JSON.stringify(selector)})?.value === "Synthetic busy draft"`);
+    assert.equal(await child(`w.savedForm.isConnected && !d.querySelector(${JSON.stringify(selector)}).matches(":disabled")`), true);
+    await child(`w.savedEditor=d.querySelector(${JSON.stringify(selector)})`);
+    const error = await child('d.querySelector(".ua-form-err, .definition-drawer [role=alert]")?.textContent');
+    assert.ok(error, "Canceled operation must not report a successful save");
+    await evaluate('renewalHost.auth(3, "synthetic-session-three")');
+    await wait('document.querySelector("iframe").contentWindow.renewalFixture.state().version===3');
+    assert.equal(await child('d.querySelector(".ua-form-err, .definition-drawer [role=alert]")?.textContent'), error);
+    assert.equal(await child("w.savedEditor.isConnected && w.savedEditor.value==='Synthetic busy draft'"), true);
+    extended.push({ consumer, scenario: "busy/error renewal, late response discarded", pass: true,
+      syntheticWrites: await child("w.renewalFixture.state().writes") });
+  }
+  await page("Page.navigate", { url: base.replace("127.0.0.1", "localhost") });
+  await wait('!!document.querySelector("iframe")?.contentWindow?.renewalFixture');
+  await evaluate("renewalHost.auth()");
+  await child("new Promise(resolve=>w.requestAnimationFrame(()=>w.requestAnimationFrame(resolve)))");
+  assert.equal(await child("w.renewalFixture.state().authenticated"), false);
+  assert.equal(await child("w.renewalFixture.state().version"), 0);
+  extended.push({ invalid: "actual unallowlisted parent origin", pass: true });
 } finally {
   await send("Target.disposeBrowserContext", { browserContextId });
   const after = (await send("Target.getTargets")).targetInfos.filter(t => t.type === "page").map(t => t.targetId);
   const cleanup = { ownedPageClosed: !after.includes(targetId), existingPagesPreserved: before.every(id => after.includes(id)) };
-  writeFileSync(process.env.RESULT_PATH ?? "session-renewal-red.json", JSON.stringify({ results, negatives, blocked, exceptions, cleanup }, null, 2) + "\n");
+  writeFileSync(process.env.RESULT_PATH ?? "session-renewal-red.json", JSON.stringify({ results, negatives, extended, blocked, exceptions, cleanup }, null, 2) + "\n");
   ws.close();
   assert.ok(cleanup.ownedPageClosed && cleanup.existingPagesPreserved);
 }
 console.log(JSON.stringify({ cases: results.length, red: results.filter(r => !r.renewalPreserved).length,
-  negativeChecks: results.length * 2 + negatives.length, writes: results.reduce((n, r) => n + r.actual.writes, 0) }));
-assert.ok(results.every(result => result.renewalPreserved), "Real mounted editor must survive proven same-boundary renewal (trusted subject contract absent)");
+  negativeChecks: results.length * 2 + negatives.length, extended: extended.length,
+  writes: results.reduce((n, r) => n + r.actual.writes, 0) }));
+assert.ok(results.every(result => result.renewalPreserved), "Real mounted editor must survive proven same-boundary renewal");
