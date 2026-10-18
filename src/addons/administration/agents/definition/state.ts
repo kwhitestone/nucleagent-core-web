@@ -1,4 +1,4 @@
-import { DefinitionError, type DefinitionApi, type Detail, type Impact } from "./api.ts";
+import { AvatarReadbackDenied, DefinitionError, type DefinitionApi, type Detail, type Impact } from "./api.ts";
 import { buildChanges, newerRevision, rebaseChanges, type Binding, type Changes } from "./draft.ts";
 
 const bindingKey = (bindings: Binding[]) => JSON.stringify([...bindings].sort((a, b) => a.skillId - b.skillId));
@@ -98,7 +98,8 @@ export class DefinitionEditor {
     } catch (error) {
       if (generation !== this.generation) return null;
       if (error instanceof DefinitionError && [401, 403].includes(error.status)) {
-        this.denied = true; this.error = "denied";
+        if (error instanceof AvatarReadbackDenied) this.revokeRead();
+        else { this.denied = true; this.error = "denied"; }
       } else if (error instanceof DefinitionError && error.status === 412) {
         this.error = "conflict";
         try {

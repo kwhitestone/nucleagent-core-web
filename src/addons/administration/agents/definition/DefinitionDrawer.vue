@@ -91,6 +91,7 @@ function revokeRead() {
   readGeneration++; pageGeneration++;
   editor.revokeRead();
   audits.value = []; instances.value = []; models.value = []; backends.value = [];
+  genModels.value = {}; toolCatalog.value = null; total.value = 0; pageLoading.value = false;
   toolId.value = undefined; action.value = null; impact.value = null;
 }
 async function refresh() {
@@ -213,18 +214,20 @@ function beforeUnload(event: BeforeUnloadEvent) { if (editor.dirty) { event.prev
 onMounted(async () => {
   dialog.value?.showModal();
   window.addEventListener("beforeunload", beforeUnload);
+  const generation = readGeneration;
+  const canAccept = () => mounted && generation === readGeneration && !!editor.record;
   if (record.value.capabilities.readTools && record.value.capabilities.writeToolBindings === true) {
-    props.api.toolCatalog().then(list => { if (mounted) toolCatalog.value = list; }, () => { if (mounted) toolCatalog.value = null; });
+    props.api.toolCatalog().then(list => { if (canAccept()) toolCatalog.value = list; }, () => { if (canAccept()) toolCatalog.value = null; });
   }
   const results = await Promise.allSettled([props.api.models(), props.api.backends()]);
-  if (!mounted || !editor.record) return;
+  if (!canAccept()) return;
   if (results[0].status === "fulfilled") models.value = results[0].value;
   if (results[1].status === "fulfilled") backends.value = results[1].value;
   catalogError.value = results.some(result => result.status === "rejected");
   // UI-IMPL-6: one catalog per kind; a failed read leaves the select usable (no "delisted" claim).
   const kinds = definitionFields.flatMap(f => f.genKind ? [f.genKind] : []);
   const lists = await Promise.allSettled(kinds.map(kind => props.api.genModels(kind)));
-  if (mounted) genModels.value = Object.fromEntries(kinds.map((kind, i) => [kind, lists[i].status === "fulfilled" ? lists[i].value : null]));
+  if (canAccept()) genModels.value = Object.fromEntries(kinds.map((kind, i) => [kind, lists[i].status === "fulfilled" ? lists[i].value : null]));
 });
 onUnmounted(() => {
   mounted = false; readGeneration++; pageGeneration++;

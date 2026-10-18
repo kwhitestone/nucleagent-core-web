@@ -67,6 +67,7 @@ export class DefinitionError extends Error {
     this.code = code;
   }
 }
+export class AvatarReadbackDenied extends DefinitionError {}
 const BASE = "/api/v1/addons/admin/agents";
 const idPath = (id: number) => {
   if (!Number.isSafeInteger(id) || id < 1) throw new Error("Invalid definition ID");
@@ -247,7 +248,9 @@ export function createDefinitionApi(transport: Transport) {
         if (saved.definition.config?.avatar !== body.path) throw new Error("Avatar readback mismatch");
         return saved;
       } catch (error) {
-        if (error instanceof DefinitionError && [401, 403].includes(error.status)) throw error;
+        if (error instanceof DefinitionError && [401, 403].includes(error.status)) {
+          throw new AvatarReadbackDenied(error.status, error.code);
+        }
         // The POST committed; a failed GET must not allow an automatic second upload.
         throw new Error("Avatar readback unavailable");
       }
