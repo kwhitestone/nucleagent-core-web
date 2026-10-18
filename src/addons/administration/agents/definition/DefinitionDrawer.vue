@@ -84,6 +84,7 @@ const impactKeys = ["instances", "conversations", "conversations_7d", "skill_bin
 
 function failure(error: unknown) {
   if (error instanceof DefinitionError && [401, 403].includes(error.status)) {
+    editor.avatar = undefined;
     editor.denied = true; editor.error = "denied";
   } else status.value = errorKey(error);
 }

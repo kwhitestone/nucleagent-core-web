@@ -100,8 +100,32 @@ test("avatar safety: write rejection retains readable content and text draft", a
     assert.ok(state.editor.record);
     assert.ok(state.models.length && state.toolCatalog.length);
     assert.equal(state.editor.denied, true);
+    assert.equal(state.editor.avatar, undefined);
+    assert.equal(view.preview().preview, "");
+    assert.deepEqual(view.revoked, view.created);
     await state.editor.save(view.api);
     assert.equal(posts, 1);
+  } finally { view.close(); }
+});
+
+test("avatar safety: write-only refresh clears the file and URL but keeps readable text draft", async () => {
+  const view = mount(async () => { throw new Error("unexpected"); });
+  try {
+    await flush();
+    const state = view.state();
+    state.editor.change("/config/description", "synthetic draft");
+    state.editor.avatar = image(); await nextTick();
+    assert.ok(view.preview().preview);
+    const refreshed = detail(); refreshed.capabilities.write = false;
+    state.editor.acceptRefresh(refreshed); await nextTick();
+    assert.equal(state.editor.avatar, undefined);
+    assert.equal(view.preview().preview, "");
+    assert.deepEqual(view.revoked, view.created);
+    assert.equal(state.editor.changes["/config/description"], "synthetic draft");
+    assert.ok(state.editor.record);
+    assert.ok(state.models.length && state.toolCatalog.length);
+    assert.equal(state.editor.denied, true);
+    await state.editor.save(view.api);
   } finally { view.close(); }
 });
 
