@@ -1,4 +1,5 @@
 import { buildChanges, readPath, validateChanges, type Binding, type Changes } from "./draft.ts";
+import { USER_AVATAR_CONTRACT, checkAvatarFile } from "../../../conversation/api/userAvatar.ts";
 
 export interface Definition {
   id: number; name: string; slug: string; revision: string; isActive: boolean;
@@ -225,6 +226,25 @@ export function createDefinitionApi(transport: Transport) {
     },
     async detail(id: number): Promise<Detail> {
       return aggregate(await request<Omit<Detail, "etag">>(idPath(id)));
+    },
+    async uploadAvatar(record: Detail, file: File): Promise<Detail> {
+      if (!record.capabilities.write) throw new DefinitionError(403, "forbidden");
+      if (checkAvatarFile(file)) throw new DefinitionError(422, "invalid_avatar");
+      if (record.etag !== `"agent-${record.definition.id}-${record.definition.revision}"`) throw new Error("Invalid definition ETag");
+      const path = idPath(record.definition.id);
+      const form = new FormData();
+      form.append(USER_AVATAR_CONTRACT.field, file);
+      const response = await transport(`${path}/avatar`, {
+        method: "POST", cache: "no-store", headers: { "If-Match": record.etag }, body: form,
+      });
+      const body = response.body as { fileId?: string; path?: string; code?: string };
+      if (response.status < 200 || response.status >= 300) {
+        throw new DefinitionError(response.status, typeof body?.code === "string" ? body.code : "avatar_upload_failed");
+      }
+      if (!body?.fileId || body.path !== USER_AVATAR_CONTRACT.pathPrefix + body.fileId) throw new Error("Invalid avatar response");
+      const saved = aggregate(await request<Omit<Detail, "etag">>(path));
+      if (saved.definition.config?.avatar !== body.path) throw new Error("Avatar readback mismatch");
+      return saved;
     },
     async patch(record: Detail, changes: Changes, skillBindings?: Binding[], toolBindings?: number[]): Promise<Detail> {
       if (!record.capabilities.write || (skillBindings !== undefined && !record.capabilities.writeSkillBindings)

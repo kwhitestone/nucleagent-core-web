@@ -9,13 +9,14 @@ export class DefinitionEditor {
   bindings: Binding[] | undefined;
   /** Pending tool selection (tool_bindings); undefined = untouched. */
   tools: number[] | undefined;
+  avatar: File | undefined;
   busy = false;
   denied = false;
   error = "";
   verificationRequired = false;
   private generation = 0;
 
-  get dirty(): boolean { return Object.keys(this.changes).length > 0 || this.bindings !== undefined || this.tools !== undefined; }
+  get dirty(): boolean { return Object.keys(this.changes).length > 0 || this.bindings !== undefined || this.tools !== undefined || this.avatar !== undefined; }
   get bindingConflict(): boolean {
     return !!this.record && !!this.current && this.bindings !== undefined
       && bindingKey(this.record.skillBindings) !== bindingKey(this.current.skillBindings)
@@ -24,10 +25,12 @@ export class DefinitionEditor {
   open(record: Detail): void {
     this.generation++;
     this.record = record; this.current = null; this.changes = {}; this.bindings = undefined; this.tools = undefined;
+    this.avatar = undefined;
     this.busy = false; this.denied = false; this.error = ""; this.verificationRequired = false;
   }
   clear(): void {
     this.generation++; this.record = null; this.current = null; this.changes = {};
+    this.avatar = undefined;
     this.bindings = undefined; this.tools = undefined; this.busy = false; this.denied = false; this.error = ""; this.verificationRequired = false;
   }
   revokeRead(): void {
@@ -78,7 +81,14 @@ export class DefinitionEditor {
     const record = this.record;
     this.busy = true; this.error = "";
     try {
-      const saved = await api.patch(record, this.changes, this.bindings, this.tools);
+      let saved = record;
+      if (Object.keys(this.changes).length || this.bindings !== undefined || this.tools !== undefined) {
+        saved = await api.patch(record, this.changes, this.bindings, this.tools);
+        if (generation !== this.generation) return null;
+        // Preserve only the pending file if the second request fails; do not replay committed edits.
+        this.record = saved; this.changes = {}; this.bindings = undefined; this.tools = undefined;
+      }
+      if (this.avatar) saved = await api.uploadAvatar(saved, this.avatar);
       if (generation !== this.generation) return null;
       this.open(saved);
       return saved;

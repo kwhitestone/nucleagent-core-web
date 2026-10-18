@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useI18n } from "vue-i18n";
 import { X, Save, RefreshCw, Power, Trash2, RotateCcw, ChevronLeft, ChevronRight, LoaderCircle, Check, TriangleAlert, Wrench } from "@lucide/vue";
 import DefinitionFields, { type ReadonlyField } from "./DefinitionFields.vue";
+import AgentAvatarPicker from "../../../../shared/AgentAvatarPicker.vue";
 import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
 import SkillPicker from "../../../../components/agent-edit/SkillPicker.vue";
@@ -236,8 +237,12 @@ const groupLabel = groupLabels;
 const allPaths = definitionFields.map(field => field.path);
 const activeGroup = ref<Group>("basic");
 const body = ref<HTMLElement>();
-const dirtyGroupSet = computed(() => dirtyGroups(editor.changes, editor.bindings, editor.tools));
-const pending = computed(() => changeCount(editor.changes, editor.bindings, editor.tools));
+const dirtyGroupSet = computed(() => {
+  const result = dirtyGroups(editor.changes, editor.bindings, editor.tools);
+  if (editor.avatar) result.add("basic");
+  return result;
+});
+const pending = computed(() => changeCount(editor.changes, editor.bindings, editor.tools) + (editor.avatar ? 1 : 0));
 // Backend refuses enabling without an explicit model (422); gate it here instead of failing late.
 const needsModel = computed(() => !record.value.definition.isActive && !String(draftValue("/config/defaults/model") ?? "").trim());
 const canSave = computed(() => record.value.capabilities.write && writable.value && editor.dirty && !editor.current && !editor.verificationRequired && !Object.keys(errors.value).length);
@@ -318,7 +323,12 @@ onUnmounted(() => clearTimeout(toastTimer));
           <h3>{{ label(groupLabel[group]) }}<span v-if="dirtyGroupSet.has(group)" class="dirty-dot" aria-hidden="true"></span></h3>
           <DefinitionFields :only="groupPaths(group, allPaths).filter(path => !genModelPaths.includes(path))" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
             :readonly-fields="readonlyFields" :backends="backends.map(item => ({ value: item.id, label: item.displayName }))"
-            :providers="providerChoices" :models="modelChoices" :busy="locked" @change="change" />
+            :providers="providerChoices" :models="modelChoices" :busy="locked" @change="change">
+            <template #avatar>
+              <AgentAvatarPicker id="definition-config-avatar" v-model="editor.avatar" :current="headerAvatar"
+                :name="draftName" :disabled="!writable" />
+            </template>
+          </DefinitionFields>
           <template v-if="group === 'model' && genModelPaths.length">
             <h4>{{ label('genModels') }}</h4>
             <DefinitionFields :only="genModelPaths" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"

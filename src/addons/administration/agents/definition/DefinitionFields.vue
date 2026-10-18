@@ -58,7 +58,11 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
 <template>
   <div class="definition-fields">
     <div v-for="field in fields" :key="field.path" class="definition-field" :class="{ toggle: field.kind === 'boolean' }" :data-path="field.path" :title="field.path" @focusout="touched.add(field.path)">
-      <EditField :id="id(field.path)" :label="label(field.label as MessageKey)" :model-value="value(field.path)"
+      <template v-if="field.path === '/config/avatar' && $slots.avatar">
+        <label :for="id(field.path)">{{ label(field.label as MessageKey) }}</label>
+        <slot name="avatar" />
+      </template>
+      <EditField v-else :id="id(field.path)" :label="label(field.label as MessageKey)" :model-value="value(field.path)"
         :kind="field.kind === 'boolean' ? 'boolean' : field.kind === 'textarea' ? 'textarea' : ['backend', 'provider', 'model', 'genModel'].includes(field.kind) ? 'select' : 'text'"
         :editable="allowed(field.path)" :rows="field.label === 'prompt' ? 8 : 3" :choices="fieldChoices(field)"
         :empty-label="field.kind === 'genModel' ? label('genInherit') : label('inherit')"
@@ -68,7 +72,7 @@ const display = (field: ReadonlyField) => field.hidden ? label("preserved")
       <template #hint>
         <template v-if="field.kind === 'genModel' && genState(field.path, field.genKind) === 'delisted'"><span class="definition-error">{{ label('genDelisted') }}</span></template>
         <template v-else-if="shownError(field.path)">{{ errorLabel(shownError(field.path)!) }}</template>
-        <template v-else-if="!props.editablePaths.includes(field.path)">{{ reason(field.path) }}</template>
+        <template v-else-if="!props.editablePaths.includes(field.path) && !(field.path === '/config/avatar' && $slots.avatar)">{{ reason(field.path) }}</template>
         <template v-else-if="field.label === 'memory'">{{ label('memoryNote') }}</template>
         <template v-else-if="field.max">{{ [...String(value(field.path) ?? '')].length }} / {{ field.max }}</template>
       </template>
