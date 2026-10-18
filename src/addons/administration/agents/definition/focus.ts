@@ -2,10 +2,21 @@ export function trapDialogFocus(event: KeyboardEvent) {
   if (event.key !== "Tab") return;
   const dialog = event.currentTarget as HTMLDialogElement;
   const controls = [...dialog.querySelectorAll<HTMLElement>(
-    "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex='0']",
-  )].filter(element => element.getClientRects().length > 0);
+    "button, input, select, textarea, summary, a[href], [tabindex], [contenteditable='true']",
+  )].filter(element => element.tabIndex >= 0 && !element.matches(":disabled") &&
+    !element.closest("[inert]") && element.getClientRects().length > 0 &&
+    !["hidden", "collapse"].includes(element.ownerDocument.defaultView!.getComputedStyle(element).visibility))
+    // Positive tabindex precedes zero; stable sort preserves DOM order for ties.
+    .sort((a, b) => (a.tabIndex || Infinity) - (b.tabIndex || Infinity));
   const first = controls[0], last = controls.at(-1);
   const active = dialog.ownerDocument.activeElement;
-  const target = event.shiftKey && active === first ? last : !event.shiftKey && active === last ? first : undefined;
+  if (!first) {
+    event.preventDefault();
+    dialog.tabIndex = -1;
+    dialog.focus();
+    return;
+  }
+  const target = !controls.includes(active as HTMLElement) ? (event.shiftKey ? last : first)
+    : event.shiftKey && active === first ? last : !event.shiftKey && active === last ? first : undefined;
   if (target) { event.preventDefault(); target.focus(); }
 }
