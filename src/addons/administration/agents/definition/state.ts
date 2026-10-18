@@ -48,6 +48,7 @@ export class DefinitionEditor {
     this.verificationRequired = false;
     if (this.error === "uncertain") this.error = "";
     if (this.record.capabilities.write && !record.capabilities.write) {
+      this.avatar = undefined;
       this.denied = true;
       this.error = "denied";
     } else this.denied = false;
@@ -99,7 +100,7 @@ export class DefinitionEditor {
       if (generation !== this.generation) return null;
       if (error instanceof DefinitionError && [401, 403].includes(error.status)) {
         if (error instanceof AvatarReadbackDenied) this.revokeRead();
-        else { this.denied = true; this.error = "denied"; }
+        else { this.avatar = undefined; this.denied = true; this.error = "denied"; }
       } else if (error instanceof DefinitionError && error.status === 412) {
         this.error = "conflict";
         try {
