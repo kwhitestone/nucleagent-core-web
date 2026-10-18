@@ -8,6 +8,7 @@ import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
 import SkillPicker from "./SkillPicker.vue";
 import AgentPreview from "./AgentPreview.vue";
+import EditSidebar from "../../../../components/agent-edit/EditSidebar.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, initial, type Group } from "./groups";
 import { DefinitionError, type Catalog, type CatalogTool, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
@@ -249,14 +250,7 @@ function goTo(group: Group) {
   if (group === "history" && !["usage", "audits"].includes(tab.value)) tab.value = "usage";
   body.value?.querySelector(`#group-${group}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-function onNavKey(event: KeyboardEvent) {
-  const step = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : ["ArrowUp", "ArrowLeft"].includes(event.key) ? -1 : 0;
-  if (!step) return;
-  event.preventDefault();
-  const next = groups[(groups.indexOf(activeGroup.value) + step + groups.length) % groups.length]!;
-  goTo(next);
-  void nextTick(() => (dialog.value?.querySelector(`[role=tab][data-group="${next}"]`) as HTMLElement | null)?.focus());
-}
+const sidebarGroups = computed(() => groups.map(id => ({ id, label: label(groupLabel[id]), dirty: dirtyGroupSet.value.has(id) })));
 function onScroll() {
   const top = body.value?.getBoundingClientRect().top ?? 0;
   const passed = groups.filter(group => (body.value?.querySelector(`#group-${group}`)?.getBoundingClientRect().top ?? Infinity) - top < 80);
@@ -298,9 +292,8 @@ onUnmounted(() => clearTimeout(toastTimer));
     </header>
     <div v-if="!editor.record" class="drawer-body"><p role="alert">{{ label('readDenied') }}</p><button type="button" @click="emit('close')">{{ label('close') }}</button></div>
     <div v-else class="drawer-grid">
-      <nav class="group-nav" role="tablist" aria-orientation="vertical" :aria-label="label('title')" @keydown="onNavKey">
-        <button v-for="group in groups" :key="group" type="button" role="tab" :data-group="group" :aria-selected="activeGroup === group" :tabindex="activeGroup === group ? 0 : -1" @click="goTo(group)">{{ label(groupLabel[group]) }}<span v-if="dirtyGroupSet.has(group)" class="dirty-dot" :aria-label="label('unsaved')"></span></button>
-      </nav>
+      <!-- @vue-generic {Group} -->
+      <EditSidebar :groups="sidebarGroups" :active="activeGroup" :aria-label="label('title')" :dirty-label="label('unsaved')" @select="goTo" />
       <div ref="body" class="drawer-body" @scroll.passive="onScroll">
         <p v-if="alertKey" role="alert" class="notice" :class="editor.error === 'uncertain' ? 'warn' : 'error'"><TriangleAlert :size="16" aria-hidden="true" />{{ label(alertKey as MessageKey) }}
           <button v-if="editor.verificationRequired" type="button" class="ghost" @click="refresh">{{ label('queryResult') }}</button></p>
@@ -452,10 +445,6 @@ h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 1
 .revision { display: inline-block; animation: scale-in .4s var(--ease-spring) both; }
 .head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .drawer-grid { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr) 280px; }
-.group-nav { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; border-right: 1px solid var(--border); background: var(--bg-card); overflow: auto; }
-.group-nav button { justify-content: space-between; min-height: 40px; border: 0; border-left: 3px solid transparent; border-radius: var(--r-sm); background: transparent; padding: 8px 10px; font-size: 13px; color: var(--text-secondary); text-align: start; transition: all .25s var(--ease); }
-.group-nav button:hover { background: var(--bg-hover); color: var(--text-primary); }
-.group-nav [aria-selected=true] { border-left-color: var(--accent); background: var(--teal-50); color: var(--teal-700); font-weight: 600; }
 .dirty-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber-500); flex-shrink: 0; animation: scale-in .4s var(--ease-spring) both; }
 .drawer-body { padding: 16px 20px 32px; overflow: auto; min-height: 0; display: grid; gap: 14px; align-content: start; scroll-behavior: smooth; }
 .side-preview { padding: 16px 14px; border-left: 1px solid var(--border); background: var(--bg-card); overflow: auto; }
@@ -513,9 +502,6 @@ pre, code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--f
   .drawer-head { padding: 10px 12px; } .head-avatar { width: 32px; height: 32px; } h2 { font-size: 15px; }
   .head-actions .ghost { display: none; }
   .drawer-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .group-nav { flex-direction: row; overflow-x: auto; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--border); scrollbar-width: none; }
-  .group-nav button { flex-shrink: 0; border-left: 0; border-radius: var(--r-full); padding: 6px 12px; min-height: 36px; border: 1px solid var(--border); white-space: nowrap; }
-  .group-nav [aria-selected=true] { border-color: var(--accent); }
   .drawer-body { padding: 12px 12px 24px; }
   .binding-options, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   footer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); } footer .hint { display: none; } footer .primary { flex: 1; min-height: 44px; } footer { justify-content: flex-end; }
