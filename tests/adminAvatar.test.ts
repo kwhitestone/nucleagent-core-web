@@ -103,6 +103,34 @@ test("avatar conflicts and uncertain writes cannot be retried without reconcilia
   assert.equal(calls, 1);
 });
 
+test("concurrent avatar changes require an explicit choice and can discard the pending file", () => {
+  const editor = new DefinitionEditor();
+  editor.open(detail()); editor.avatar = file();
+  editor.acceptRefresh(detail("2", "/api/v1/avatars/concurrent"));
+  assert.throws(() => editor.resolve({}), /avatar choice/);
+  editor.resolve({ "/config/avatar": "current" });
+  assert.equal(editor.avatar, undefined);
+  assert.equal(editor.dirty, false);
+  assert.equal(editor.record?.definition.revision, "2");
+});
+
+test("successful upload with failed readback is uncertain, never silently retried", async () => {
+  let posts = 0;
+  const api = createDefinitionApi(async (_url, init) => {
+    if (init?.method === "POST") {
+      posts++;
+      return { status: 200, headers: {}, body: { fileId: "new", path: "/api/v1/avatars/new" } };
+    }
+    return { status: 404, headers: {}, body: { code: "not_found" } };
+  });
+  const editor = new DefinitionEditor();
+  editor.open(detail()); editor.avatar = file();
+  await editor.save(api);
+  assert.equal(editor.verificationRequired, true);
+  await editor.save(api);
+  assert.equal(posts, 1);
+});
+
 let vite: ViteDevServer, picker: any, wizard: any, drawer: any;
 before(async () => {
   vite = await createServer({ configFile: false, envFile: false, plugins: [vue()], appType: "custom",

@@ -128,6 +128,10 @@ function resolve(choices: Record<string, "mine" | "current">) {
   try { editor.resolve(choices, bindingChoice.value); bindingChoice.value = undefined; }
   catch { status.value = "bindingConflict"; }
 }
+const comparisonChanges = computed(() => ({
+  ...editor.changes,
+  ...(editor.avatar ? { "/config/avatar": { file: editor.avatar.name } } : {}),
+}));
 async function prepare(next: LifecycleAction | "save") {
   if (!editor.record) return;
   if (operationLocked.value || (record.value.definition.deletedAt && next !== "restore")) return;
@@ -322,7 +326,7 @@ onUnmounted(() => clearTimeout(toastTimer));
                 <small>{{ editor.current.skillBindings.map(b => availableSkills.find(s => s.id === b.skillId)?.name ?? `#${b.skillId}`).join(', ') || '—' }}</small></label>
             </div>
           </fieldset>
-          <ConflictComparison :baseline="record.definition" :changes="editor.changes" :current="editor.current.definition" @resolve="resolve" />
+          <ConflictComparison :baseline="record.definition" :changes="comparisonChanges" :current="editor.current.definition" @resolve="resolve" />
         </section>
         <p v-if="catalogError" role="status" class="notice warn">{{ label('catalogError') }}</p>
         <section v-for="group in (['basic', 'persona', 'model'] as const)" :id="`group-${group}`" :key="group" class="form-card">
