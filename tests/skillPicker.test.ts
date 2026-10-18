@@ -5,6 +5,7 @@ import * as Vue from "vue";
 import { createRenderer, h, nextTick, ref, ssrContextKey, type Component } from "vue";
 import { compileScript, compileTemplate, parse } from "vue/compiler-sfc";
 import { createI18n } from "vue-i18n";
+import { routerKey, routeLocationKey } from "vue-router";
 import { createServer, type ViteDevServer } from "vite";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import en from "../src/i18n/en.ts";
@@ -84,6 +85,7 @@ const detach = (child: N) => {
 };
 const renderer = createRenderer<N, N>({
   createElement: (tag) => Object.assign(node(tag), {
+    style: {},
     addEventListener(this: N, event: string, fn: (e: unknown) => void) { this.on[event] = fn; },
     removeEventListener() {},
     querySelector: () => null,
@@ -132,13 +134,25 @@ let picker: Component;
 let toolPicker: Component;
 let bindingPickers: Component;
 let editor: Component;
+let conversation: Component;
+let observePending = (_value: boolean) => {};
+let streamMounts = 0;
+let streamStops = 0;
+let liveStatus = (_status: string) => {};
+let capabilities: { send: boolean; stop: boolean };
+const media = new EventTarget() as EventTarget & { matches: boolean };
+media.matches = false;
+function resize(narrow: boolean) {
+  media.matches = narrow;
+  media.dispatchEvent(Object.assign(new Event("change"), { matches: narrow }));
+}
 let unregister: () => void;
 let respond: (config?: any) => Promise<unknown> = async () => ({ code: 0, data: [] });
 
 before(async () => {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => null, setItem() {}, removeItem() {} } });
   const el = () => ({ style: {}, classList: { add() {}, remove() {} }, appendChild() {}, remove() {}, addEventListener() {}, setAttribute() {} });
-  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null, createElement: el, body: el() } });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null, documentElement: {}, createElement: el, body: el() } });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] },
     server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   await initializeRuntimeFixture(vite);
@@ -154,7 +168,34 @@ before(async () => {
   editor = await clientComponent("/src/addons/conversation/components/SessionBindingsEditor.vue", { BindingPickers: bindingPickers });
   const win = new EventTarget();
   Object.defineProperty(win, "parent", { value: win });
+  Object.defineProperty(win, "matchMedia", { value: () => media });
   Object.defineProperty(globalThis, "window", { configurable: true, value: win });
+  const empty = { render: () => null };
+  const streamProbe = Vue.defineComponent({
+    props: ["capabilities"],
+    emits: ["status-change"],
+    setup(props, { slots, emit }) {
+      Vue.onMounted(() => { streamMounts++; });
+      Vue.onBeforeUnmount(() => { streamStops++; });
+      liveStatus = (status) => emit("status-change", status);
+      Vue.watchEffect(() => {
+        capabilities = props.capabilities;
+        observePending(!capabilities.send);
+      });
+      return () => h("div", { class: "stream-probe" }, slots["composer-toolbar-leading"]?.({ status: "idle" }));
+    },
+  });
+  const backend = {
+    emits: ["validation-change"],
+    setup(_props: unknown, { emit }: any) {
+      Vue.onMounted(() => emit("validation-change", { allowed: true }));
+      return () => null;
+    },
+  };
+  conversation = await clientComponent("/src/addons/conversation/views/Conversation.vue", {
+    SessionBindingsEditor: editor, TaskConversation: streamProbe, ModelPicker: empty,
+    ExecutionBackendPicker: backend, ChatGenBar: empty,
+  });
 });
 
 after(async () => {
@@ -169,6 +210,8 @@ function mount(component: Component, props: () => Record<string, unknown>, local
   const app = renderer.createApp({ render: () => h(component, props()) });
   app.use(createI18n({ legacy: false, locale, messages: { en, zh } }));
   app.provide(ssrContextKey, {});
+  app.provide(routerKey, { replace: async () => {} } as any);
+  app.provide(routeLocationKey, { query: {} } as any);
   app.mount(root);
   return { root, app };
 }
@@ -305,7 +348,11 @@ for (const kind of ["skill", "tool"] as const) {
   });
 }
 
-const sessionResponse = (config: any) => config.url.endsWith("/bindings")
+const sessionResponse = (config: any) => /\/conversation\/\d+$/.test(config.url)
+  ? { data: { id: Number(config.url.split("/").at(-1)), title: "synthetic", status: "completed", mode: "a2a_agent", providerId: 1, model: "synthetic", executionBackend: "codex" } }
+  : config.url.includes("/messages") || config.url.includes("/generations")
+  ? { data: [] }
+  : config.url.endsWith("/bindings")
   ? { data: { skillIds: [1], toolIds: [2], editable: true } }
   : { data: config.url.endsWith("/catalog") ? [{ id: 2, name: "tool-2" }] : [skill(1), skill(3)] };
 
@@ -482,4 +529,200 @@ test("account switch clears old chips and ignores the former account's pending s
     assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
     assert.equal(all(root, "tool-chip").length, 0);
   } finally { app.unmount(); }
+});
+
+// Mount the real page setup/template and editor; only unrelated controls and
+// the stream view are probes. Breakpoints use the real useNarrow media listener.
+function responsiveEditor(narrow: ReturnType<typeof ref<boolean>>, pending: (value: boolean) => void, id = ref("11")) {
+  resize(narrow.value);
+  observePending = pending;
+  streamMounts = 0;
+  streamStops = 0;
+  return {
+    setup() {
+      Vue.watch(narrow, resize, { flush: "sync" });
+      return () => h(conversation, { id: id.value });
+    },
+  };
+}
+
+test("INDEPENDENT: breakpoint change must preserve unsaved selection", async () => {
+  respond = async (config) => sessionResponse(config);
+  const narrow = ref(false);
+  const { root, app } = mount(responsiveEditor(narrow, () => {}), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    assert.equal(all(root, "skill-chip").length, 0);
+    narrow.value = true; await flush();
+    assert.equal(all(root, "skill-chip").length, 0, "breakpoint remount discarded the user's draft");
+  } finally { app.unmount(); }
+});
+
+for (const change of ["add", "remove", "clear"] as const) {
+  test(`SAFETY: real Conversation retains ${change} draft through repeated breakpoints`, async () => {
+    let reads = 0;
+    respond = async (config) => {
+      if (config.url.endsWith("/bindings")) reads++;
+      return sessionResponse(config);
+    };
+    const narrow = ref(false);
+    let pending = false;
+    const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+    try {
+      await flush();
+      if (change === "add") {
+        click(all(root, "skill-toggle")[0]); await nextTick();
+        click(all(body, "osheet-row").find((n) => textOf(n).includes("skill-3"))!); await nextTick();
+      } else {
+        click(all(root, "skill-chip-remove")[0]); await nextTick();
+        if (change === "clear") { click(all(root, "tool-chip-remove")[0]); await nextTick(); }
+      }
+      const skills = all(root, "skill-chip-name").map(textOf);
+      const tools = all(root, "tool-chip-name").map(textOf);
+      for (let i = 0; i < 6; i++) {
+        narrow.value = !narrow.value; await flush();
+        assert.deepEqual(all(root, "skill-chip-name").map(textOf), skills);
+        assert.deepEqual(all(root, "tool-chip-name").map(textOf), tools);
+        assert.equal(all(root, "session-bindings").length, 1);
+        assert.equal(pending, true);
+        assert.equal(capabilities.stop, true);
+      }
+      assert.equal(reads, 1, "layout changes must not reload bindings");
+      assert.equal(streamMounts, 1);
+      assert.equal(streamStops, 0);
+    } finally { app.unmount(); }
+  });
+}
+
+for (const result of ["success", "failure"] as const) {
+  test(`SAFETY: real Conversation keeps PUT busy across breakpoints and handles ${result}`, async () => {
+    let finish!: (value: unknown) => void;
+    let reject!: (reason: Error) => void;
+    respond = async (config) => config.method === "put"
+      ? new Promise((resolve, fail) => { finish = resolve; reject = fail; })
+      : sessionResponse(config);
+    const narrow = ref(false);
+    let pending = false;
+    const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+    try {
+      await flush();
+      click(all(root, "skill-chip-remove")[0]); await nextTick();
+      click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+      await flush();
+      for (let i = 0; i < 4; i++) {
+        narrow.value = !narrow.value; await flush();
+        assert.equal(pending, true);
+        const control = narrow.value ? all(root, "picker-row").find((n) => n.props["data-testid"] === "row-skills")! : all(root, "skill-toggle")[0];
+        assert.equal(control.props.disabled, true);
+      }
+      if (result === "success") finish({ data: { skillIds: [], toolIds: [2], editable: true } });
+      else reject(new Error("synthetic failure"));
+      await flush();
+      assert.equal(all(root, "skill-chip").length, 0);
+      assert.equal(pending, result === "failure");
+      if (result === "failure") assert.match(textOf(root), /Could not save/);
+      assert.equal(streamMounts, 1);
+      assert.equal(streamStops, 0);
+    } finally { app.unmount(); }
+  });
+}
+
+for (const scope of ["conversation", "account"] as const) {
+  for (const result of ["success", "failure"] as const) {
+    test(`SAFETY: ${scope} return waits for retired PUT ${result} then reads final state`, async () => {
+      let finish!: (value: unknown) => void;
+      let reject!: (reason: Error) => void;
+      let stored = { skillIds: [1], toolIds: [2], editable: true };
+      let reads = 0;
+      respond = async (config) => {
+        if (config.method === "put") return new Promise((resolve, fail) => { finish = resolve; reject = fail; });
+        if (config.url.endsWith("/11/bindings")) { reads++; return { data: stored }; }
+        if (config.url.endsWith("/12/bindings")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+        return sessionResponse(config);
+      };
+      const id = ref("11"), narrow = ref(false);
+      let pending = false;
+      const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }, id), () => ({}));
+      try {
+        await flush();
+        click(all(root, "skill-chip-remove")[0]); await nextTick();
+        click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+        await flush();
+        if (scope === "conversation") {
+          id.value = "12"; await flush();
+          assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+          id.value = "11";
+        } else {
+          window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: false } }));
+          await flush();
+          assert.equal(all(root, "skill-chip").length, 0);
+          assert.equal(pending, true);
+          window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: true } }));
+        }
+        await flush();
+        narrow.value = true; await flush();
+        assert.equal(pending, true);
+        assert.equal(reads, 1, "GET must not race the retired write");
+        if (result === "success") {
+          stored = { skillIds: [], toolIds: [2], editable: true };
+          finish({ data: stored });
+        } else reject(new Error("synthetic failure"));
+        await flush();
+        assert.equal(reads, 2);
+        assert.equal(pending, false);
+        assert.deepEqual(all(root, "skill-chip-name").map(textOf), result === "success" ? [] : ["skill-1"]);
+      } finally { app.unmount(); }
+    });
+  }
+}
+
+test("SAFETY: breakpoint changes during a live turn keep the stream mounted and stop enabled", async () => {
+  let writes = 0;
+  respond = async (config) => {
+    if (config.method === "put") writes++;
+    return sessionResponse(config);
+  };
+  const narrow = ref(false);
+  const { root, app } = mount(responsiveEditor(narrow, () => {}), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    liveStatus("running"); await nextTick();
+    for (let i = 0; i < 4; i++) {
+      narrow.value = !narrow.value; await flush();
+      const save = all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!;
+      assert.equal(save.props.disabled, true);
+      click(save); await flush();
+      assert.equal(capabilities.send, false);
+      assert.equal(capabilities.stop, true);
+    }
+    assert.equal(writes, 0);
+    assert.equal(streamMounts, 1);
+    assert.equal(streamStops, 0);
+  } finally { app.unmount(); }
+});
+
+test("INDEPENDENT: breakpoint change must not unblock sends while PUT is in flight", async () => {
+  let finish!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { finish = resolve; });
+    return sessionResponse(config);
+  };
+  const narrow = ref(false);
+  let pending = false;
+  const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.equal(pending, true);
+    narrow.value = true; await flush();
+    assert.equal(pending, true, "new editor GET clears pending although old editor PUT is unresolved");
+  } finally {
+    finish({ data: { skillIds: [], toolIds: [2], editable: true } });
+    await flush();
+    app.unmount();
+  }
 });

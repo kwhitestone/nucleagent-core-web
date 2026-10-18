@@ -34,6 +34,7 @@ import { toast } from "@/composables/useToast";
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import SessionBindingsEditor from "@/addons/conversation/components/SessionBindingsEditor.vue";
+import { useSessionBindings } from "@/addons/conversation/composables/useSessionBindings";
 import { createLatestConversationBackendLoader } from "@/addons/conversation/composables/conversationBackendRestore";
 import ErrorBubble from "@/addons/conversation/components/conversation/ErrorBubble.vue";
 import MessageItem from "@/addons/conversation/components/conversation/MessageItem.vue";
@@ -211,8 +212,9 @@ const modelLoading = ref(true);
 const backendLoading = ref(true);
 const backendCompatible = ref(false);
 const settingsSaving = ref(false);
-const bindingsPending = ref(true);
 const bindingsBusy = computed(() => status.value === "executing" || status.value === "blocked" || settingsSaving.value);
+const bindings = useSessionBindings(() => props.id, () => bindingsBusy.value);
+const bindingsPending = bindings.pending;
 const modelLoader = createLatestConversationModelLoader(getConversation);
 const backendLoader = createLatestConversationBackendLoader(getConversation);
 let settingsMutationGeneration = 0;
@@ -395,7 +397,7 @@ function onError(error: Error): void {
               {{ t('common.discardSettings') }}
             </button>
           </div>
-          <SessionBindingsEditor :id="id" :disabled="bindingsBusy" row @pending="bindingsPending = $event" />
+          <SessionBindingsEditor :id="id" :state="bindings" :disabled="bindingsBusy" row />
         </div>
       </div>
       <p v-if="carrier" class="conv-media-banner" role="status" data-testid="conv-media-banner">{{ t("generate.mediaConversation") }}</p>
@@ -454,7 +456,7 @@ function onError(error: Error): void {
           </div>
         </template>
       </TaskConversation>
-      <SessionBindingsEditor v-if="!narrow" :id="id" :disabled="bindingsBusy" @pending="bindingsPending = $event" />
+      <SessionBindingsEditor v-if="!narrow" :id="id" :state="bindings" :disabled="bindingsBusy" />
     </div>
   </div>
 </template>
