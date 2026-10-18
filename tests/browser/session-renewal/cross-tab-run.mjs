@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
-// Run under both shared CDP locks; attach only to the existing synthetic browser.
+// Prefer run-isolated.mjs; shared CDP requires the existing two-lock protocol.
 const fixture = name => fileURLToPath(new URL(name, import.meta.url));
 const children = [];
 const failures = [];
@@ -44,7 +44,12 @@ try {
   await server("cross-tab-server.mjs", 5301);
   await server("cross-tab-server.mjs", 5303);
   const label = process.env.EXPECT_RED === "1" ? "red" : "green";
-  await test("cross-tab-browser.mjs", { CROSS_ONLY: "1", NATIVE_ONLY: "", RESULT_PATH: `cross-${label}.json` }, `cross-${label}.log`);
+  if (process.env.NATURAL_ONLY !== "1") {
+    await test("cross-tab-browser.mjs", { CROSS_ONLY: "1", NATIVE_ONLY: "", NATURAL_ONLY: "", FORCED_ONLY: "1", RESULT_PATH: `cross-${label}.json` }, `cross-${label}.log`);
+  }
+  if (process.env.FORCED_ONLY !== "1") {
+    await test("cross-tab-browser.mjs", { CROSS_ONLY: "1", NATIVE_ONLY: "", NATURAL_ONLY: "1", FORCED_ONLY: "", RESULT_PATH: `natural-${label}.json` }, `natural-${label}.log`);
+  }
   if (process.env.FULL === "1") {
     await test("cross-tab-browser.mjs", { CROSS_ONLY: "", NATIVE_ONLY: "", RESULT_PATH: "frame-green.json" }, "frame-green.log");
     await test("cross-tab-browser.mjs", { CROSS_ONLY: "", NATIVE_ONLY: "1", RESULT_PATH: "native-green.json" }, "native-green.log");

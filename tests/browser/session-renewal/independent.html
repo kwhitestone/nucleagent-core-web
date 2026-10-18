@@ -22,6 +22,10 @@ let heldInfo = false;
 let infoOverride = null;
 const infoWaiters = [];
 const authTimeline = [];
+const transportTimeline = [];
+const fixtureId = crypto.randomUUID();
+const startedAt = Date.now();
+const trace = event => transportTimeline.push({event,elapsedMs:Date.now()-startedAt});
 const user = id => ({id,username:`synthetic-${id}`,permissions:grants,menus:[]});
 if (!params.has("persist") || !localStorage.getItem("nucleagent_access_token")) {
   localStorage.clear();
@@ -42,11 +46,15 @@ window.fetch = async (url, init) => {
     infoCalls++;
     sentHeader = new Headers(init?.headers).get("Authorization");
     const header = sentHeader;
+    trace(heldInfo ? "info-held" : "info");
     if (heldInfo) await new Promise(resolve => infoWaiters.push(resolve));
     const status = infoOverride?.status ?? (failInfo ? 503 : 200);
     if(status !== 200) return new Response(JSON.stringify({code:status,message:"Synthetic unavailable"}),{status});
     data = {...user(header === "synthetic-B" || header?.startsWith("synthetic-rotated-42-") ? 42 : header === "synthetic-A" || header?.startsWith("synthetic-rotated-41-") ? 41 : nextId), ...infoOverride};
-  } else data = {accessToken:params.has("native") && !params.has("cross") ? (nextId === 41 ? "synthetic-A" : "synthetic-B") : `synthetic-rotated-${nextId}-${++rotation}`,user:user(nextId)};
+  } else {
+    trace("refresh-or-login");
+    data = {accessToken:params.has("native") && !params.has("cross") ? (nextId === 41 ? "synthetic-A" : "synthetic-B") : `synthetic-rotated-${nextId}-${++rotation}-${fixtureId}`,user:user(nextId)};
+  }
   return new Response(JSON.stringify({code:0,data}),{status:200});
 };
 const pinia = createPinia();
@@ -74,7 +82,7 @@ createApp(defineComponent({setup(){
 }})).use(pinia).mount("#host");
 window.independent = {
   state:()=>({token:shell.token,version:shell.sessionVersion,principal:shell.verifiedUserId,
-    authenticated:shell.isAuthenticated,notice:shell.sessionNotice,infoCalls,rotation,sentHeader,lastAuth,nativeStorageEvents,pendingInfo:infoWaiters.length,authTimeline}),
+    authenticated:shell.isAuthenticated,notice:shell.sessionNotice,infoCalls,rotation,sentHeader,lastAuth,nativeStorageEvents,pendingInfo:infoWaiters.length,authTimeline,transportTimeline,hasBrowserLocks:!!navigator.locks}),
   holdInfo:()=>{heldInfo=true},
   infoResult: value=>{infoOverride=value},
   releaseInfo:()=>{heldInfo=false;infoWaiters.splice(0).forEach(resolve=>resolve())},

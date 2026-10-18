@@ -60,8 +60,15 @@ return. No automatic proof retry restores a discarded editor.
 | Wrong source/origin/instance | Either web | Existing channel rejects before session parser |
 | New web + approved PR16 | Owned three-way verification only | Same-tab approved write fence and cross-tab unknown-write fence checked separately |
 
+The scheduled refresh callback reconciles unseen storage through the same
+bounded pending-proof path before HTTP and after either success or failure.
+It does not apply an old response to the new credential or authorize with the
+retained principal. Equal real timer deadlines may race; either or both pages
+may issue refresh before receiving the other's native storage notification.
+Four deterministic shell tests cover the preflight and HTTP200/401/503 races.
+
 The original shell `isCurrentCredential` unseen-storage mismatch remains
-destructive: if an old shell auth response detects a new storage credential
+destructive for non-scheduled callers: if a manual shell auth response detects a new storage credential
 **before** the native storage handler runs, its old proof is invalidated
 immediately and the later storage event cannot retain that editor. This is a
 deliberately unchanged fail-closed F1 path, not a promise of draft preservation
@@ -98,28 +105,41 @@ workspace. Framework baseline is `894bd823028076d6b43e4edd08a3823e8820149f`.
 The task report records exact immutable candidate heads and evidence hashes.
 Dependencies must already be installed from the repository lockfiles.
 
-From workspace root, with the task-owned CDP9229 browser already available:
+From workspace root, using an installed Chromium executable and empty owned
+profile (no login state, shared browser, or shared lock needed):
 
 ```sh
-flock -n /tmp/cdp-9229.lock flock -n /home/wsl/nucleagent-work/locks/cdp-9229.lock \
-  env FULL=1 node core-web/tests/browser/session-renewal/cross-tab-run.mjs
+CHROME_BIN=/absolute/path/to/chrome FULL=1 \
+  node core-web/tests/browser/session-renewal/run-isolated.mjs
 ```
 
-The runner uses ports5301/5303/5304, creates only an isolated context, blocks
-external network, and closes only that context. Original tabs are checked
-after disposal. It stops its own servers on success or failure. Do not run
+The launcher creates an owned headless browser on a random loopback CDP port.
+The runner uses ports5301/5303/5304, creates isolated contexts, blocks external
+network, and closes only its contexts. Original tabs are checked after disposal.
+The launcher removes its profile and closes the browser; the runner stops its
+own servers on success or failure. Do not run
 mutation scripts concurrently with browser/build tests on the same worktree.
 Only synthetic data and synthetic adapter writes are used; no live model,
 definition or permission mutation is part of this task.
 The timer-driven cases seed a clearly synthetic expiring credential and wait
-for the real shell refresh scheduler. The fixture asserts that the peer, not
-the receiving editor, initiated renewal. This is not live DEV acceptance.
-The first timer run timed out before pending-info; its failure is retained in
-the task report. Navigation readiness now requires the exact peer URL and a
-new initialized fixture, but this harness correction still needs a browser
-rerun. Do not treat the timer or pending-route cases as passing evidence.
-With `FULL=1`, independent original gates continue after a cross-tab failure;
+for the real shell refresh scheduler. Both real editors are prepared before
+the shared deadline; the actual storage receiver is observed, not preselected.
+Concurrent timer initiators are recorded, with unique synthetic transport
+tokens. Date.now, timer callbacks, expiry delays and lifecycle handlers are
+not accelerated or invoked by the natural test. This is not live DEV acceptance.
+Beforeunload handling is scoped to owned contexts; frame execution-context
+IDs are keyed by CDP session plus frame, not by frame alone.
+Earlier probe failures and the product timer race are retained in the task
+report, alongside exact final gate results. A `*-green.json` name alone is
+not a passing receipt. Inspect errors, assertions, counts and cleanup.
+With `FULL=1`, forced cross26, natural4 and independent original gates run
+separately, continuing after a failed gate;
 the runner reports every failed gate and still exits nonzero.
+`NATURAL_ONLY=1` selects four real-timer cases; `FORCED_ONLY=1` selects the
+forced group. `EXPECT_RED=1` on the deployed old pair requires draft loss
+while preserving pending write blocking and old-signal abort checks.
+Direct shared-CDP use remains optional only under the existing authorized
+two-lock/action protocol, with `CDP_ENDPOINT` explicitly supplied.
 Browser-specific learning is kept in this task-owned package: after detaching
 and reattaching a native dialog, test `:modal`, not merely `[open]` or visibility.
 The shared localhost notes cover unrelated tasks and were not modified.
