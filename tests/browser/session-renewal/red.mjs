@@ -20,6 +20,13 @@ function send(method, params = {}, sessionId) {
 }
 const blocked = [];
 const exceptions = [];
+const dialogs = [];
+let disposing = false;
+function intercept(method, params, sessionId) {
+  void send(method, params, sessionId).catch(error => {
+    if (!disposing) exceptions.push(`Interception failed: ${error.message}`);
+  });
+}
 const syntheticPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=";
 ws.onmessage = ({ data }) => {
   const event = JSON.parse(data);
@@ -30,19 +37,22 @@ ws.onmessage = ({ data }) => {
     clearTimeout(task.timer);
     if (event.error) task.reject(Error(event.error.message));
     else task.resolve(event.result);
+  } else if (event.method === "Page.javascriptDialogOpening") {
+    dialogs.push({ type: event.params.type });
+    intercept("Page.handleJavaScriptDialog", { accept: true }, event.sessionId);
   } else if (event.method === "Runtime.exceptionThrown") {
     exceptions.push(event.params.exceptionDetails.exception?.description ?? event.params.exceptionDetails.text);
   } else if (event.method === "Fetch.requestPaused") {
     const { requestId, request } = event.params;
     if (request.url === "https://image.renewal.test/avatar.png") {
-      void send("Fetch.fulfillRequest", { requestId, responseCode: 200,
+      intercept("Fetch.fulfillRequest", { requestId, responseCode: 200,
         responseHeaders: [{ name: "Content-Type", value: "image/png" }], body: syntheticPng }, event.sessionId);
       return;
     }
     const allowed = request.url.startsWith(new URL(base).origin + "/") ||
       request.url.startsWith(new URL(base).origin.replace("127.0.0.1", "localhost") + "/");
     if (!allowed) blocked.push({ external: true, method: request.method });
-    void send(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
+    intercept(allowed ? "Fetch.continueRequest" : "Fetch.failRequest",
       allowed ? { requestId } : { requestId, errorReason: "BlockedByClient" }, event.sessionId);
   }
 };
@@ -260,10 +270,11 @@ try {
   assert.equal(await child("w.renewalFixture.state().version"), 0);
   extended.push({ invalid: "actual unallowlisted parent origin", pass: true });
 } finally {
+  disposing = true;
   await send("Target.disposeBrowserContext", { browserContextId });
   const after = (await send("Target.getTargets")).targetInfos.filter(t => t.type === "page").map(t => t.targetId);
   const cleanup = { ownedPageClosed: !after.includes(targetId), existingPagesPreserved: before.every(id => after.includes(id)) };
-  writeFileSync(process.env.RESULT_PATH ?? "session-renewal-red.json", JSON.stringify({ results, negatives, extended, blocked, exceptions, cleanup }, null, 2) + "\n");
+  writeFileSync(process.env.RESULT_PATH ?? "session-renewal-red.json", JSON.stringify({ results, negatives, extended, blocked, exceptions, dialogs, cleanup }, null, 2) + "\n");
   ws.close();
   assert.ok(cleanup.ownedPageClosed && cleanup.existingPagesPreserved);
 }
@@ -271,3 +282,5 @@ console.log(JSON.stringify({ cases: results.length, red: results.filter(r => !r.
   negativeChecks: results.length * 2 + negatives.length, extended: extended.length,
   writes: results.reduce((n, r) => n + r.actual.writes, 0) }));
 assert.ok(results.every(result => result.renewalPreserved), "Real mounted editor must survive proven same-boundary renewal");
+assert.equal(exceptions.length, 0, "No runtime or interception errors");
+assert.equal(blocked.length, 0, "No unexpected external requests");

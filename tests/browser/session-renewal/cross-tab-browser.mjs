@@ -7,12 +7,15 @@ const base = `${origin}/tests/browser/session-renewal/independent.html`;
 const red = process.env.EXPECT_RED === "1";
 const nativeOnly = process.env.NATIVE_ONLY === "1";
 const crossOnly = process.env.CROSS_ONLY === "1";
-const version = await (await fetch("http://127.0.0.1:9229/json/version")).json();
+const naturalOnly = process.env.NATURAL_ONLY === "1";
+const forcedOnly = process.env.FORCED_ONLY === "1";
+const endpoint = process.env.CDP_ENDPOINT ?? "http://127.0.0.1:9229";
+const version = await (await fetch(`${endpoint}/json/version`)).json();
 const ws = new WebSocket(version.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
 let sequence = 0;
 let disposing = false;
-const pending = new Map(), errors = [], results = [];
+const pending = new Map(), errors = [], results = [], dialogs = [];
 function send(method, params = {}, sessionId) {
   return new Promise((resolve,reject) => {
     const id = ++sequence;
@@ -35,9 +38,14 @@ ws.onmessage = ({data}) => {
     if(e.error)p.reject(Error(e.error.message));else p.resolve(e.result);
   } else if(e.method==="Runtime.executionContextCreated") {
     const c=e.params.context;
-    if(c.auxData?.isDefault)contexts.set(c.auxData.frameId,c.id);
+    if(c.auxData?.isDefault)contexts.set(`${e.sessionId}:${c.auxData.frameId}`,c.id);
   } else if(e.method==="Runtime.executionContextDestroyed") {
-    for(const [frame,id] of contexts)if(id===e.params.executionContextId)contexts.delete(frame);
+    for(const [frame,id] of contexts)if(frame.startsWith(`${e.sessionId}:`)&&id===e.params.executionContextId)contexts.delete(frame);
+  } else if(e.method==="Runtime.executionContextsCleared") {
+    for(const frame of contexts.keys())if(frame.startsWith(`${e.sessionId}:`))contexts.delete(frame);
+  } else if(e.method==="Page.javascriptDialogOpening") {
+    dialogs.push({type:e.params.type});
+    intercept("Page.handleJavaScriptDialog",{accept:true},e.sessionId);
   } else if(e.method==="Runtime.exceptionThrown") errors.push(e.params.exceptionDetails.exception?.description??e.params.exceptionDetails.text);
   else if(e.method==="Fetch.requestPaused") {
     const {requestId,request} = e.params;
@@ -45,6 +53,7 @@ ws.onmessage = ({data}) => {
       intercept("Fetch.fulfillRequest",{requestId,responseCode:200,responseHeaders:[{name:"Content-Type",value:"image/png"}],body:png},e.sessionId);
     } else {
       const allowed=[origin,childOrigin].some(value=>request.url.startsWith(`${value}/`));
+      if (!allowed) errors.push("Unexpected non-loopback request blocked");
       intercept(allowed?"Fetch.continueRequest":"Fetch.failRequest",
         allowed?{requestId}:{requestId,errorReason:"BlockedByClient"},e.sessionId);
     }
@@ -62,7 +71,7 @@ async function evaluate(expression, contextId) {
 async function child(expr) {
   const tree=await page("Page.getFrameTree");
   const frame=tree.frameTree.childFrames?.find(f=>f.frame.url.startsWith(childOrigin));
-  const contextId=contexts.get(frame?.frame.id);
+  const contextId=contexts.get(`${sessionId}:${frame?.frame.id}`);
   assert.ok(contextId,"owned child execution context exists");
   return evaluate(`(()=>{const w=window,d=document;return (${expr})})()`,contextId);
 }
@@ -90,6 +99,8 @@ try {
     await send("Page.enable",{},peerSession);
     await send("Runtime.enable",{},peerSession);
     await send("Fetch.enable",{patterns:[{urlPattern:"*"}]},peerSession);
+    await send("Emulation.setFocusEmulationEnabled",{enabled:true},peerSession);
+    await send("Emulation.setEmulatedMedia",{features:[{name:"prefers-reduced-motion",value:"reduce"}]},peerSession);
     const peerEval = async expression => {
       const r = await send("Runtime.evaluate",{expression,returnByValue:true,awaitPromise:true},peerSession);
       if(r.exceptionDetails)throw Error("Synthetic peer failed");
@@ -106,19 +117,107 @@ try {
       }
       throw Error("Synthetic peer navigation readiness timeout");
     };
-    for (const natural of red ? [false] : [false,true]) for (const width of [1280,390]) for (const consumer of ["owner","admin"]) {
+    for (const natural of naturalOnly ? [true] : red || forcedOnly ? [false] : [false,true]) for (const width of [1280,390]) for (const consumer of ["owner","admin"]) {
       await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
       if (natural) {
+        const started = performance.now();
+        const mainSession = sessionId;
+        const selector = consumer === "owner" ? "#ua-name" : "#definition-name";
+        const draft = "Cross-tab synthetic unsaved draft";
         await page("Page.navigate",{url:"about:blank"});
-        const peerUrl = `${base}?native=1&cross=1&natural=1&case=${width}-${consumer}`;
+        const peerUrl = `${base}?native=1&cross=1&natural=1&consumer=${consumer}&case=${width}-${consumer}`;
         await navigatePeer(peerUrl);
+        await page("Page.navigate",{url:`${base}?native=1&cross=1&natural=1&persist=1&consumer=${consumer}`});
+        const prepared = new Map();
+        try {
+          // Equal expiry deadlines race legitimately. Prepare both real editors;
+          // identify the storage receiver from observed production refresh calls.
+          for (const actor of [peerSession,mainSession]) {
+            sessionId = actor;
+            await page("Emulation.setDeviceMetricsOverride",{width,height:900,deviceScaleFactor:1,mobile:false});
+            await waitChild(`!!d.querySelector("${selector}")`);
+            await child("Promise.all(d.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))");
+            const point = await child(`(w.saved=d.querySelector("${selector}"),w.oldSignal=w.renewalFixture.signal(),w.saved.scrollIntoView(),({x:w.saved.getBoundingClientRect().x+15,y:w.saved.getBoundingClientRect().y+15}))`);
+            await page("Input.dispatchMouseEvent",{type:"mousePressed",button:"left",clickCount:1,...point});
+            await page("Input.dispatchMouseEvent",{type:"mouseReleased",button:"left",clickCount:1,...point});
+            await page("Input.dispatchKeyEvent",{type:"keyDown",key:"a",code:"KeyA",modifiers:2,windowsVirtualKeyCode:65});
+            await page("Input.dispatchKeyEvent",{type:"keyUp",key:"a",code:"KeyA",modifiers:2,windowsVirtualKeyCode:65});
+            await page("Input.insertText",{text:draft});
+            await child("w.saved.setSelectionRange(1,4)");
+            await evaluate("independent.holdInfo()");
+            const state = await evaluate("independent.state()");
+            assert.equal(state.rotation,0,"Both editors must be ready before the natural deadline");
+            assert.equal(await child("w.saved.value"),draft);
+            assert.equal(await child("d.activeElement===w.saved"),true);
+            prepared.set(actor,state);
+          }
+          const until = Date.now()+10000;
+          let main, peer;
+          do {
+            sessionId = mainSession;
+            main = await evaluate("independent.state()");
+            peer = await peerEval("independent.state()");
+            if (main.pendingInfo>0 || peer.pendingInfo>0) break;
+            await new Promise(resolve=>setTimeout(resolve,20));
+          } while(Date.now()<until);
+          assert.ok(main.pendingInfo>0 || peer.pendingInfo>0,"A natural storage receiver must enter held proof");
+          const receiverIsMain = main.pendingInfo>0;
+          const receiver = receiverIsMain ? main : peer;
+          const initiator = receiverIsMain ? peer : main;
+          assert.equal(initiator.rotation,1,"The other tab's real refresh timer initiated renewal");
+          assert.ok(receiver.rotation===0 || receiver.rotation===1,"Equal deadlines may initiate both real timers");
+          sessionId = receiverIsMain ? mainSession : peerSession;
+          const prior = prepared.get(sessionId);
+          await waitChild(`w.renewalFixture.state().version>${prior.version}`);
+          const suspended = await child(`({connected:w.saved.isConnected,authenticated:w.renewalFixture.state().authenticated,
+            oldSignalAborted:w.oldSignal.aborted,visible:!!d.querySelector("${selector}"),writes:w.renewalFixture.state().writes})`);
+          assert.equal(suspended.authenticated,false);
+          assert.equal(suspended.visible,false);
+          assert.equal(suspended.connected,false);
+          assert.equal(suspended.oldSignalAborted,true);
+          assert.equal(await child("w.renewalFixture.pendingWrite()"),true);
+          const pendingImage = await page("Page.captureScreenshot",{format:"png",fromSurface:true,captureBeyondViewport:false});
+          writeFileSync(`natural-${consumer}-${width}-pending.png`,Buffer.from(pendingImage.data,"base64"));
+          await evaluate("independent.releaseInfo()");
+          await waitChild("w.renewalFixture.state().authenticated");
+          await child("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+          const resumed = await child(`({same:w.saved===d.querySelector("${selector}"),draft:d.querySelector("${selector}")?.value,
+            focused:d.activeElement===w.saved,selection:w.saved.selectionEnd-w.saved.selectionStart,writes:w.renewalFixture.state().writes,
+            modal:d.querySelector(".definition-drawer")?.matches(":modal")})`);
+          if (red) {
+            assert.equal(resumed.same,false,"Deployed baseline must lose the original editor");
+            assert.notEqual(resumed.draft,draft,"Deployed baseline must lose the draft");
+          } else {
+            assert.equal(resumed.same,true);
+            assert.equal(resumed.draft,draft);
+            assert.equal(resumed.focused,true);
+            assert.equal(resumed.selection,3);
+            if(consumer==="admin")assert.equal(resumed.modal,true);
+          }
+          assert.equal(resumed.writes,0);
+          const state = await evaluate("independent.state()");
+          assert.ok(state.nativeStorageEvents>0);
+          results.push({width,consumer,natural:true,pass:!red,expectedBaselineLoss:red,receiver:receiverIsMain?"main":"peer",
+            scenario:"same-clock real timers/native storage/held proof/mounted editors",
+            initiatorRotation:initiator.rotation,receiverRotation:receiver.rotation,
+            suspended,resumed,nativeEvents:state.nativeStorageEvents,timeline:state.authTimeline,
+            durationMs:Math.round(performance.now()-started)});
+          const image = await page("Page.captureScreenshot",{format:"png",fromSurface:true,captureBeyondViewport:false});
+          writeFileSync(`natural-${consumer}-${width}-resumed.png`,Buffer.from(image.data,"base64"));
+        } catch(error) {
+          const observed = await child(`({same:w.saved===d.querySelector("${selector}"),connected:w.saved?.isConnected,
+            authenticated:w.renewalFixture?.state().authenticated,draft:d.querySelector("${selector}")?.value})`).catch(()=>null);
+          sessionId = mainSession;
+          results.push({width,consumer,natural:true,pass:false,phase:"natural race",
+            observed,receiver:await evaluate("independent.state()"),peer:await peerEval("independent.state()"),error:String(error)});
+          throw error;
+        } finally { sessionId=mainSession; }
+        continue;
       }
-      await page("Page.navigate",{url:`${base}?native=1&cross=1&consumer=${consumer}${natural?"&natural=1&persist=1":""}`});
+      await page("Page.navigate",{url:`${base}?native=1&cross=1&consumer=${consumer}`});
       const selector = consumer === "owner" ? "#ua-name" : "#definition-name";
       await waitChild(`!!d.querySelector("${selector}")`);
-      if (!natural) {
-        await navigatePeer(`${base}?persist=1&native=1&cross=1&case=forced-${width}-${consumer}`);
-      }
+      await navigatePeer(`${base}?persist=1&native=1&cross=1&case=forced-${width}-${consumer}`);
       await child("Promise.all(d.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))");
       const point = await child(`(w.saved=d.querySelector("${selector}"),w.oldSignal=w.renewalFixture.signal(),w.saved.scrollIntoView(),({x:w.saved.getBoundingClientRect().x+15,y:w.saved.getBoundingClientRect().y+15}))`);
       await page("Input.dispatchMouseEvent",{type:"mousePressed",button:"left",clickCount:1,...point});
@@ -129,16 +228,12 @@ try {
       await child("w.saved.setSelectionRange(1,4)");
       await evaluate("independent.holdInfo()");
       const prior = await evaluate("independent.state()");
-      if (!natural) await peerEval("independent.renew()");
+      await peerEval("independent.renew()");
       try { await wait("independent.state().pendingInfo>0"); }
       catch (error) {
         results.push({ width, consumer, natural, pass: false, phase: "pending readiness",
           receiver: await evaluate("independent.state()"), peer: await peerEval("independent.state()") });
         throw error;
-      }
-      if (natural) {
-        assert.equal(await peerEval("independent.state().rotation"),1,"Peer's real refresh timer initiated renewal");
-        assert.equal(await evaluate("independent.state().rotation"),0,"Receiver did not initiate renewal");
       }
       await waitChild(`w.renewalFixture.state().version>${prior.version}`);
       const suspended = await child(`({connected:w.saved.isConnected,authenticated:w.renewalFixture.state().authenticated,
@@ -170,7 +265,7 @@ try {
     }
     if (!red) assert.ok(results.every(r=>r.pass),"Cross-tab revalidation must preserve original editor/draft/focus");
     else assert.ok(results.every(r=>!r.pass),"Baseline must reproduce the real cross-tab loss");
-    if (!red) for (const consumer of ["owner","admin"]) for (const scenario of [
+    if (!red && !naturalOnly) for (const consumer of ["owner","admin"]) for (const scenario of [
       "account-equal-claims","claims-change","revoked","logout","401","failure","timeout","late-success","late-error","busy","route",
     ]) {
       await page("Emulation.setDeviceMetricsOverride",{width:1280,height:900,deviceScaleFactor:1,mobile:false});
@@ -403,7 +498,7 @@ try {
   const cleanup={ownedClosed:!after.includes(targetId),existingPreserved:before.every(id=>after.includes(id)),
     missingExistingCount:before.filter(id=>!after.includes(id)).length,
     disposalScope:"only the context ID returned by this script's createBrowserContext"};
-  writeFileSync(process.env.RESULT_PATH ?? "independent-browser.json",JSON.stringify({results,errors,cleanup},null,2));
+  writeFileSync(process.env.RESULT_PATH ?? "independent-browser.json",JSON.stringify({results,errors,dialogs,cleanup},null,2));
   ws.close();assert.ok(cleanup.ownedClosed && cleanup.existingPreserved);
 }
 if(failure)throw failure;
