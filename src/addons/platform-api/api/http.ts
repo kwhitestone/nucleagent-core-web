@@ -36,7 +36,7 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     config.headers.Authorization = token;
   }
   if (isInShell()) {
-    const scope = token ? sessionRequestSignal() : AbortSignal.abort();
+    const scope = token ? sessionRequestSignal(config.sessionBoundary) : AbortSignal.abort();
     config.signal = config.signal
       ? AbortSignal.any([config.signal as AbortSignal, scope])
       : scope;

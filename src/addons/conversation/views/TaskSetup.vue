@@ -23,9 +23,8 @@ import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vu
 import ModelPicker from "@/addons/conversation/components/ModelPicker.vue";
 import ExecutionBackendPicker from "@/addons/conversation/components/ExecutionBackendPicker.vue";
 import DevicePicker from "@/addons/conversation/components/DevicePicker.vue";
-import SkillPicker from "@/addons/conversation/components/SkillPicker.vue";
-import ToolPicker from "@/addons/conversation/components/ToolPicker.vue";
-import { effectiveToolIds, listToolCatalog, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
+import BindingPickers from "@/addons/conversation/components/BindingPickers.vue";
+import { useBindingSelection } from "@/addons/conversation/composables/useBindingSelection";
 import { useNarrow } from "@/composables/useNarrow";
 import { clearDraft, readDraft, saveDraft, type TaskDraft } from "@/addons/conversation/composables/taskDraft";
 import type {
@@ -99,13 +98,17 @@ function applyEntry(): void {
     const values = [route.query.skillIds].flat().flatMap((value) => (value ?? "").split(","));
     skillIds.value = [...new Set(values.filter((value) => /^\d+$/.test(value)).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
   }
+  if (route.query.toolIds !== undefined) {
+    const values = [route.query.toolIds].flat().flatMap((value) => (value ?? "").split(","));
+    toolIds.value = [...new Set(values.filter((value) => /^\d+$/.test(value)).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  }
 }
 
 watch(() => route.query, applyEntry);
 
 onMounted(async () => {
   const entryQuery = route.query;
-  const draft = !route.query.template && !route.query.input && route.query.skillIds === undefined && route.query.device === undefined && route.query.backend === undefined ? readDraft(localStorage) : null;
+  const draft = !route.query.template && !route.query.input && route.query.skillIds === undefined && route.query.toolIds === undefined && route.query.device === undefined && route.query.backend === undefined ? readDraft(localStorage) : null;
   applyEntry(); // before the template request too, so the handed-over text never flickers
   try {
     const tpls = await listAgentTemplates();
@@ -134,19 +137,7 @@ watch(targetDeviceId, () => { backendCompatible.value = false; attachments.value
  * 创建时预选的技能 ID。空数组 = 不下发 skillIds，后端走自动语义匹配兜底
  * （见 types.ts 的 CreateConversationRequest.skillIds 注释）。
  */
-const skillIds = ref<number[]>([]);
-/** G-TASK-TOOL-PICK-1900: extra tools; empty = field omitted (current behavior). */
-const toolIds = ref<number[]>([]);
-const tools = ref<ToolCatalogItem[]>([]);
-const toolsLoading = ref(false);
-const toolsFailed = ref(false);
-async function loadTools(): Promise<void> {
-  toolsLoading.value = true; toolsFailed.value = false;
-  try { tools.value = await listToolCatalog(); }
-  catch { toolsFailed.value = true; toast.warning(t("common.toolLoadFailed")); }
-  finally { toolsLoading.value = false; }
-}
-onMounted(loadTools);
+const { skillIds, toolIds, tools, toolsLoading, toolsFailed, loadTools, createBindings } = useBindingSelection();
 
 const form = reactive({
   name: "",
@@ -227,7 +218,6 @@ async function launch(): Promise<void> {
   try {
     const input = form.desc.trim();
     const mode: ConversationMode = "a2a_agent";
-    const pickedTools = effectiveToolIds(toolIds.value, tools.value, skillIds.value);
     const created = await store.create({
       mode,
       input,
@@ -243,9 +233,7 @@ async function launch(): Promise<void> {
       executionBackend: executionBackend.value ?? undefined,
       targetDeviceId: targetDeviceId.value || undefined,
       // 没选技能时必须整个字段缺省，不能传空数组：后端据此决定是否走自动匹配。
-      skillIds: skillIds.value.length > 0 ? skillIds.value : undefined,
-      // Same rule: no pick = no field. Tools a picked skill already brings are dropped (server: covered = redundant).
-      toolIds: pickedTools.length > 0 ? pickedTools : undefined,
+      ...createBindings.value,
     });
     clearDraft(localStorage);
     // replace: Back from the conversation returns to the task desk, not the form (board §12 ⑤).
@@ -318,8 +306,8 @@ async function launch(): Promise<void> {
             row
             @validation-change="(value) => (backendCompatible = value.allowed)"
           />
-          <SkillPicker v-model="skillIds" :disabled="submitting" row />
-          <ToolPicker v-model="toolIds" :tools="tools" :skill-ids="skillIds" :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" row @retry="loadTools" />
+          <BindingPickers v-model:skill-ids="skillIds" v-model:tool-ids="toolIds" :tools="tools"
+            :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" row @retry="loadTools" />
         </div>
 
         <p class="task-m-glabel">{{ t('common.attachment') }}</p>
@@ -402,14 +390,9 @@ async function launch(): Promise<void> {
           />
         </div>
 
-        <div class="form-group">
-          <label>{{ t('common.skill') }}</label>
-          <SkillPicker v-model="skillIds" :disabled="submitting" />
-        </div>
-
         <div class="form-group" data-testid="task-tools">
-          <label>{{ t('common.tool') }}</label>
-          <ToolPicker v-model="toolIds" :tools="tools" :skill-ids="skillIds" :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" @retry="loadTools" />
+          <BindingPickers v-model:skill-ids="skillIds" v-model:tool-ids="toolIds" :tools="tools"
+            :loading="toolsLoading" :failed="toolsFailed" :disabled="submitting" @retry="loadTools" />
         </div>
 
         <div class="form-group">

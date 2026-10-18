@@ -16,6 +16,7 @@ let notifyAuthRequired:
 // reset independently and legitimately restart from version zero.
 let currentVersion = 0;
 let requestScope = new AbortController();
+let businessScope = new AbortController();
 let principalId: string | null = null;
 let requestGeneration = 0;
 let businessBoundaryGeneration = 0;
@@ -41,8 +42,14 @@ function principal(value: unknown): string | null {
 }
 
 /** Every trusted session owns its in-flight HTTP requests. */
-export function sessionRequestSignal(): AbortSignal {
-  return requestScope.signal;
+export function sessionRequestSignal(boundary?: "business"): AbortSignal {
+  return boundary === "business" ? businessScope.signal : requestScope.signal;
+}
+
+function retireBusinessRequests(): void {
+  businessBoundaryGeneration++;
+  businessScope.abort();
+  businessScope = new AbortController();
 }
 
 function retireRequests(): void {
@@ -131,7 +138,7 @@ export function applyShellSession(
   if (incomingVersion > previousVersion || !token) rejectedVersion = null;
   lastNotification = "";
   if (changed) {
-    if (businessBoundaryChanged) businessBoundaryGeneration++;
+    if (businessBoundaryChanged) retireBusinessRequests();
     retireRequests();
     emitSessionChange(Boolean(token), businessBoundaryChanged);
   }
@@ -145,7 +152,7 @@ export function handleEmbeddedUnauthorized(reason: "missing" | "rejected"): void
     clearAccessToken();
     principalId = null;
     replaceEmbeddedPermissions([]);
-    businessBoundaryGeneration++;
+    retireBusinessRequests();
     retireRequests();
     rejectedVersion = version;
     emitSessionChange(false);
