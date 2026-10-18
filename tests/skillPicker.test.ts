@@ -5,6 +5,7 @@ import * as Vue from "vue";
 import { createRenderer, h, nextTick, ref, ssrContextKey, type Component } from "vue";
 import { compileScript, compileTemplate, parse } from "vue/compiler-sfc";
 import { createI18n } from "vue-i18n";
+import { routerKey, routeLocationKey } from "vue-router";
 import { createServer, type ViteDevServer } from "vite";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import en from "../src/i18n/en.ts";
@@ -84,6 +85,7 @@ const detach = (child: N) => {
 };
 const renderer = createRenderer<N, N>({
   createElement: (tag) => Object.assign(node(tag), {
+    style: {},
     addEventListener(this: N, event: string, fn: (e: unknown) => void) { this.on[event] = fn; },
     removeEventListener() {},
     querySelector: () => null,
@@ -129,13 +131,29 @@ async function clientComponent(path: string, children: Record<string, Component>
 let vite: ViteDevServer;
 let sheet: Component;
 let picker: Component;
+let toolPicker: Component;
+let bindingPickers: Component;
+let editor: Component;
+let conversation: Component;
+let observePending = (_value: boolean) => {};
+let streamMounts = 0;
+let streamStops = 0;
+let liveStatus = (_status: string) => {};
+let capabilities: { send: boolean; stop: boolean };
+const media = new EventTarget() as EventTarget & { matches: boolean };
+media.matches = false;
+function resize(narrow: boolean) {
+  media.matches = narrow;
+  media.dispatchEvent(Object.assign(new Event("change"), { matches: narrow }));
+}
 let unregister: () => void;
-let respond: () => Promise<unknown> = async () => ({ code: 0, data: [] });
+let respond: (config?: any) => Promise<unknown> = async () => ({ code: 0, data: [] });
+let fixtureRevision = 0;
 
 before(async () => {
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => null, setItem() {}, removeItem() {} } });
   const el = () => ({ style: {}, classList: { add() {}, remove() {} }, appendChild() {}, remove() {}, addEventListener() {}, setAttribute() {} });
-  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null, createElement: el, body: el() } });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { activeElement: null, documentElement: {}, createElement: el, body: el() } });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] },
     server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   await initializeRuntimeFixture(vite);
@@ -143,12 +161,50 @@ before(async () => {
   const { platformRuntime } = await vite.ssrLoadModule("/src/addons/platform-api/runtime.ts");
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime(platformRuntime);
-  http.defaults.adapter = async (config: unknown) => ({ config, data: await respond(), headers: {}, status: 200, statusText: "OK" });
+  http.defaults.adapter = async (config: any) => {
+    const data: any = await respond(config);
+    // Old presentation fixtures do not model concurrency; protocol tests below
+    // supply their own principal/revision and are never rewritten here.
+    if (config.url.includes("/bindings") && data?.data && !data.data.principal) {
+      data.data = { ...data.data, principal: "71", revision: String(++fixtureRevision) };
+    }
+    return { config, data, headers: {}, status: 200, statusText: "OK" };
+  };
   sheet = await clientComponent("/src/addons/conversation/components/OptionSheet.vue");
   picker = await clientComponent("/src/addons/conversation/components/SkillPicker.vue", { OptionSheet: sheet });
+  toolPicker = await clientComponent("/src/addons/conversation/components/ToolPicker.vue", { OptionSheet: sheet });
+  bindingPickers = await clientComponent("/src/addons/conversation/components/BindingPickers.vue", { SkillPicker: picker, ToolPicker: toolPicker });
+  editor = await clientComponent("/src/addons/conversation/components/SessionBindingsEditor.vue", { BindingPickers: bindingPickers });
   const win = new EventTarget();
   Object.defineProperty(win, "parent", { value: win });
+  Object.defineProperty(win, "matchMedia", { value: () => media });
   Object.defineProperty(globalThis, "window", { configurable: true, value: win });
+  const empty = { render: () => null };
+  const streamProbe = Vue.defineComponent({
+    props: ["capabilities"],
+    emits: ["status-change"],
+    setup(props, { slots, emit }) {
+      Vue.onMounted(() => { streamMounts++; });
+      Vue.onBeforeUnmount(() => { streamStops++; });
+      liveStatus = (status) => emit("status-change", status);
+      Vue.watchEffect(() => {
+        capabilities = props.capabilities;
+        observePending(!capabilities.send);
+      });
+      return () => h("div", { class: "stream-probe" }, slots["composer-toolbar-leading"]?.({ status: "idle" }));
+    },
+  });
+  const backend = {
+    emits: ["validation-change"],
+    setup(_props: unknown, { emit }: any) {
+      Vue.onMounted(() => emit("validation-change", { allowed: true }));
+      return () => null;
+    },
+  };
+  conversation = await clientComponent("/src/addons/conversation/views/Conversation.vue", {
+    SessionBindingsEditor: editor, TaskConversation: streamProbe, ModelPicker: empty,
+    ExecutionBackendPicker: backend, ChatGenBar: empty,
+  });
 });
 
 after(async () => {
@@ -163,6 +219,8 @@ function mount(component: Component, props: () => Record<string, unknown>, local
   const app = renderer.createApp({ render: () => h(component, props()) });
   app.use(createI18n({ legacy: false, locale, messages: { en, zh } }));
   app.provide(ssrContextKey, {});
+  app.provide(routerKey, { replace: async () => {} } as any);
+  app.provide(routeLocationKey, { query: {} } as any);
   app.mount(root);
   return { root, app };
 }
@@ -275,4 +333,611 @@ test("skill picker load failure shows a retryable error, then recovers", async (
     click(all(body, "osheet-more")[0]); await flush();
     assert.equal(all(body, "osheet-row").length, 1);
   } finally { app.unmount(); }
+});
+
+for (const kind of ["skill", "tool"] as const) {
+  test(`${kind} picker caps additions at 50 but permits removal`, async () => {
+    respond = async () => ({ data: Array.from({ length: 51 }, (_, i) => skill(i + 1)) });
+    const selected = ref(Array.from({ length: 50 }, (_, i) => i + 1));
+    const tools = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, name: `t${i + 1}` }));
+    const { root, app } = mount(kind === "skill" ? picker : toolPicker, () => ({
+      modelValue: selected.value, ...(kind === "tool" ? { tools } : {}), "onUpdate:modelValue": (ids: number[]) => { selected.value = ids; },
+    }));
+    try {
+      await flush();
+      assert.match(textOf(root), /Maximum 50/);
+      click(all(root, `${kind}-toggle`)[0]); await nextTick();
+      click(all(body, "osheet-more")[0]); await nextTick();
+      assert.equal(all(body, "osheet-row").at(-1)?.props.disabled, true);
+      assert.equal(all(body, "osheet-row")[0].props.disabled, false);
+      click(all(root, `${kind}-chip-remove`)[0]); await nextTick();
+      assert.equal(selected.value.length, 49);
+      assert.equal(all(body, "osheet-row").at(-1)?.props.disabled, false);
+    } finally { app.unmount(); }
+  });
+}
+
+const sessionResponse = (config: any) => /\/conversation\/\d+$/.test(config.url)
+  ? { data: { id: Number(config.url.split("/").at(-1)), title: "synthetic", status: "completed", mode: "a2a_agent", providerId: 1, model: "synthetic", executionBackend: "codex" } }
+  : config.url.includes("/messages") || config.url.includes("/generations")
+  ? { data: [] }
+  : config.url.endsWith("/bindings/sync")
+  ? { data: { skillIds: [1], toolIds: [2], editable: true } }
+  : { data: config.url.endsWith("/catalog") ? [{ id: 2, name: "tool-2" }] : [skill(1), skill(3)] };
+
+test("session editor reads chips, applies [] to clear, then uses server readback", async () => {
+  const writes: any[] = [];
+  const pending: boolean[] = [];
+  respond = async (config) => {
+    if (config.method === "put") {
+      writes.push(JSON.parse(config.data));
+      return { data: { ...writes.at(-1), editable: true } };
+    }
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11", onPending: (v: boolean) => pending.push(v) }));
+  try {
+    await flush();
+    assert.equal(all(root, "skill-chip").length, 1);
+    assert.equal(all(root, "tool-chip").length, 1);
+    click(all(root, "skill-chip-remove")[0]);
+    click(all(root, "tool-chip-remove")[0]); await nextTick();
+    assert.equal(pending.at(-1), true);
+    const actions = all(root, "conversation-settings-actions")[0];
+    click(actions.children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.deepEqual(writes.map(({ revision, ...selection }) => selection), [{ skillIds: [], toolIds: [] }]);
+    assert.match(writes[0].revision, /^[0-9]+$/);
+    assert.equal(pending.at(-1), false);
+    assert.equal(all(root, "skill-chip").length + all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session unknown save keeps draft blocked; explicit sync restores persisted selection", async () => {
+  respond = async (config) => {
+    if (config.method === "put") throw new Error("busy");
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.match(textOf(root), /Save outcome unknown/);
+    assert.equal(all(root, "skill-chip").length, 0);
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-sync")!);
+    await flush();
+    assert.equal(all(root, "skill-chip").length, 1);
+    assert.doesNotMatch(textOf(root), /Save outcome unknown/);
+  } finally { app.unmount(); }
+});
+
+test("session id change retires an earlier read; ineligible session has no controls", async () => {
+  let resolveOld!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.url.includes("/11/bindings")) return new Promise((resolve) => { resolveOld = resolve; });
+    if (config.url.endsWith("/bindings/sync")) return { data: { skillIds: [], toolIds: [], editable: false } };
+    return sessionResponse(config);
+  };
+  const id = ref("11");
+  const { root, app } = mount(editor, () => ({ id: id.value }));
+  try {
+    await flush();
+    id.value = "12"; await flush();
+    resolveOld({ data: { skillIds: [1], toolIds: [2], editable: true } }); await flush();
+    assert.equal(all(root, "binding-pickers").length, 0);
+    assert.equal(all(root, "skill-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session id change retires a pending save", async () => {
+  let resolveSave!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { resolveSave = resolve; });
+    if (config.url.includes("/12/bindings")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+    return sessionResponse(config);
+  };
+  const id = ref("11");
+  const { root, app } = mount(editor, () => ({ id: id.value }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    id.value = "12"; await flush();
+    resolveSave({ data: { skillIds: [], toolIds: [2], editable: true } }); await flush();
+    assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+    assert.equal(all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session editor shows 409 and keeps the draft for a later retry", async () => {
+  respond = async (config) => {
+    if (config.method === "put") throw {
+      isAxiosError: true, config, message: "busy",
+      response: { status: 409, data: { detail: "conversation_busy" } },
+    };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.match(textOf(root), /conversation is busy/);
+    assert.equal(all(root, "skill-chip").length, 0);
+    assert.equal(all(root, "tool-chip").length, 1);
+  } finally { app.unmount(); }
+});
+
+test("session editor drops tools covered by the newly selected skill on save", async () => {
+  const writes: any[] = [];
+  respond = async (config) => {
+    if (config.method === "put") {
+      writes.push(JSON.parse(config.data));
+      return { data: { ...writes.at(-1), editable: true } };
+    }
+    if (config.url.endsWith("/catalog")) return { data: [{ id: 2, name: "tool-2", skillIds: [3] }] };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-toggle")[0]); await nextTick();
+    click(all(body, "osheet-row").find((n) => textOf(n).includes("skill-3"))!); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.deepEqual(writes.map(({ revision, ...selection }) => selection), [{ skillIds: [1, 3], toolIds: [] }]);
+    assert.match(writes[0].revision, /^[0-9]+$/);
+    assert.equal(all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+test("session editor disables changing and applying selections during a turn", async () => {
+  let writes = 0;
+  respond = async (config) => {
+    if (config.method === "put") writes++;
+    return sessionResponse(config);
+  };
+  const disabled = ref(false);
+  const { root, app } = mount(editor, () => ({ id: "11", disabled: disabled.value }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    disabled.value = true; await nextTick();
+    assert.equal(all(root, "skill-toggle")[0].props.disabled, true);
+    assert.equal(all(root, "tool-toggle")[0].props.disabled, true);
+    const save = all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!;
+    assert.equal(save.props.disabled, true);
+    click(save); await flush();
+    assert.equal(writes, 0, "handler also guards programmatic submission");
+  } finally { app.unmount(); }
+});
+
+test("account switch clears old chips and ignores the former account's pending save", async () => {
+  let resolveSave!: (value: unknown) => void;
+  let switched = false;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { resolveSave = resolve; });
+    if (switched && config.url.endsWith("/bindings/sync")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+    return sessionResponse(config);
+  };
+  const { root, app } = mount(editor, () => ({ id: "11" }));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: false } }));
+    await nextTick();
+    assert.equal(all(root, "binding-pickers").length, 0);
+    switched = true;
+    window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: true } }));
+    await flush();
+    resolveSave({ data: { skillIds: [1], toolIds: [2], editable: true } }); await flush();
+    assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+    assert.equal(all(root, "tool-chip").length, 0);
+  } finally { app.unmount(); }
+});
+
+// Mount the real page setup/template and editor; only unrelated controls and
+// the stream view are probes. Breakpoints use the real useNarrow media listener.
+function responsiveEditor(narrow: ReturnType<typeof ref<boolean>>, pending: (value: boolean) => void, id = ref("11")) {
+  resize(narrow.value);
+  observePending = pending;
+  streamMounts = 0;
+  streamStops = 0;
+  return {
+    setup() {
+      Vue.watch(narrow, resize, { flush: "sync" });
+      return () => h(conversation, { id: id.value });
+    },
+  };
+}
+
+test("INDEPENDENT: breakpoint change must preserve unsaved selection", async () => {
+  respond = async (config) => sessionResponse(config);
+  const narrow = ref(false);
+  const { root, app } = mount(responsiveEditor(narrow, () => {}), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    assert.equal(all(root, "skill-chip").length, 0);
+    narrow.value = true; await flush();
+    assert.equal(all(root, "skill-chip").length, 0, "breakpoint remount discarded the user's draft");
+  } finally { app.unmount(); }
+});
+
+for (const change of ["add", "remove", "clear"] as const) {
+  test(`SAFETY: real Conversation retains ${change} draft through repeated breakpoints`, async () => {
+    let reads = 0;
+    respond = async (config) => {
+      if (config.url.endsWith("/bindings/sync")) reads++;
+      return sessionResponse(config);
+    };
+    const narrow = ref(false);
+    let pending = false;
+    const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+    try {
+      await flush();
+      if (change === "add") {
+        click(all(root, "skill-toggle")[0]); await nextTick();
+        click(all(body, "osheet-row").find((n) => textOf(n).includes("skill-3"))!); await nextTick();
+      } else {
+        click(all(root, "skill-chip-remove")[0]); await nextTick();
+        if (change === "clear") { click(all(root, "tool-chip-remove")[0]); await nextTick(); }
+      }
+      const skills = all(root, "skill-chip-name").map(textOf);
+      const tools = all(root, "tool-chip-name").map(textOf);
+      for (let i = 0; i < 6; i++) {
+        narrow.value = !narrow.value; await flush();
+        assert.deepEqual(all(root, "skill-chip-name").map(textOf), skills);
+        assert.deepEqual(all(root, "tool-chip-name").map(textOf), tools);
+        assert.equal(all(root, "session-bindings").length, 1);
+        assert.equal(pending, true);
+        assert.equal(capabilities.stop, true);
+      }
+      assert.equal(reads, 1, "layout changes must not reload bindings");
+      assert.equal(streamMounts, 1);
+      assert.equal(streamStops, 0);
+    } finally { app.unmount(); }
+  });
+}
+
+for (const result of ["success", "failure"] as const) {
+  test(`SAFETY: real Conversation keeps PUT busy across breakpoints and handles ${result}`, async () => {
+    let finish!: (value: unknown) => void;
+    let reject!: (reason: Error) => void;
+    respond = async (config) => config.method === "put"
+      ? new Promise((resolve, fail) => { finish = resolve; reject = fail; })
+      : sessionResponse(config);
+    const narrow = ref(false);
+    let pending = false;
+    const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+    try {
+      await flush();
+      click(all(root, "skill-chip-remove")[0]); await nextTick();
+      click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+      await flush();
+      for (let i = 0; i < 4; i++) {
+        narrow.value = !narrow.value; await flush();
+        assert.equal(pending, true);
+        const control = narrow.value ? all(root, "picker-row").find((n) => n.props["data-testid"] === "row-skills")! : all(root, "skill-toggle")[0];
+        assert.equal(control.props.disabled, true);
+      }
+      if (result === "success") finish({ data: { skillIds: [], toolIds: [2], editable: true } });
+      else reject(new Error("synthetic failure"));
+      await flush();
+      assert.equal(all(root, "skill-chip").length, 0);
+      assert.equal(pending, result === "failure");
+      if (result === "failure") assert.match(textOf(root), /Save outcome unknown/);
+      assert.equal(streamMounts, 1);
+      assert.equal(streamStops, 0);
+    } finally { app.unmount(); }
+  });
+}
+
+for (const scope of ["conversation", "account"] as const) {
+  for (const result of ["success", "failure"] as const) {
+    test(`SAFETY: ${scope} return fences retired PUT before its ${result} transport settles`, async () => {
+      let finish!: (value: unknown) => void;
+      let reject!: (reason: Error) => void;
+      let stored = { skillIds: [1], toolIds: [2], editable: true };
+      let reads = 0;
+      respond = async (config) => {
+        if (config.method === "put") return new Promise((resolve, fail) => { finish = resolve; reject = fail; });
+        if (config.url.endsWith("/11/bindings/sync")) { reads++; return { data: stored }; }
+        if (config.url.endsWith("/12/bindings/sync")) return { data: { skillIds: [3], toolIds: [], editable: true } };
+        return sessionResponse(config);
+      };
+      const id = ref("11"), narrow = ref(false);
+      let pending = false;
+      const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }, id), () => ({}));
+      try {
+        await flush();
+        click(all(root, "skill-chip-remove")[0]); await nextTick();
+        click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+        await flush();
+        if (scope === "conversation") {
+          id.value = "12"; await flush();
+          assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-3"]);
+          id.value = "11";
+        } else {
+          window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: false } }));
+          await flush();
+          assert.equal(all(root, "skill-chip").length, 0);
+          assert.equal(pending, true);
+          window.dispatchEvent(new CustomEvent("nucleagent:session-change", { detail: { authenticated: true } }));
+        }
+        await flush();
+        narrow.value = true; await flush();
+        assert.equal(pending, false);
+        assert.equal(reads, 2, "return must complete a new sync fence, not wait for transport");
+        if (result === "success") {
+          finish({ data: { skillIds: [], toolIds: [2], editable: true } });
+        } else reject(new Error("synthetic failure"));
+        await flush();
+        assert.equal(reads, 2);
+        assert.equal(pending, false);
+        assert.deepEqual(all(root, "skill-chip-name").map(textOf), ["skill-1"], "retired response cannot replace the fenced snapshot");
+      } finally { app.unmount(); }
+    });
+  }
+}
+
+test("SAFETY: breakpoint changes during a live turn keep the stream mounted and stop enabled", async () => {
+  let writes = 0;
+  respond = async (config) => {
+    if (config.method === "put") writes++;
+    return sessionResponse(config);
+  };
+  const narrow = ref(false);
+  const { root, app } = mount(responsiveEditor(narrow, () => {}), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    liveStatus("running"); await nextTick();
+    for (let i = 0; i < 4; i++) {
+      narrow.value = !narrow.value; await flush();
+      const save = all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!;
+      assert.ok(save, "the live turn must not discard the binding draft on resize");
+      assert.equal(save.props.disabled, true);
+      click(save); await flush();
+      assert.equal(capabilities.send, false);
+      assert.equal(capabilities.stop, true);
+    }
+    assert.equal(writes, 0);
+    assert.equal(streamMounts, 1);
+    assert.equal(streamStops, 0);
+  } finally { app.unmount(); }
+});
+
+test("INDEPENDENT: breakpoint change must not unblock sends while PUT is in flight", async () => {
+  let finish!: (value: unknown) => void;
+  respond = async (config) => {
+    if (config.method === "put") return new Promise((resolve) => { finish = resolve; });
+    return sessionResponse(config);
+  };
+  const narrow = ref(false);
+  let pending = false;
+  const { root, app } = mount(responsiveEditor(narrow, (value) => { pending = value; }), () => ({}));
+  try {
+    await flush();
+    click(all(root, "skill-chip-remove")[0]); await nextTick();
+    click(all(root, "conversation-settings-actions")[0].children.find((n) => n.props["data-testid"] === "bindings-save")!);
+    await flush();
+    assert.equal(pending, true);
+    narrow.value = true; await flush();
+    assert.equal(pending, true, "new editor GET clears pending although old editor PUT is unresolved");
+  } finally {
+    finish({ data: { skillIds: [], toolIds: [2], editable: true } });
+    await flush();
+    app.unmount();
+  }
+});
+
+function bindingAction(root: N, name: string): N {
+  const action = all(root, "conversation-settings-actions").flatMap((n) => n.children)
+    .find((n) => n.props["data-testid"] === `bindings-${name}`);
+  assert.ok(action, `missing ${name} control`);
+  return action;
+}
+
+let principalCounter = 1000;
+function protocolFixture() {
+  const principal = String(++principalCounter);
+  let revision = 0;
+  let selected = { skillIds: [1], toolIds: [2] };
+  const snapshot = () => ({ data: { ...structuredClone(selected), editable: true, principal, revision: String(revision) } });
+  return {
+    snapshot,
+    sync() { revision++; return snapshot(); },
+    commit(payload: any) {
+      if (payload.revision !== String(revision)) throw new Error("bindings_revision_conflict");
+      revision++;
+      selected = { skillIds: [...payload.skillIds], toolIds: [...payload.toolIds] };
+      return snapshot();
+    },
+  };
+}
+
+async function realAuth() {
+  const previousWindow = window;
+  const win = new EventTarget();
+  Object.defineProperty(win, "parent", { value: {} });
+  Object.defineProperty(win, "matchMedia", { value: () => media });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: win });
+  const auth = await vite.ssrLoadModule("/src/addons/platform-api/session/embeddedSession.ts");
+  const { authenticatedView } = await vite.ssrLoadModule("/src/addons/platform-api/session/authenticatedView.ts");
+  let version = auth.sessionVersion();
+  const change = (account: string | null) => auth.applyShellSession(account, ++version);
+  change("synthetic-account-a");
+  resize(false);
+  observePending = () => {};
+  streamMounts = 0;
+  streamStops = 0;
+  const mounted = mount(authenticatedView(conversation), () => ({ id: "11" }));
+  return {
+    ...mounted, change,
+    close() {
+      mounted.app.unmount();
+      change(null);
+      Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
+    },
+  };
+}
+
+for (const abort of [false, true]) {
+  test(`CONCURRENCY R1: actual auth remount fences unresolved PUT; transport abort=${abort}`, async () => {
+    const server = protocolFixture();
+    let syncs = 0, writes = 0;
+    let oldPayload: any;
+    let releaseSync!: () => void;
+    let finish!: (value: unknown) => void;
+    respond = async (config) => {
+      if (config.method === "put") {
+        writes++;
+        oldPayload = JSON.parse(config.data);
+        return new Promise((resolve, reject) => {
+          finish = resolve;
+          if (abort) config.signal.addEventListener("abort", () => reject({ __CANCEL__: true }), { once: true });
+        });
+      }
+      if (config.url.endsWith("/bindings/sync")) {
+        syncs++;
+        if (syncs > 1) await new Promise<void>((resolve) => { releaseSync = resolve; });
+        return server.sync();
+      }
+      assert.ok(!config.url.endsWith("/bindings"), "plain GET cannot establish an outcome");
+      return sessionResponse(config);
+    };
+    const auth = await realAuth();
+    try {
+      await flush();
+      click(all(auth.root, "skill-chip-remove")[0]); await nextTick();
+      const save = bindingAction(auth.root, "save");
+      click(save); click(save); await flush();
+      assert.equal(writes, 1);
+      auth.change(null); await flush();
+      assert.equal(all(auth.root, "conv-head").length, 0);
+      assert.equal(all(auth.root, "skill-chip").length + all(auth.root, "tool-chip").length, 0);
+      assert.equal(streamStops, 1, "old protected Conversation really unmounted");
+      auth.change("synthetic-account-a"); await flush();
+      assert.equal(streamMounts, 2);
+      assert.equal(syncs, 2);
+      assert.equal(capabilities.send, false, "new page must await the fence");
+      assert.equal(all(auth.root, "skill-chip").length, 0);
+      releaseSync(); await flush();
+      assert.equal(capabilities.send, true, "a confirmed fence recovers without the old transport");
+      assert.throws(() => server.commit(oldPayload), /revision_conflict/);
+      finish({ data: { ...oldPayload, principal: server.snapshot().data.principal, editable: true } });
+      await flush();
+      assert.deepEqual(all(auth.root, "skill-chip-name").map(textOf), ["skill-1"]);
+      assert.equal(capabilities.send, true);
+    } finally { auth.close(); }
+  });
+}
+
+for (const failure of ["timeout", "abort", "never-settle"] as const) {
+  test(`CONCURRENCY R2: ${failure} has bounded recovery and fences late first before second save`, async (t) => {
+    const server = protocolFixture();
+    let writes = 0, failSync = false;
+    let oldPayload: any, fail!: () => void;
+    respond = async (config) => {
+      if (config.method === "put") {
+        writes++;
+        const payload = JSON.parse(config.data);
+        if (writes === 1) {
+          oldPayload = payload;
+          return new Promise((_resolve, reject) => {
+            fail = () => reject(failure === "abort" ? { __CANCEL__: true } : {
+              isAxiosError: true, config, code: "ECONNABORTED", message: "synthetic timeout",
+            });
+          });
+        }
+        return server.commit(payload);
+      }
+      if (config.url.endsWith("/bindings/sync")) {
+        if (failSync) throw new Error("synthetic unavailable");
+        return server.sync();
+      }
+      return sessionResponse(config);
+    };
+    const auth = await realAuth();
+    try {
+      await flush();
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      click(all(auth.root, "skill-chip-remove")[0]); await nextTick();
+      const save = bindingAction(auth.root, "save");
+      click(save); await flush();
+      if (failure === "never-settle") t.mock.timers.tick(15001);
+      else fail();
+      await flush();
+      assert.equal(capabilities.send, false);
+      assert.match(textOf(auth.root), /Save outcome unknown/);
+      click(save); await flush();
+      assert.equal(writes, 1, "unknown outcome cannot issue another write");
+      assert.equal(all(auth.root, "conversation-settings-actions").flatMap((n) => n.children)
+        .some((n) => n.props["data-testid"] === "bindings-discard"), false);
+      failSync = true;
+      click(bindingAction(auth.root, "sync")); await flush();
+      assert.equal(capabilities.send, false, "failed sync retains barrier");
+      const retry = all(auth.root, "conversation-settings-actions").flatMap((n) => n.children).find((n) => n.tag === "button");
+      assert.ok(retry, "failed synchronization is retryable");
+      failSync = false;
+      click(retry); await flush();
+      assert.equal(capabilities.send, true);
+      click(all(auth.root, "skill-chip-remove")[0]);
+      click(all(auth.root, "tool-chip-remove")[0]); await nextTick();
+      click(bindingAction(auth.root, "save")); await flush();
+      assert.equal(writes, 2);
+      assert.equal(capabilities.send, true);
+      assert.throws(() => server.commit(oldPayload), /revision_conflict/);
+      assert.deepEqual(server.snapshot().data.toolIds, []);
+      assert.equal(all(auth.root, "tool-chip").length, 0);
+    } finally { auth.close(); t.mock.timers.reset(); }
+  });
+}
+
+test("CONCURRENCY R1: real auth scopes isolate accounts and reject stale readback", async () => {
+  const a = protocolFixture(), b = protocolFixture();
+  let current = a, syncs = 0, pendingA: any;
+  let finishRead!: (value: unknown) => void;
+  let delay = false;
+  respond = async (config) => {
+    if (config.method === "put") {
+      pendingA = JSON.parse(config.data);
+      return new Promise(() => {});
+    }
+    if (config.url.endsWith("/bindings/sync")) {
+      syncs++;
+      if (delay) return new Promise((resolve) => { finishRead = resolve; });
+      return current.sync();
+    }
+    return sessionResponse(config);
+  };
+  const auth = await realAuth();
+  try {
+    await flush();
+    click(all(auth.root, "skill-chip-remove")[0]); await nextTick();
+    click(bindingAction(auth.root, "save")); await flush();
+    auth.change(null); await flush();
+    current = b;
+    auth.change("synthetic-account-b"); await flush();
+    assert.equal(syncs, 2);
+    assert.equal(capabilities.send, true, "B revision 1 is independent of A's unresolved revision 1");
+    delay = true;
+    auth.change("synthetic-account-b-refreshed"); await flush();
+    assert.equal(capabilities.send, false);
+    current = a; delay = false;
+    auth.change("synthetic-account-a"); await flush();
+    assert.equal(capabilities.send, true);
+    assert.throws(() => a.commit(pendingA), /revision_conflict/);
+    finishRead(b.sync()); await flush();
+    click(all(auth.root, "skill-chip-remove")[0]); await nextTick();
+    click(bindingAction(auth.root, "save")); await flush();
+    assert.equal(pendingA.revision, a.snapshot().data.revision, "B's stale response did not replace A's scope");
+  } finally { auth.close(); }
 });

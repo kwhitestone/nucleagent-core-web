@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../src/addons/conversation/views/TaskSetup.
 const entry = source.slice(source.indexOf("function applyEntry()"), source.indexOf("const selected ="));
 async function mount(query: Record<string, unknown>, fail = false, duringLoad?: Record<string, unknown>) {
   let mounted: () => Promise<void> = async () => {};
-  const state = { skillIds: { value: [] as number[] }, form: { desc: "" }, targetDeviceId: { value: "" }, executionBackend: { value: "" }, restored: false, read: false };
+  const state = { skillIds: { value: [] as number[] }, toolIds: { value: [] as number[] }, form: { desc: "" }, targetDeviceId: { value: "" }, executionBackend: { value: "" }, restored: false, read: false };
   const route = reactive({ query });
   const context = { ...state, route, watch, templates: { value: [] }, localStorage: {},
     onMounted: (fn: () => Promise<void>) => { mounted = fn; },
@@ -37,6 +37,15 @@ test("repeated query IDs are deduplicated and invalid IDs cannot select skills",
 test("explicit empty query suppresses saved draft", async () => {
   const state = await mount({ skillIds: "" });
   assert.deepEqual(Array.from(state.skillIds.value), []); assert.equal(state.read, false);
+});
+test("home handover preserves tools with skills and explicit empty sets", async () => {
+  const state = await mount({ skillIds: "7", toolIds: ["2,2", "3,0,-1"] });
+  assert.deepEqual(Array.from(state.toolIds.value), [2, 3]);
+  assert.deepEqual(Array.from(state.skillIds.value), [7]);
+  assert.equal(state.read, false);
+  await state.navigate({ skillIds: "", toolIds: "" });
+  assert.deepEqual(Array.from(state.toolIds.value), []);
+  assert.deepEqual(Array.from(state.skillIds.value), []);
 });
 test("absent query retains existing draft behavior", async () => {
   const state = await mount({}); assert.equal(state.restored, true); assert.deepEqual(state.skillIds.value, [99]);
