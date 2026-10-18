@@ -1,6 +1,13 @@
 import type { AxiosInstance } from "axios";
 import type { Component } from "vue";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /** Only opt in when a write must outlive same-principal/grants renewal. */
+    sessionBoundary?: "business";
+  }
+}
+
 export interface AuthorizationSnapshot {
   readonly permissions: { readonly value: readonly string[] };
   readonly can: (permission: string) => boolean;

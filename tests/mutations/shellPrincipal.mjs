@@ -14,7 +14,7 @@ const mutants = [
   ["renewal-remounts", session, "const businessBoundaryChanged = !nextPrincipal", "const businessBoundaryChanged = true || !nextPrincipal"],
   ["requests-not-aborted", session, "requestScope.abort();", "void requestScope;"],
   ["request-generation-stuck", session, "requestGeneration++;", "requestGeneration += 0;"],
-  ["boundary-generation-stuck", session, "if (businessBoundaryChanged) businessBoundaryGeneration++;", "if (false) businessBoundaryGeneration++;"],
+  ["boundary-generation-stuck", session, "if (businessBoundaryChanged) retireBusinessRequests();", "if (false) retireBusinessRequests();"],
   ["unknown-event-nondestructive", session, "emitSessionChange(Boolean(token), businessBoundaryChanged);", "emitSessionChange(Boolean(token), false);"],
   ["401-retains-token", session, 'if (reason === "rejected") {\n    clearAccessToken();', 'if (reason === "rejected") {\n    void 0;'],
   ["stale-version-accepted", policy, "if (incomingVersion < currentVersion) return false;", "if (false) return false;"],
