@@ -62,3 +62,55 @@ test("tool dialog follows create, edit and close transitions without stale form 
   app.use(createI18n({ legacy: false, locale: "en", messages: { en: {} } }));
   assert.match(await renderToString(app), /dialog transitions verified/);
 });
+
+test("tool creation recovers wrapped 412 detail once without duplicate creation or lost selections", async () => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const { toast } = await vite.ssrLoadModule("/src/composables/useToast.ts");
+  const originalShow = toast.show;
+  toast.show = () => {};
+  let creates = 0, reads = 0;
+  const patches: any[] = [];
+  const tool = { id: 99, revision: "1", name: "Synthetic", slug: "synthetic", isActive: true };
+  registerPlatformRuntime({
+    http: {
+      post: async () => { creates++; return { data: { data: { tool } } }; },
+      get: async (url: string) => {
+        if (url === "/api/v1/addons/tool/99") {
+          reads++;
+          return { data: { data: { tool: { ...tool, revision: "3" } } } };
+        }
+        return { data: { data: [], page: 1, pageSize: 20, total: 0, hasMore: false } };
+      },
+      patch: async (url: string, body: { add: number[]; remove: number[] }, options: any) => {
+        patches.push({ url, body: { add: [...body.add], remove: [...body.remove] }, tag: options.headers["If-Match"] });
+        if (patches.length === 1) throw { response: { status: 412 } };
+        return { data: {} };
+      },
+    },
+  });
+  let state: any;
+  const probe = defineComponent({
+    setup() {
+      state = component.setup({}, { expose() {} });
+      return () => h("div");
+    },
+  });
+  const app = createSSRApp(probe);
+  app.use(createI18n({ legacy: false, locale: "en", messages: { en: {} } }));
+  try {
+    await renderToString(app);
+    state.openCreate();
+    Object.assign(state.form, { name: tool.name, slug: tool.slug, url: "https://fixture.invalid/mcp" });
+    state.selectedSkills.value = [1, 41];
+    await state.submit();
+    assert.equal(state.formOpen.value, false);
+    assert.equal(creates, 1);
+    assert.equal(reads, 1);
+    assert.deepEqual(patches, [
+      { url: "/api/v1/addons/admin/tool/99/skills", body: { add: [1, 41], remove: [] }, tag: '"tool-99-1"' },
+      { url: "/api/v1/addons/admin/tool/99/skills", body: { add: [1, 41], remove: [] }, tag: '"tool-99-3"' },
+    ]);
+  } finally {
+    toast.show = originalShow;
+  }
+});

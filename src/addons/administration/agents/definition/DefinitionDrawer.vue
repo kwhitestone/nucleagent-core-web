@@ -2,7 +2,7 @@
 import { trapDialogFocus } from "./focus";
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { X, Save, RefreshCw, Power, Trash2, RotateCcw, ChevronLeft, ChevronRight, LoaderCircle, Check, TriangleAlert, Wrench } from "@lucide/vue";
+import { X, Save, RefreshCw, Power, Trash2, RotateCcw, ChevronLeft, ChevronRight, LoaderCircle, Check, TriangleAlert } from "@lucide/vue";
 import DefinitionFields, { type ReadonlyField } from "./DefinitionFields.vue";
 import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
@@ -320,14 +320,6 @@ onUnmounted(() => clearTimeout(toastTimer));
           <h4>{{ label('skills') }}</h4>
           <p v-if="!record.capabilities.readSkills" class="muted">{{ label('readonly') }}</p>
           <SkillPicker v-else :skills="availableSkills" :selected="selectedSkills" :editable="writable && record.capabilities.writeSkillBindings" :install-path="installPath" @toggle="selectSkill" />
-          <template v-if="record.capabilities.writeToolBindings === true && record.capabilities.readTools">
-            <h4>{{ label('selectedTools') }}</h4>
-            <p class="muted small">{{ label('selectedToolsNote') }}</p>
-          <ToolBindings :rows="[]" :selected="selectedTools" :editable="canPickTools"
-              :skill-ids="selectedSkills"
-              :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
-              data-testid="admin-tool-bindings" @toggle="selectTool" />
-          </template>
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
           <ToolBindings v-if="record.capabilities.readTools" :rows="[]" :selected="selectedTools" :editable="canPickTools"

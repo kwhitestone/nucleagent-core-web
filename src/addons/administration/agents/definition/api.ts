@@ -35,7 +35,7 @@ export interface Tool {
 export interface ToolDetail { tool: Tool; capabilities: { read: boolean; write: boolean }; fieldPolicy: FieldPolicy; etag: string }
 export interface Detail {
   definition: Definition; capabilities: Capabilities; fieldPolicy: FieldPolicy;
-  skillBindings: Binding[]; skills: Skill[]; tools: Tool[];
+  skillBindings: Binding[]; skills: Skill[]; tools?: Tool[];
   /** L6 selected tool ids (tool_bindings); absent on older core. */
   toolBindings?: number[];
   effective: { revision: string; definitionRevision: string; dependencies?: unknown[]; modelRule?: string; promptRule?: string; inFlightRule?: string; overrideRule?: string };
@@ -147,7 +147,7 @@ export function createDefinitionApi(transport: Transport) {
     if (!d.definition || !Number.isSafeInteger(d.definition.id) || d.definition.id < 1 || !revision(d.definition.revision)
       || result.etag !== `"agent-${d.definition.id}-${d.definition.revision}"`
       || !validCapabilities(d.capabilities) || !validPolicy(d.fieldPolicy) || !Array.isArray(d.skillBindings)
-      || !Array.isArray(d.skills) || !Array.isArray(d.tools)
+      || !Array.isArray(d.skills)
       || !d.effective?.revision || !d.identity) throw new Error("Invalid definition contract");
     return { ...d, etag: result.etag };
   }

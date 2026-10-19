@@ -162,8 +162,9 @@ async function submit(): Promise<void> {
           { headers: { "If-Match": `"tool-${createdTool.value.id}-${createdTool.value.revision}"` } });
       } catch (cause: any) {
         if (cause?.response?.status !== 412) throw cause;
-        const current = await getPlatformRuntime().http.get<{ data: Tool }>(`/api/v1/addons/tool/${createdTool.value.id}`);
-        const refreshed = current.data.data;
+        const current = await getPlatformRuntime().http.get<{ data: { tool: Tool } }>(`/api/v1/addons/tool/${createdTool.value.id}`);
+        const refreshed = current.data.data?.tool;
+        if (!refreshed || !Number.isSafeInteger(refreshed.id) || !refreshed.revision) throw new Error("Invalid tool detail response");
         createdTool.value = refreshed;
         await getPlatformRuntime().http.patch(`/api/v1/addons/admin/tool/${refreshed.id}/skills`,
           { add: selectedSkills.value, remove: [] },
