@@ -38,7 +38,7 @@ defineExpose({ refresh: load });
 </script>
 
 <template>
-  <BindingList :rows="visible" :selected="selected" :unavailable="unavailable" :editable="editable"
+  <BindingList @focusin.stop @pointerdown.stop @pointercancel.stop @mousedown.stop @touchstart.stop @touchcancel.stop @click.stop :rows="visible" :selected="selected" :unavailable="unavailable" :editable="editable"
     :manageable="manageable" :omit-covered="omitCovered" v-model:query="query" :selected-only="selectedOnly"
     :search-label="t('common.toolSearch')" :selected-label="t('common.skillGroupSelected')" :edit-label="editLabel ?? ''"
     :covered-label="coveredLabel" :unavailable-label="unavailableLabel"
