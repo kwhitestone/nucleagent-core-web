@@ -114,7 +114,7 @@ test("busy ordinary fields and cancel expose the same lock as skills/tools/save"
   }
   assert.match(rendered, /<button[^>]*data-testid="ua-cancel"[^>]*disabled|<button[^>]*disabled[^>]*data-testid="ua-cancel"/);
 });
-test("busy prevents submit and cancel; unlocking restores both commands", async () => {
+test("busy prevents submit and cancel; unlocking restores save and guarded cancel", async () => {
   const f = mount({ busy: true });
   const cancel = () => f.state.cancel ? f.state.cancel() : f.state.emit("cancel");
   try {
@@ -123,6 +123,88 @@ test("busy prevents submit and cancel; unlocking restores both commands", async 
     cancel(); assert.equal(f.cancels.length, 0);
     f.props.busy = false; await nextTick();
     f.state.submit(); assert.equal(f.saves.length, 1);
-    cancel(); assert.equal(f.cancels.length, 1);
+    cancel(); assert.equal(f.cancels.length, 0);
+    assert.equal(f.state.discard, true);
+    f.state.discardChanges(); assert.equal(f.cancels.length, 1);
+  } finally { f.app.unmount(); }
+});
+
+test("cancel, Escape and discard preserve draft until an explicit discard; clean cancel writes nothing", async () => {
+  const f = mount({ initial: { id: 49, name: "Fixture", model: "fixture-model" } });
+  try {
+    assert.equal(f.state.dirty, false);
+    f.state.draft.description = "Unsaved";
+    f.state.cancel();
+    assert.equal(f.state.discard, true);
+    assert.equal(f.cancels.length, 0);
+    f.state.escape();
+    assert.equal(f.state.discard, false);
+    assert.equal(f.state.draft.description, "Unsaved");
+    f.state.escape();
+    assert.equal(f.state.discard, true);
+    f.props.busy = true; await nextTick();
+    f.state.discardChanges();
+    assert.equal(f.cancels.length, 0);
+    f.props.busy = false; await nextTick();
+    f.state.discardChanges();
+    assert.equal(f.cancels.length, 1);
+    assert.equal(f.saves.length, 0);
+  } finally { f.app.unmount(); }
+  const clean = mount();
+  try {
+    clean.state.cancel();
+    assert.equal(clean.cancels.length, 1);
+    assert.equal(clean.saves.length, 0);
+  } finally { clean.app.unmount(); }
+});
+
+test("avatar-only edits and nested bindings participate in dirty detection; reverting is clean", () => {
+  const f = mount();
+  try {
+    f.state.avatarFile = new File(["synthetic"], "avatar.png", { type: "image/png" });
+    assert.equal(f.state.dirty, true);
+    f.state.avatarFile = undefined;
+    assert.equal(f.state.dirty, false);
+    f.state.draft.skillIds.push(42);
+    assert.equal(f.state.dirty, true);
+    f.state.draft.skillIds.pop();
+    assert.equal(f.state.dirty, false);
+    f.state.draft.gen.image = "fixture-image";
+    assert.equal(f.state.dirty, true);
+  } finally { f.app.unmount(); }
+});
+
+test("route leave awaits discard, rejects concurrent navigation and resolves false on revocation/unmount", async () => {
+  const f = mount();
+  f.state.draft.name = "Draft";
+  const leave = f.state.requestLeave();
+  assert.equal(await f.state.requestLeave(), false);
+  f.state.keepEditing();
+  assert.equal(await leave, false);
+  const discarded = f.state.requestLeave();
+  f.state.discardChanges();
+  assert.equal(await discarded, true);
+  assert.equal(f.cancels.length, 0, "router owns the eventual unmount");
+  const revoked = f.state.requestLeave();
+  f.app.unmount();
+  assert.equal(await revoked, false);
+});
+
+test("owner adapter rejects forged administrator fields, unsupported generation kinds and busy writes", async () => {
+  const f = mount();
+  try {
+    const before = JSON.stringify(f.state.draft);
+    const paths = f.state.ownerControls.map((field: { path: string }) => field.path);
+    assert.ok(paths.includes("/name"));
+    for (const path of ["/slug", "/config/avatar", "/config/defaults/providerId", "/authAgentUserId", "/isActive", "/config/defaults/musicModel"])
+      assert.ok(!paths.includes(path), `owner ordinary fields must not advertise ${path}`);
+    for (const path of ["/config/defaults/providerId", "/authAgentUserId", "/isActive", "/config/defaults/musicModel"])
+      f.state.changeField(path, "999");
+    assert.equal(JSON.stringify(f.state.draft), before);
+    f.state.changeField("/name", "Allowed");
+    assert.equal(f.state.draft.name, "Allowed");
+    f.props.busy = true; await nextTick();
+    f.state.changeField("/name", "Rejected");
+    assert.equal(f.state.draft.name, "Allowed");
   } finally { f.app.unmount(); }
 });

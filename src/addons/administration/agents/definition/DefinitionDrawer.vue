@@ -8,7 +8,8 @@ import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
 import SkillPicker from "../../../../components/agent-edit/SkillPicker.vue";
 import ToolBindings from "../../../../components/agent-edit/ToolBindings.vue";
-import AgentPreview from "./AgentPreview.vue";
+import EditorLayout from "../../../../components/agent-edit/EditorLayout.vue";
+import DiscardDialog from "../../../../components/agent-edit/DiscardDialog.vue";
 import EditSidebar from "../../../../components/agent-edit/EditSidebar.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, groupLabels, initial, type Group } from "./groups";
 import { DefinitionError, type Catalog, type CatalogTool, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
@@ -292,9 +293,11 @@ onUnmounted(() => clearTimeout(toastTimer));
       </div>
     </header>
     <div v-if="!editor.record" class="drawer-body"><p role="alert">{{ label('readDenied') }}</p><button type="button" @click="emit('close')">{{ label('close') }}</button></div>
-    <div v-else class="drawer-grid">
+    <EditorLayout v-else class="drawer-grid">
+      <template #navigation>
       <!-- @vue-generic {Group} -->
       <EditSidebar :groups="sidebarGroups" :active="activeGroup" :aria-label="label('title')" :dirty-label="label('unsaved')" @select="goTo" />
+      </template>
       <div ref="body" class="drawer-body" @scroll.passive="onScroll">
         <p v-if="alertKey" role="alert" class="notice" :class="editor.error === 'uncertain' ? 'warn' : 'error'"><TriangleAlert :size="16" aria-hidden="true" />{{ label(alertKey as MessageKey) }}
           <button v-if="editor.verificationRequired" type="button" class="ghost" @click="refresh">{{ label('queryResult') }}</button></p>
@@ -387,19 +390,12 @@ onUnmounted(() => clearTimeout(toastTimer));
             <DefinitionFields v-if="readonlyFields.length" :baseline="record.definition" :changes="{}" :editable-paths="[]" :readonly-fields="readonlyFields" :only="[]" :backends="[]" :providers="[]" :models="[]" busy />
           </details>
         </section>
-        <AgentPreview class="inline-preview" :id="record.definition.id" :name="draftName" :description="String(draftValue('/config/description') ?? '')" :avatar="draftValue('/config/avatar')"
-          :active="record.definition.isActive" :deleted="!!record.definition.deletedAt" :model="String(draftValue('/config/defaults/model') ?? '')" />
       </div>
-      <AgentPreview class="side-preview" :id="record.definition.id" :name="draftName" :description="String(draftValue('/config/description') ?? '')" :avatar="draftValue('/config/avatar')"
-        :active="record.definition.isActive" :deleted="!!record.definition.deletedAt" :model="String(draftValue('/config/defaults/model') ?? '')" />
-      <div v-if="discard" class="overlay" @click.self="discard = false">
-        <section class="overlay-dialog" role="alertdialog" aria-labelledby="discard-title" aria-modal="true">
-          <h3 id="discard-title">{{ label('discard') }}</h3>
-          <p>{{ label('discardCount') }}：{{ pending }}{{ label('changesUnit') }}</p>
-          <div class="commands end"><button type="button" class="ghost" @click="discard = false">{{ label('keepEditing') }}</button>
-            <button type="button" class="ghost danger outline" @click="leave">{{ label('discardChanges') }}</button></div>
-        </section>
-      </div>
+      <template #overlay>
+      <DiscardDialog v-if="discard" :title="label('discard')" :keep-label="label('keepEditing')" :discard-label="label('discardChanges')"
+        :busy="editor.busy || acting" @keep="discard = false" @discard="!editor.busy && !acting && leave()">
+        <p>{{ label('discardCount') }}：{{ pending }}{{ label('changesUnit') }}</p>
+      </DiscardDialog>
       <div v-else-if="action && impact" class="overlay">
         <section class="overlay-dialog" :class="{ dangerous: action === 'delete' || action === 'disable' }" role="alertdialog" aria-labelledby="impact-title" aria-modal="true">
           <h3 id="impact-title">{{ label('impact') }} · {{ label(action) }}</h3>
@@ -413,7 +409,8 @@ onUnmounted(() => clearTimeout(toastTimer));
             <button type="button" :class="action === 'delete' ? 'solid-danger' : 'primary'" :disabled="!acknowledged || acting || (action === 'delete' && typedSlug !== record.definition.slug)" @click="confirmAction"><LoaderCircle v-if="acting" :size="16" class="spin" />{{ label(acting ? 'saving' : action) }}</button></div>
         </section>
       </div>
-    </div>
+      </template>
+    </EditorLayout>
     <footer v-if="editor.record">
       <button type="button" class="icon" :disabled="editor.busy || acting" :title="label('refresh')" :aria-label="label('refresh')" @click="refresh"><RefreshCw :size="16" /></button>
       <span class="muted hint">{{ editor.dirty ? label('shortcuts') : label('noChanges') }}</span>
@@ -439,13 +436,9 @@ h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 1
 .unsaved-badge { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: var(--r-full); background: #fffbeb; color: #b45309; animation: scale-in .4s var(--ease-spring) both; }
 .revision { display: inline-block; animation: scale-in .4s var(--ease-spring) both; }
 .head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.drawer-grid { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr) 280px; }
 .dirty-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber-500); flex-shrink: 0; animation: scale-in .4s var(--ease-spring) both; }
 .drawer-body { padding: 16px 20px 32px; overflow: auto; min-height: 0; display: grid; gap: 14px; align-content: start; scroll-behavior: smooth; }
-.side-preview { padding: 16px 14px; border-left: 1px solid var(--border); background: var(--bg-card); overflow: auto; }
-.inline-preview { display: none; }
-.form-card { scroll-margin-top: 12px; padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-card); box-shadow: var(--shadow-xs); transition: all .25s var(--ease); animation: fade-in-up .5s var(--ease-out) both; }
-.form-card:hover { border-color: var(--border-strong); }
+.form-card { scroll-margin-top: 12px; padding: 0 0 20px; border-bottom: 1px solid var(--border); min-width: 0; }
 .form-card h3 { display: flex; align-items: center; margin: 0 0 12px; font-size: 14px; } .form-card h4 { margin: 14px 0 8px; font-size: 12.5px; color: var(--text-secondary); }
 .advanced summary { list-style: none; cursor: pointer; min-height: 32px; display: flex; align-items: center; } .advanced summary h3 { margin: 0; }
 .advanced summary::before { content: "›"; margin-right: 8px; transition: transform .25s var(--ease); } .advanced[open] summary::before { transform: rotate(90deg); }
@@ -491,12 +484,10 @@ footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; bord
 .spin { animation: spin 1s linear infinite; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 pre, code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 12px; }
-@media (max-width: 1200px) { .drawer-grid { grid-template-columns: 170px minmax(0, 1fr); } .side-preview { display: none; } .inline-preview { display: grid; } }
 @media (max-width: 600px) {
   .definition-drawer { width: 100%; border-left: 0; }
   .drawer-head { padding: 10px 12px; } .head-avatar { width: 32px; height: 32px; } h2 { font-size: 15px; }
   .head-actions .ghost { display: none; }
-  .drawer-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .drawer-body { padding: 12px 12px 24px; }
   .binding-options, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   footer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); } footer .hint { display: none; } footer .primary { flex: 1; min-height: 44px; } footer { justify-content: flex-end; }

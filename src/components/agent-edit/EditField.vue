@@ -57,6 +57,6 @@ textarea { resize: vertical; }
 input[readonly], textarea[readonly] { background: var(--bg-subtle); color: var(--text-secondary); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .field-error, [aria-invalid=true] { color: var(--rose-500); }
-[aria-invalid=true] { border-color: var(--rose-500); }
+input:not([type=checkbox])[aria-invalid=true], textarea[aria-invalid=true], select[aria-invalid=true] { border-color: var(--rose-500); }
 @media (max-width: 600px) { input, textarea, select { font-size: 16px !important; } }
 </style>

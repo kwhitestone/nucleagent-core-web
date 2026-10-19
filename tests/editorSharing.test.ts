@@ -78,7 +78,42 @@ test("editor surfaces import one implementation of every shared control", () => 
     for (const consumer of [user, admin]) assert.ok(consumer.includes(`components/agent-edit/${component}.vue`));
   }
   for (const consumer of [user, source("addons/administration/agents/definition/DefinitionFields.vue")])
-    assert.ok(consumer.includes("components/agent-edit/EditField.vue"));
+    assert.ok(consumer.includes("components/agent-edit/EditorFields.vue"));
+});
+
+test("shared renderer preserves admin field errors and generation catalog states", async () => {
+  const html = await render(Fields, {
+    baseline: { name: "Synthetic", config: { defaults: { imageModel: "gone" } } },
+    changes: { "/name": "" }, editablePaths: ["/name", "/config/defaults/imageModel"],
+    readonlyFields: [], backends: [], providers: [], models: [],
+    genModels: { image: [{ model: "available", kind: "image", verified: true }], video: null },
+  });
+  assert.match(html, /id="definition-name"[^>]*aria-invalid="true"/);
+  assert.match(html, /id="definition-config-defaults-imageModel"[^>]*aria-invalid="true"/);
+  assert.match(html, /value="gone"[^>]*disabled/);
+  assert.match(html, /value="available"/);
+  assert.match(html, /id="definition-config-defaults-videoModel"[^>]*disabled/);
+});
+
+test("one schema renderer rejects readonly and forged field changes", async () => {
+  const Renderer = (await vite.ssrLoadModule("/src/components/agent-edit/EditorFields.vue")).default;
+  let state: any;
+  const updates: unknown[] = [];
+  const app = renderer.createApp({ render: () => h({ ...Renderer, render: () => null }, {
+    fields: [
+      { id: "allowed", path: "/name", label: "Name", modelValue: "Synthetic", editable: true },
+      { id: "denied", path: "/config/defaults/providerId", label: "Provider", modelValue: 1, editable: false },
+    ],
+    onChange: (...args: unknown[]) => updates.push(args),
+    onVnodeMounted: (v: any) => { state = v.component.setupState; },
+  }) });
+  app.provide(ssrContextKey, {}); app.mount(hostNode("root"));
+  try {
+    state.change("/name", "Allowed");
+    state.change("/config/defaults/providerId", "2");
+    state.change("/authAgentUserId", "999");
+    assert.deepEqual(updates, [["/name", "Allowed"]]);
+  } finally { app.unmount(); }
 });
 
 test("shared skill picker preserves missing selected skills, permits removal and blocks additions", async () => {

@@ -250,7 +250,7 @@ describe("list behaviour (mounted setup)", () => {
     List = { ...(await vite.ssrLoadModule("/src/addons/conversation/views/AgentList.vue")).default, render: () => null };
     Wizard = { ...(await vite.ssrLoadModule("/src/addons/conversation/components/UserAgentWizard.vue")).default, render: () => null };
     const el = () => ({ style: {}, textContent: "", remove() {}, appendChild(c: { textContent: string }) { if (c.textContent) toasts.push(c.textContent); } });
-    Object.defineProperty(globalThis, "window", { configurable: true, value: { confirm: () => true } });
+    Object.defineProperty(globalThis, "window", { configurable: true, value: Object.assign(new EventTarget(), { confirm: () => true }) });
     Object.defineProperty(globalThis, "document", { configurable: true,
       value: { activeElement: null, createElement: el, body: el(), querySelector: () => null } });
   });

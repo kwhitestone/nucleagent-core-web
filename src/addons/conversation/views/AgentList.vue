@@ -2,7 +2,7 @@
 /** All of my agents: every enabled definition (chat-ready), plus disabled ones I have used (collapsed). */
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { isInShell, useEmbeddedAuthorization } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
@@ -54,7 +54,9 @@ const skills = ref<Skill[]>([]);
 const tools = ref<ToolCatalogItem[]>([]);
 const ownedIds = computed(() => new Set((defs.value ?? []).map((d) => d.id)));
 const entry = computed(() => entryState(defs.value, models.value));
-const wizard = ref<{ initial?: Draft & { id: number; slug?: string } } | null>(null);
+const wizard = ref<{ initial?: Draft & { id: number; slug?: string; avatar?: string } } | null>(null);
+const wizardView = ref<InstanceType<typeof UserAgentWizard>>();
+onBeforeRouteLeave(() => wizardView.value?.requestLeave() ?? true);
 const busy = ref(false);
 const errors = ref<Record<string, string>>({});
 
@@ -95,16 +97,29 @@ function errorText(e: unknown): { field?: string; text: string } {
   return "text" in m ? { text: m.text } : { field: m.field, text: t(m.key) };
 }
 
-function openCreate(): void {
+async function openCreate(): Promise<void> {
   if (entry.value === "noModels") { toast.info(t("agents.mine.noModels")); return; }
   if (entry.value !== "ok") return;
+  if (busy.value) return;
+  if (wizardView.value) {
+    if (!await wizardView.value.requestLeave()) return;
+    wizard.value = null; await nextTick();
+    if (entry.value !== "ok" || busy.value) return;
+  }
   errors.value = {};
   wizard.value = {};
 }
-function openEdit(a: MyAgent): void {
+async function openEdit(a: MyAgent): Promise<void> {
+  if (busy.value || !ownedIds.value.has(a.templateId)) return;
+  if (wizardView.value) {
+    if (!await wizardView.value.requestLeave()) return;
+    wizard.value = null; await nextTick();
+    if (busy.value || !ownedIds.value.has(a.templateId)) return;
+  }
   errors.value = {};
   const def = defs.value?.find((d) => d.id === a.templateId);
   wizard.value = { initial: { id: a.templateId, slug: def?.slug || a.slug || undefined, name: a.name, description: a.description ?? "",
+    avatar: typeof def?.config?.avatar === "string" ? def.config.avatar : undefined,
     model: agentModel(a), prompt: "", ...draftFromConfig(def?.config ?? a.config, Object.keys(genModels.value)) } };
 }
 
@@ -250,7 +265,7 @@ function remove(a: MyAgent): void {
         </section>
       </template>
     </div>
-    <UserAgentWizard v-if="wizard" :models="models" :backends="backends" :gen-models="genModels" :skills="skills" :tools="tools" :busy="busy" :errors="errors" :initial="wizard.initial"
+    <UserAgentWizard v-if="wizard" ref="wizardView" :models="models" :backends="backends" :gen-models="genModels" :skills="skills" :tools="tools" :busy="busy" :errors="errors" :initial="wizard.initial"
       @submit="submit" @cancel="busy || (wizard = null)" />
   </div>
 </template>
