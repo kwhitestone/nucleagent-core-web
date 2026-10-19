@@ -9,6 +9,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { PAGE_SIZE, SEARCH_DEBOUNCE_MS, countByGroup, debounce, filterOptions, highlight } from "./pickerSearch.ts";
+import CollectionPager from "@/components/CollectionPager.vue";
 
 export interface SheetOption {
   value: string;
@@ -43,9 +44,10 @@ const props = withDefaults(defineProps<{
   /** Non-empty = load failed; shows the message and a retry button. */
   error?: string;
   emptyText?: string;
+  remotePage?: { page: number; total: number; hasMore: boolean };
 }>(), { multiple: false, searchable: false, searchPlaceholder: "", groups: () => [], loading: false, error: "", emptyText: "" });
 
-const emit = defineEmits<{ "update:modelValue": [value: string | string[]]; close: []; retry: [] }>();
+const emit = defineEmits<{ "update:modelValue": [value: string | string[]]; close: []; retry: []; filter: [value: { search: string; group: string }]; page: [value: number] }>();
 const { t } = useI18n();
 const query = ref("");
 const term = ref("");
@@ -55,6 +57,9 @@ const sheet = ref<HTMLElement | null>(null);
 
 const setTerm = debounce((value: string) => { term.value = value; }, SEARCH_DEBOUNCE_MS);
 watch(query, (value) => setTerm(value));
+watch([query, group], () => {
+  if (props.remotePage) emit("filter", { search: query.value, group: group.value });
+}, { flush: "sync" });
 watch([term, group], () => { limit.value = PAGE_SIZE; });
 onBeforeUnmount(() => setTerm.cancel());
 
@@ -64,16 +69,16 @@ const selected = (value: string) =>
 const counts = computed(() => countByGroup(props.options));
 const tabs = computed(() => props.groups.length
   ? [
-      { value: "", label: t("common.skillGroupAll"), count: props.options.length },
-      ...(props.multiple ? [{ value: SELECTED, label: t("common.skillGroupSelected"), count: props.options.filter((o) => selected(o.value)).length }] : []),
-      ...props.groups.filter((g) => counts.value[g.value]).map((g) => ({ ...g, count: counts.value[g.value] })),
+      { value: "", label: t("common.skillGroupAll"), count: props.remotePage ? undefined : props.options.length },
+      ...(props.multiple ? [{ value: SELECTED, label: t("common.skillGroupSelected"), count: props.remotePage ? [props.modelValue].flat().length : props.options.filter((o) => selected(o.value)).length }] : []),
+      ...props.groups.filter((g) => props.remotePage || counts.value[g.value]).map((g) => ({ ...g, count: props.remotePage ? undefined : counts.value[g.value] })),
     ]
   : []);
 
-const shown = computed(() => group.value === SELECTED
+const shown = computed(() => props.remotePage ? props.options : group.value === SELECTED
   ? filterOptions(props.options.filter((o) => selected(o.value)), term.value)
   : filterOptions(props.options, term.value, group.value));
-const visible = computed(() => shown.value.slice(0, limit.value));
+const visible = computed(() => props.remotePage ? shown.value : shown.value.slice(0, limit.value));
 
 function pick(option: SheetOption): void {
   if (option.disabled) return;
@@ -171,6 +176,7 @@ watch(() => props.open, async (open) => {
           </button>
           <p v-if="!shown.length" class="osheet-empty">{{ (options.length ? '' : emptyText) || t('common.empty') }}</p>
         </div>
+        <CollectionPager v-if="remotePage" v-bind="remotePage" :loading="loading" @page="emit('page', $event)" />
       </div>
     </div>
   </Teleport>

@@ -14,6 +14,7 @@ let comparison: Component;
 let drawer: Component;
 before(async () => {
   vite = await createServer({ configFile: false, envFile: false, plugins: [vue()], appType: "custom",
+    resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } },
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { default: loaded } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/ConflictComparison.vue");
   // Real setup, computed values and watchers; only rendering is replaced (no DOM needed).

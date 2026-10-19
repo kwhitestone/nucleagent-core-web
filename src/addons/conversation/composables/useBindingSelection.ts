@@ -1,6 +1,7 @@
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { isBusinessBoundaryChange, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
-import { effectiveToolIds, listToolCatalog, type ToolCatalogItem } from "../api/toolCatalog";
+import { effectiveToolIds, TOOL_CATALOG_PATH, type ToolCatalogItem } from "../api/toolCatalog";
+import { resourcePage } from "@/api/resourcePage";
 import { createLatestRequestGate } from "./latestRequestGate";
 
 export function useBindingSelection() {
@@ -10,6 +11,7 @@ export function useBindingSelection() {
   const toolsLoading = ref(false);
   const toolsFailed = ref(false);
   const gate = createLatestRequestGate();
+  let controller: AbortController | undefined;
   const pickedTools = computed(() => effectiveToolIds(toolIds.value, tools.value, skillIds.value));
   const createBindings = computed(() => ({
     skillIds: skillIds.value.length ? [...skillIds.value] : undefined,
@@ -18,11 +20,15 @@ export function useBindingSelection() {
 
   async function loadTools(): Promise<void> {
     const request = gate.begin();
+    controller?.abort();
+    controller = new AbortController();
+    tools.value = [];
+    if (!toolIds.value.length) { toolsLoading.value = false; toolsFailed.value = false; return; }
     toolsLoading.value = true;
     toolsFailed.value = false;
     try {
-      const rows = await listToolCatalog();
-      if (request.isCurrent()) tools.value = rows;
+      const result = await resourcePage<ToolCatalogItem>(TOOL_CATALOG_PATH, { ids: [...toolIds.value], pageSize: 50 }, controller.signal);
+      if (request.isCurrent()) tools.value = result.data;
     } catch {
       if (request.isCurrent()) toolsFailed.value = true;
     } finally {
@@ -35,6 +41,7 @@ export function useBindingSelection() {
       return;
     }
     gate.invalidate();
+    controller?.abort();
     skillIds.value = [];
     toolIds.value = [];
     tools.value = [];
@@ -46,8 +53,10 @@ export function useBindingSelection() {
     window.addEventListener(SESSION_CHANGE_EVENT, onSessionChange);
     void loadTools();
   });
+  watch(toolIds, loadTools, { deep: true, flush: "sync" });
   onBeforeUnmount(() => {
     gate.invalidate();
+    controller?.abort();
     skillIds.value = [];
     toolIds.value = [];
     tools.value = [];

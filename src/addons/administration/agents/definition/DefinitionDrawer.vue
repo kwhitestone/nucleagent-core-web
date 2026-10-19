@@ -210,9 +210,6 @@ function beforeUnload(event: BeforeUnloadEvent) { if (editor.dirty) { event.prev
 onMounted(async () => {
   dialog.value?.showModal();
   window.addEventListener("beforeunload", beforeUnload);
-  if (record.value.capabilities.readTools && record.value.capabilities.writeToolBindings === true) {
-    props.api.toolCatalog().then(list => { if (mounted) toolCatalog.value = list; }, () => { if (mounted) toolCatalog.value = null; });
-  }
   const results = await Promise.allSettled([props.api.models(), props.api.backends()]);
   if (!mounted || !editor.record) return;
   if (results[0].status === "fulfilled") models.value = results[0].value;
@@ -333,8 +330,8 @@ onUnmounted(() => clearTimeout(toastTimer));
           <template v-if="record.capabilities.writeToolBindings === true && record.capabilities.readTools">
             <h4>{{ label('selectedTools') }}</h4>
             <p class="muted small">{{ label('selectedToolsNote') }}</p>
-            <p v-if="toolCatalog === null" class="notice warn small">{{ label('toolCatalogError') }}</p>
             <ToolBindings :rows="toolRows" :selected="selectedTools" :editable="canPickTools"
+              :skill-ids="selectedSkills"
               :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
               data-testid="admin-tool-bindings" @toggle="selectTool" />
           </template>

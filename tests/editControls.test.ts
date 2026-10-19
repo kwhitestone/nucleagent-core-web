@@ -1,9 +1,38 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { after, before, test } from "node:test";
+import { readFileSync } from "node:fs";
+import { nextTick } from "vue";
+import { createI18n } from "vue-i18n";
+import { compileScript, parse } from "@vue/compiler-sfc";
+import { createServer, transformWithEsbuild, type ViteDevServer } from "vite";
 import { descendants, hostNode, loadComponent, renderer } from "./vueComponentHarness.ts";
 
 const Field = loadComponent(new URL("../src/components/agent-edit/EditField.vue", import.meta.url));
-const Tools = loadComponent(new URL("../src/components/agent-edit/ToolBindings.vue", import.meta.url));
+let Tools: any, vite: ViteDevServer, unregister: () => void;
+before(async () => {
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
+  vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] },
+    server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  async function client(path: string): Promise<any> {
+    const { descriptor } = parse(readFileSync(new URL(`..${path}`, import.meta.url), "utf8"));
+    const compiled = compileScript(descriptor, { id: path, inlineTemplate: true });
+    const js = await transformWithEsbuild(compiled.content, `${path}.ts`, { loader: "ts" });
+    const transformed = await vite.ssrTransform(js.code, null, path);
+    const exports: any = {};
+    await new Function("__vite_ssr_exports__", "__vite_ssr_import__", `return (async () => {${transformed!.code}})()`)(
+      exports, (id: string) => id.startsWith("@/") ? (id.endsWith(".vue")
+        ? client(`/src/${id.slice(2)}`) : vite.ssrLoadModule(`/src/${id.slice(2)}`)) : import(id));
+    return exports;
+  }
+  Tools = (await client("/src/components/agent-edit/ToolBindings.vue")).default;
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  unregister = registerPlatformRuntime({ http: { get: async (_path: string, config: any) => {
+    const rows = [{ id: 1, name: "Normal", skillIds: [] }, { id: 3, name: "Covered", skillIds: [9] }]
+      .filter(row => !config.params.ids || config.params.ids.split(",").map(Number).includes(row.id));
+    return { data: { data: rows, page: 1, pageSize: config.params.pageSize, total: rows.length, hasMore: false } };
+  } } });
+});
+after(async () => { unregister?.(); await vite?.close(); Reflect.deleteProperty(globalThis, "window"); });
 
 for (const kind of ["text", "textarea", "select", "boolean"]) {
   test(`shared ${kind}: editable updates, locked controls reject writes`, () => {
@@ -32,7 +61,7 @@ for (const kind of ["text", "textarea", "select", "boolean"]) {
   });
 }
 
-test("shared tool binding policy: missing removals, skill coverage and readonly", () => {
+test("shared tool binding policy: missing removals, skill coverage and readonly", async () => {
   const rows = [
     { id: 1, name: "Normal", missing: false, covered: false },
     { id: 2, name: "Missing", missing: true, covered: false },
@@ -42,15 +71,17 @@ test("shared tool binding policy: missing removals, skill coverage and readonly"
   for (const editable of [true, false]) for (const omitCovered of [true, false]) {
     const changes: unknown[] = [], root = hostNode("root");
     const app = renderer.createApp(Tools, {
-      rows, selected: [2, 3], editable, omitCovered, coveredLabel: "Covered", unavailableLabel: "Unavailable",
+      rows, selected: [2, 3], skillIds: [9], editable, omitCovered, coveredLabel: "Covered", unavailableLabel: "Unavailable",
       onToggle: (id: number, checked: boolean) => changes.push([id, checked]),
     });
+    app.use(createI18n({ legacy: false, locale: "en", messages: { en: {} }, missingWarn: false, fallbackWarn: false }));
     app.mount(root);
-    const inputs = descendants(root).filter(n => n.tag === "input");
-    assert.deepEqual(inputs.map(n => n.props.checked), [false, true, !omitCovered, false]);
-    assert.deepEqual(inputs.map(n => n.props.disabled), [!editable, !editable, !editable || omitCovered, true]);
+    for (let i = 0; i < 10; i++) await nextTick();
+    const inputs = descendants(root).filter(n => n.tag === "input" && n.props.type === "checkbox").slice(1);
+    assert.deepEqual(inputs.map(n => n.props.checked !== undefined && n.props.checked !== false), [false, !omitCovered, true]);
+    assert.deepEqual(inputs.map(n => n.props.disabled), [!editable, !editable || omitCovered, !editable]);
     for (const input of inputs) input.props.onChange({ target: { checked: false } });
-    assert.deepEqual(changes, !editable ? [] : omitCovered ? [[1, false], [2, false]] : [[1, false], [2, false], [3, false]]);
+    assert.deepEqual(changes, !editable ? [] : omitCovered ? [[1, false], [2, false]] : [[1, false], [3, false], [2, false]]);
     app.unmount();
   }
 });

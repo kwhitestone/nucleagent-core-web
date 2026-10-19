@@ -55,6 +55,7 @@ export function useSessionBindings(id: () => string, disabled: () => boolean) {
   }
   async function save(): Promise<void> {
     if (!saved.value?.editable || !dirty.value || uncertain.value || disabled() || saving.value || loading.value) return;
+    if (selection.toolsLoading.value || selection.toolsFailed.value) { error.value = t("common.bindingsLoadFailed"); return; }
     const ticket = gate.begin();
     const scope = id();
     request?.abort();

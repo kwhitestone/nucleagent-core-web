@@ -15,9 +15,6 @@ import {
 import { AvatarUploadError, USER_AVATAR_CONTRACT, avatarUploader, imageDims } from "../api/userAvatar";
 import AgentCard from "../components/AgentCard.vue";
 import UserAgentWizard from "../components/UserAgentWizard.vue";
-import { listSkills } from "../api/skill";
-import { listToolCatalog, type ToolCatalogItem } from "../api/toolCatalog";
-import type { Skill } from "../api/types";
 import { agentModel, groupAgents } from "../components/agentCard";
 
 const { t } = useI18n();
@@ -50,8 +47,6 @@ const defs = ref<UserDefinition[] | null>(null);
 const models = ref<string[]>([]);
 const backends = ref<UserAgentBackend[]>([]);
 const genModels = ref<Record<string, string[]>>({});
-const skills = ref<Skill[]>([]);
-const tools = ref<ToolCatalogItem[]>([]);
 const ownedIds = computed(() => new Set((defs.value ?? []).map((d) => d.id)));
 const entry = computed(() => entryState(defs.value, models.value));
 const wizard = ref<{ initial?: Draft & { id: number; slug?: string } } | null>(null);
@@ -62,11 +57,8 @@ async function load(): Promise<void> {
   loading.value = true;
   failed.value = false;
   try {
-    const [mine, own, open, be, gen, sk, tl] = await Promise.all([listMyAgents(), listMyDefinitions().catch(() => null), listUserAgentModels().catch(() => []),
-      listUserAgentBackends().catch(() => []), listUserAgentGenModels().catch(() => ({})),
-      listSkills().catch(() => [] as Skill[]), listToolCatalog().catch(() => [] as ToolCatalogItem[])]);
-    skills.value = sk;
-    tools.value = tl;
+    const [mine, own, open, be, gen] = await Promise.all([listMyAgents(), listMyDefinitions().catch(() => null), listUserAgentModels().catch(() => []),
+      listUserAgentBackends().catch(() => []), listUserAgentGenModels().catch(() => ({}))]);
     defs.value = own;
     models.value = open;
     backends.value = be;
@@ -250,7 +242,7 @@ function remove(a: MyAgent): void {
         </section>
       </template>
     </div>
-    <UserAgentWizard v-if="wizard" :models="models" :backends="backends" :gen-models="genModels" :skills="skills" :tools="tools" :busy="busy" :errors="errors" :initial="wizard.initial"
+    <UserAgentWizard v-if="wizard" :models="models" :backends="backends" :gen-models="genModels" :busy="busy" :errors="errors" :initial="wizard.initial"
       @submit="submit" @cancel="busy || (wizard = null)" />
   </div>
 </template>

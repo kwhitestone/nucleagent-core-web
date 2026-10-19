@@ -13,6 +13,7 @@ export interface UpdateProviderRequest {
 }
 
 export interface Skill {
+  revision?: string;
   id: number;
   name: string;
   slug: string;

@@ -17,6 +17,8 @@
  */
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import type { Skill } from "./types";
+import { resourcePage, validatePage, type ResourceFilter } from "@/api/resourcePage";
+import type { PageParams, PageResult } from "@/composables/useRemotePage";
 
 const http = () => getPlatformRuntime().http;
 
@@ -125,6 +127,13 @@ export interface MCPProbeTool {
 
 export type MCPTransport = "sse" | "streamable-http";
 
+export async function probeMCPPage(url: string, transport: MCPTransport, params: PageParams, signal: AbortSignal): Promise<PageResult<MCPProbeTool>> {
+  const response = await http().post<PageResult<MCPProbeTool>>(
+    "/api/v1/addons/admin/mcp-probe", { url, transport }, { params, signal },
+  );
+  return validatePage(response.data);
+}
+
 export async function probeMCPServer(
   url: string,
   transport: MCPTransport,
@@ -148,6 +157,7 @@ export interface SkillFileNode {
 }
 
 const SKILL_ADMIN_BASE = "/api/v1/addons/admin/skill";
+export const adminSkillPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Skill>(SKILL_ADMIN_BASE, params, signal);
 
 export async function listAllSkills(): Promise<Skill[]> {
   const response = await http().get<Envelope<Skill[]>>(SKILL_ADMIN_BASE);
@@ -157,13 +167,14 @@ export async function listAllSkills(): Promise<Skill[]> {
 export async function updateSkill(
   id: number,
   body: { name?: string; isActive?: boolean },
+  revision?: string,
 ): Promise<Skill | null> {
-  const response = await http().patch<Envelope<Skill>>(`${SKILL_ADMIN_BASE}/${id}`, body);
+  const response = await http().patch<Envelope<Skill>>(`${SKILL_ADMIN_BASE}/${id}`, body, { headers: { "If-Match": `"skill-${id}-${revision}"` } });
   return response.data?.data ?? null;
 }
 
-export async function deleteSkill(id: number): Promise<void> {
-  await http().delete(`${SKILL_ADMIN_BASE}/${id}`);
+export async function deleteSkill(id: number, revision?: string): Promise<void> {
+  await http().delete(`${SKILL_ADMIN_BASE}/${id}`, { headers: { "If-Match": `"skill-${id}-${revision}"` } });
 }
 
 export async function listSkillFiles(id: number): Promise<SkillFileNode[]> {
@@ -171,9 +182,13 @@ export async function listSkillFiles(id: number): Promise<SkillFileNode[]> {
   return unwrap(response.data, []);
 }
 
-export async function readSkillFile(id: number, path: string): Promise<string> {
+export const skillFilePage = (id: number, params: ResourceFilter, signal: AbortSignal) =>
+  resourcePage<SkillFileNode>(`${SKILL_ADMIN_BASE}/${id}/files/page`, params, signal);
+
+export async function readSkillFile(id: number, path: string, signal?: AbortSignal): Promise<string> {
   const response = await http().get<Envelope<string>>(`${SKILL_ADMIN_BASE}/${id}/file`, {
     params: { path },
+    signal,
   });
   return response.data?.data ?? "";
 }

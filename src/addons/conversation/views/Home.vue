@@ -98,6 +98,7 @@ async function handleCreate(): Promise<void> {
   const text = input.value.trim();
   if (genOn.value && text) return createChatGen(text);
   if (!text || submitting.value) return;
+  if (toolsLoading.value || toolsFailed.value) { toast.warning(t("common.bindingsLoadFailed")); return; }
   if (!canSend.value) {
     toast.warning(t("common.executionBackendSelectionInvalid"));
     return;

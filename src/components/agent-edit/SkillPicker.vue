@@ -3,6 +3,8 @@ import { computed, nextTick, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Plus, X, Search, Sparkles } from "@lucide/vue";
 import { text, type MessageKey } from "../../addons/administration/agents/definition/messages";
+import { useResourceOptions } from "@/composables/useResourceOptions";
+import CollectionPager from "@/components/CollectionPager.vue";
 
 export interface Skill {
   id: number; name: string; slug: string; isActive: boolean;
@@ -14,13 +16,15 @@ const emit = defineEmits<{ toggle: [skillId: number, checked: boolean] }>();
 const { locale } = useI18n();
 const label = (key: MessageKey) => text(key, locale.value);
 const open = ref(false);
-const query = ref("");
+const { rows: matches, known, selectedPage, hydratedLoaded, query, page, total, hasMore, loading, failed, go, load } =
+  useResourceOptions<Skill>("/api/v1/addons/skill", () => props.selected, true);
 const search = ref<HTMLInputElement>();
-const rows = computed<Skill[]>(() => [...props.skills, ...props.selected.filter(id => !props.skills.some(s => s.id === id))
-  .map(id => ({ id, name: `#${id}`, slug: "", isActive: false, missing: true }))]);
+const rows = computed<Skill[]>(() => [...known.value, ...props.skills.filter(s => !known.value.some(row => row.id === s.id)),
+  ...props.selected.filter(id => !known.value.some(s => s.id === id) && !props.skills.some(s => s.id === id))
+  .map(id => ({ id, name: `#${id}`, slug: "", isActive: false, missing: hydratedLoaded.value }))]);
 const chosen = computed(() => props.selected.map(id => rows.value.find(skill => skill.id === id)).filter((skill): skill is Skill => !!skill));
-const matches = computed(() => rows.value.filter(skill =>
-  `${skill.name}\n${skill.slug}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
+const visibleChosen = computed(() => chosen.value.filter(skill =>
+  selectedPage.rows.value.some(row => row.id === skill.id) || skill.missing));
 async function toggleList() { open.value = !open.value; if (open.value) { await nextTick(); search.value?.focus(); } }
 </script>
 
@@ -28,25 +32,29 @@ async function toggleList() { open.value = !open.value; if (open.value) { await 
   <div class="skill-picker">
     <p v-if="!chosen.length" class="skill-empty"><Sparkles :size="18" aria-hidden="true" />{{ label('noSkills') }}</p>
     <ul v-else class="skill-chips">
-      <li v-for="skill in chosen" :key="skill.id" class="skill-chip">
+      <li v-for="skill in visibleChosen" :key="skill.id" class="skill-chip">
         <span class="chip-icon" aria-hidden="true"><Sparkles :size="14" /></span>
         <span class="chip-copy"><strong>{{ skill.name }}</strong><small :title="skill.sourceSHA256">{{ skill.missing ? label('skillDisabled') : installPath?.(skill.id) || skill.slug }}</small></span>
         <button v-if="editable" type="button" class="chip-remove" :aria-label="`${label('removeSkill')} ${skill.name}`" :title="label('removeSkill')" @click="emit('toggle', skill.id, false)"><X :size="14" /></button>
       </li>
     </ul>
+    <CollectionPager v-if="selectedPage.total.value > 20 || selectedPage.failed.value" :page="selectedPage.page.value"
+      :total="selectedPage.total.value" :has-more="selectedPage.hasMore.value" :loading="selectedPage.loading.value"
+      :failed="selectedPage.failed.value" @page="selectedPage.go" @retry="selectedPage.load" />
     <button v-if="editable" type="button" class="add-skill" :aria-expanded="open" @click="toggleList"><Plus :size="16" />{{ label('addSkill') }}</button>
     <div v-if="open && editable" class="skill-popover" role="group" :aria-label="label('addSkill')" @keydown.esc.stop.prevent="open = false">
       <label class="skill-search"><Search :size="16" aria-hidden="true" /><input ref="search" v-model="query" type="search" :aria-label="label('searchSkills')" :placeholder="label('searchSkills')" /></label>
       <ul class="skill-options">
         <li v-for="skill in matches" :key="skill.id">
           <label class="skill-option" :class="{ off: !skill.isActive && !selected.includes(skill.id) }">
-            <input type="checkbox" :checked="selected.includes(skill.id)" :disabled="!skill.isActive && !selected.includes(skill.id)"
+            <input type="checkbox" :checked="selected.includes(skill.id)" :disabled="(!skill.isActive || selected.length >= 50) && !selected.includes(skill.id)"
               @change="emit('toggle', skill.id, ($event.target as HTMLInputElement).checked)" />
             <span><strong>{{ skill.name }}</strong><small>{{ !skill.isActive ? label('skillDisabled') : [skill.slug, skill.version].filter(Boolean).join(' · ') }}</small></span>
           </label>
         </li>
         <li v-if="!matches.length" class="skill-empty">{{ label('emptyResources') }}</li>
       </ul>
+      <CollectionPager :page="page" :total="total" :has-more="hasMore" :loading="loading" :failed="failed" @page="go" @retry="load" />
     </div>
   </div>
 </template>

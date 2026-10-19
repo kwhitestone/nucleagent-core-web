@@ -7,11 +7,13 @@
  */
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import type { Envelope } from "./admin";
+import { resourcePage, type ResourceFilter } from "@/api/resourcePage";
 
 const http = () => getPlatformRuntime().http;
 
 /** Tool row（tools 表）。config 是自由 JSON。 */
 export interface Tool {
+  revision?: string;
   id: number;
   name: string;
   slug: string;
@@ -33,6 +35,7 @@ export interface ToolConfig {
 }
 
 const BASE = "/api/v1/addons/tool";
+export const toolPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Tool>(BASE, params, signal);
 
 export async function listTools(): Promise<Tool[]> {
   const response = await http().get<Envelope<Tool[]>>(BASE);
@@ -44,7 +47,9 @@ export async function createTool(body: {
   slug: string;
   config?: ToolConfig;
   isActive?: boolean;
-}): Promise<Tool | null> {
-  const response = await http().post<Envelope<Tool>>(BASE, body);
-  return response.data?.data ?? null;
+}): Promise<Tool> {
+  const response = await http().post<Envelope<{ tool: Tool }>>(BASE, body);
+  const tool = response.data?.data?.tool;
+  if (!tool || !Number.isSafeInteger(tool.id) || !tool.revision) throw new Error("Invalid created tool response");
+  return tool;
 }

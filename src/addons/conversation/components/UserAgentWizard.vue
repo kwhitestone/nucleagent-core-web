@@ -36,6 +36,8 @@ const emit = defineEmits<{ submit: [draft: Draft, avatar?: File]; cancel: [] }>(
 const { t, te, locale } = useI18n();
 
 const draft = reactive<Draft>(emptyDraft(props.initial));
+const selectedToolMetadata = ref<ToolCatalogItem[]>(props.tools ?? []);
+const toolMetadataReady = ref(!draft.toolIds.length);
 const local = ref<Partial<Record<string, string>>>({});
 const editing = computed(() => !!props.initial);
 const active = ref<Group>("basic");
@@ -112,11 +114,16 @@ function cancel() {
 }
 function submit() {
   if (props.busy) return;
+  if (draft.toolIds.length && !toolMetadataReady.value) {
+    local.value = { bindings: "common.bindingsLoadFailed" };
+    void locateErrors(local.value);
+    return;
+  }
   local.value = validateDraft(draft, !editing.value);
   if (Object.keys(local.value).length) { void locateErrors(local.value); return; }
   // A tool a picked skill brings is dropped (the server refuses the pair: tool_covered_by_skill).
   emit("submit", { ...draft, gen: { ...draft.gen }, skillIds: [...draft.skillIds],
-    toolIds: effectiveToolIds(draft.toolIds, props.tools ?? [], draft.skillIds) }, avatarFile.value);
+    toolIds: effectiveToolIds(draft.toolIds, selectedToolMetadata.value, draft.skillIds) }, avatarFile.value);
 }
 </script>
 
@@ -190,8 +197,8 @@ function submit() {
       </fieldset>
       <fieldset class="ua-gen" data-testid="ua-tools">
         <legend>{{ t("agents.mine.tools") }}</legend>
-        <p v-if="!toolRows.length" class="ua-row"><span>{{ t("agents.mine.bindingsEmpty") }}</span></p>
         <ToolBindings :rows="toolRows" :selected="draft.toolIds" :editable="!busy" omit-covered
+          :skill-ids="draft.skillIds" @metadata="selectedToolMetadata = $event" @ready="toolMetadataReady = $event"
           :covered-label="t('common.toolCoveredBySkill')" :unavailable-label="t('agents.mine.bindingUnavailable')"
           @toggle="(id, checked) => toggle('toolIds', id, checked)" />
         <p id="ua-bindings-err" class="ua-row" tabindex="-1"><span class="ua-err">{{ message("bindings") }}</span></p>

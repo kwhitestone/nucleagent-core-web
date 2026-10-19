@@ -7,7 +7,7 @@ import { compileScript, compileTemplate, parse } from "vue/compiler-sfc";
 import { createI18n } from "vue-i18n";
 import { createPinia } from "pinia";
 import { routerKey, routeLocationKey } from "vue-router";
-import { createServer, type ViteDevServer } from "vite";
+import { createServer, transformWithEsbuild, type ViteDevServer } from "vite";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import en from "../src/i18n/en.ts";
 import zh from "../src/i18n/zh.ts";
@@ -87,6 +87,7 @@ const detach = (child: N) => {
 const renderer = createRenderer<N, N>({
   createElement: (tag) => Object.assign(node(tag), {
     style: {},
+    focus() {},
     addEventListener(this: N, event: string, fn: (e: unknown) => void) { this.on[event] = fn; },
     removeEventListener() {},
     querySelector: () => null,
@@ -127,7 +128,8 @@ async function clientComponent(path: string, children: Record<string, Component>
     const bindings = loaded.setup(props, ctx);
     return Object.defineProperty({ ...bindings, ...children }, "__isScriptSetup", { value: true });
   };
-  return { ...loaded, setup, ssrRender: undefined, render: new Function("Vue", code)(Vue) };
+  const compiled = await transformWithEsbuild(code, `${path}.ts`, { loader: "ts" });
+  return { ...loaded, setup, ssrRender: undefined, render: new Function("Vue", compiled.code)(Vue) };
 }
 
 let vite: ViteDevServer;
@@ -138,6 +140,10 @@ let bindingPickers: Component;
 let editor: Component;
 let conversation: Component;
 let home: Component;
+let agentSkillPicker: Component;
+let agentToolPicker: Component;
+let relations: Component;
+let createSkill: Component;
 let navigations: unknown[] = [];
 let observePending = (_value: boolean) => {};
 let streamMounts = 0;
@@ -168,16 +174,33 @@ before(async () => {
   unregister = registerPlatformRuntime(platformRuntime);
   http.defaults.adapter = async (config: any) => {
     const data: any = await respond(config);
+    // Synthetic server contract: filter before counting and paging. Dedicated
+    // protocol fixtures can return metadata directly to control response order.
+    if (config.params?.page && Array.isArray(data?.data) && data.total === undefined) {
+      const p = config.params;
+      const ids = p.ids ? String(p.ids).split(",").map(Number) : undefined;
+      const rows = data.data.filter((row: any) => (!ids || ids.includes(row.id))
+        && (!p.search || JSON.stringify(row).toLowerCase().includes(p.search.toLowerCase()))
+        && (!p.group || p.group === "all" || skillSource(row) === p.group));
+      Object.assign(data, { total: rows.length, page: p.page, pageSize: p.pageSize,
+        hasMore: p.page * p.pageSize < rows.length,
+        data: rows.slice((p.page - 1) * p.pageSize, p.page * p.pageSize) });
+    }
     // Old presentation fixtures do not model concurrency; protocol tests below
     // supply their own principal/revision and are never rewritten here.
     if (config.url.includes("/bindings") && data?.data && !data.data.principal) {
       data.data = { ...data.data, principal: "71", revision: String(++fixtureRevision) };
     }
-    return { config, data, headers: {}, status: 200, statusText: "OK" };
+    return { config, data, headers: data?.fixtureHeaders ?? {}, status: 200, statusText: "OK" };
   };
-  sheet = await clientComponent("/src/addons/conversation/components/OptionSheet.vue");
-  picker = await clientComponent("/src/addons/conversation/components/SkillPicker.vue", { OptionSheet: sheet });
-  toolPicker = await clientComponent("/src/addons/conversation/components/ToolPicker.vue", { OptionSheet: sheet });
+  const pager = await clientComponent("/src/components/CollectionPager.vue");
+  agentSkillPicker = await clientComponent("/src/components/agent-edit/SkillPicker.vue", { CollectionPager: pager });
+  agentToolPicker = await clientComponent("/src/components/agent-edit/ToolBindings.vue", { CollectionPager: pager });
+  relations = await clientComponent("/src/addons/administration/views/admin/ResourceRelations.vue", { CollectionPager: pager });
+  createSkill = await clientComponent("/src/addons/administration/views/admin/CreateSkill.vue", { CollectionPager: pager });
+  sheet = await clientComponent("/src/addons/conversation/components/OptionSheet.vue", { CollectionPager: pager });
+  picker = await clientComponent("/src/addons/conversation/components/SkillPicker.vue", { OptionSheet: sheet, CollectionPager: pager });
+  toolPicker = await clientComponent("/src/addons/conversation/components/ToolPicker.vue", { OptionSheet: sheet, CollectionPager: pager });
   bindingPickers = await clientComponent("/src/addons/conversation/components/BindingPickers.vue", { SkillPicker: picker, ToolPicker: toolPicker });
   editor = await clientComponent("/src/addons/conversation/components/SessionBindingsEditor.vue", { BindingPickers: bindingPickers });
   const win = new EventTarget();
@@ -241,6 +264,153 @@ const many = (n: number) => Array.from({ length: n }, (_, i) => ({
   group: ["system", "imported", "mine"][i % 3], badges: i % 3 === 1 ? ["Imported"] : undefined,
 }));
 const groups = [{ value: "system", label: "System" }, { value: "imported", label: "Imported" }, { value: "mine", label: "Mine" }];
+
+const descendants = (n: N, tag: string): N[] => [...(n.tag === tag ? [n] : []), ...n.children.flatMap(c => descendants(c, tag))];
+const pageNext = (root: N) => all(root, "collection-pager")[0].children.find(n => n.props["aria-label"] === "Next page")!;
+const changeCheck = (n: N, checked: boolean) => (n.props.onChange as Function)({ target: { checked } });
+
+for (const kind of ["skill", "tool", "agent-skill"] as const) {
+  test(`REMOTE: ${kind} selected resources use three backend pages`, async () => {
+    const requests: any[] = [];
+    respond = async config => { requests.push(config.params); return { data: Array.from({length:65}, (_,i) => skill(i+1)) }; };
+    const selected = Array.from({length:45}, (_,i) => i+1);
+    const { root, app } = mount(kind === "agent-skill" ? agentSkillPicker : kind === "skill" ? picker : toolPicker, () =>
+      kind === "agent-skill" ? { skills: [], selected, editable: true } : { modelValue: selected, tools: [] });
+    try {
+      await flush();
+      const chips = () => all(root, kind === "tool" ? "tool-chip" : "skill-chip");
+      assert.equal(chips().length, 20);
+      click(pageNext(root)); await flush(); click(pageNext(root)); await flush();
+      assert.equal(chips().length, 5);
+      assert.ok(requests.some(p => p?.ids === selected.join(",") && p.page === 3 && p.pageSize === 20));
+      assert.match(textOf(chips()[0]), /skill-41/);
+    } finally { app.unmount(); }
+  });
+}
+
+for (const kind of ["skill", "tool"] as const) {
+  test(`REMOTE: existing agent ${kind} selector searches and retains choices across three pages`, async () => {
+    const requests: any[] = [];
+    respond = async config => { requests.push(config.params); return { data: Array.from({length:65}, (_,i) => skill(i+1)) }; };
+    const selected = ref<number[]>([]);
+    const { root, app } = mount(kind === "skill" ? agentSkillPicker : agentToolPicker, () => ({
+      skills: [], rows: [], selected: selected.value, editable: true, coveredLabel: "Covered", unavailableLabel: "Unavailable",
+      onToggle: (id: number, checked: boolean) => { selected.value = checked ? [...selected.value,id] : selected.value.filter(v=>v!==id); },
+    }));
+    try {
+      await flush();
+      if (kind === "skill") { click(all(root,"add-skill")[0]); await flush(); }
+      const choices = () => kind === "skill" ? all(root,"skill-option") : descendants(all(root,"tool-bindings")[0],"label");
+      changeCheck(descendants(choices()[0],"input")[0],true); await flush();
+      click(pageNext(root)); await flush(); click(pageNext(root)); await flush();
+      changeCheck(descendants(choices()[0],"input")[0],true); await flush();
+      assert.deepEqual(selected.value,[1,41]);
+      assert.ok(requests.some(p=>p?.page===3 && p.pageSize===20));
+      const input = descendants(root,"input").find(n=>n.props.type==="search")!;
+      input.value="skill-6"; input.on.input({target:input}); await sleep(240); await flush();
+      assert.equal(choices().length,7);
+      assert.ok(requests.some(p=>p?.page===1 && p.search==="skill-6"));
+      assert.deepEqual(selected.value,[1,41]);
+    } finally { app.unmount(); }
+  });
+}
+
+test("REMOTE: inline relation delta preserves cross-page selection and retains failed saves", async () => {
+  let writes = 0;
+  const bodies: any[] = [];
+  const versions: string[] = [];
+  respond = async config => {
+    if (config.method === "patch") {
+      writes++; bodies.push(JSON.parse(config.data));
+      versions.push(config.headers["If-Match"]);
+      if (writes === 1) throw new Error("synthetic failure");
+      return { data: {}, fixtureHeaders: { etag: '"skill-1-3"' } };
+    }
+    return { data: Array.from({length:65}, (_,i) => ({...skill(i+1), revision:"2"})) };
+  };
+  const { root, app } = mount(relations, () => ({ kind:"skill", id:1, revision:"1" }));
+  try {
+    await flush();
+    changeCheck(descendants(root,"input").find(n=>n.props.type==="checkbox")!,false); await flush();
+    click(pageNext(root)); await flush(); click(pageNext(root)); await flush();
+    changeCheck(descendants(root,"input").find(n=>n.props.type==="checkbox")!,false); await flush();
+    const save = () => descendants(root,"button").find(n=>n.props["aria-label"]==="Save")!;
+    click(save()); await flush();
+    assert.match(textOf(root),/Selections retained/);
+    click(descendants(root,"button").find(n=>n.props["aria-label"]==="Reload")!); await flush();
+    assert.match(textOf(root),/Pending 2/);
+    click(save()); await flush();
+    assert.deepEqual(bodies,[{add:[],remove:[1,41]},{add:[],remove:[1,41]}]);
+    assert.match(textOf(root),/Pending 0/);
+    changeCheck(descendants(root,"input").find(n=>n.props.type==="checkbox")!,false); await flush();
+    click(save()); await flush();
+    assert.deepEqual(versions,['"skill-1-1"','"skill-1-2"','"skill-1-3"']);
+    changeCheck(descendants(root,"input").find(n=>n.props.type==="checkbox")!,false); await flush();
+    click(descendants(root,"button").find(n=>n.props["aria-label"]==="Discard changes")!); await flush();
+    assert.match(textOf(root),/Pending 0/);
+    assert.equal(writes,3,"discard never writes the draft");
+  } finally { app.unmount(); }
+});
+
+test("REMOTE: skill creation retains created id and off-page picks when binding fails", async () => {
+  let creates=0, binds=0;
+  respond = async config => {
+    if (config.method==="post") { creates++; return {data:{...skill(99),revision:"1"}}; }
+    if (config.method==="patch") {
+      binds++; assert.deepEqual(JSON.parse(config.data),{add:[1,41],remove:[]});
+      if (binds===1) throw new Error("synthetic binding failure");
+      return {data:{}};
+    }
+    return {data:Array.from({length:65},(_,i)=>skill(i+1))};
+  };
+  let saved=0;
+  const {root,app}=mount(createSkill,()=>({onCreated:()=>saved++}));
+  try {
+    await flush();
+    const picks=()=>all(root,"check").filter(n=>descendants(n,"input")[0]?.props["onChange"]);
+    changeCheck(descendants(picks()[0],"input")[0],true); await flush();
+    click(pageNext(root)); await flush(); click(pageNext(root)); await flush();
+    changeCheck(descendants(picks()[0],"input")[0],true); await flush();
+    const submit=()=> (descendants(root,"form")[0].props.onSubmit as Function)({preventDefault(){}});
+    await submit(); await flush(); assert.match(textOf(root),/Skill created; binding failed/);
+    await submit(); await flush(); assert.equal(creates,1); assert.equal(binds,2); assert.equal(saved,1);
+  } finally { app.unmount(); }
+});
+
+for (const kind of ["skill", "tool"] as const) {
+  test(`REMOTE: ${kind} picker pages/searches on server and retains off-page selection`, async () => {
+    const requests: any[] = [];
+    respond = async config => {
+      requests.push(config.params);
+      return { data: Array.from({ length: 65 }, (_, i) => skill(i + 1)) };
+    };
+    const selected = ref<number[]>([64]);
+    const { root, app } = mount(kind === "skill" ? picker : toolPicker, () => ({
+      modelValue: selected.value, ...(kind === "tool" ? { tools: [] } : {}), "onUpdate:modelValue": (ids: number[]) => { selected.value = ids; },
+    }));
+    try {
+      await flush();
+      assert.ok(requests.some(p => p?.page === 1 && p.pageSize === 20));
+      assert.ok(requests.some(p => p?.ids === "64"), "off-page labels require bounded ID hydration");
+      assert.match(textOf(all(root, `${kind}-chip-name`)[0]), /skill-64/);
+      click(all(root, `${kind}-toggle`)[0]); await flush();
+      assert.equal(all(body, "osheet-row").length, 20);
+      click(all(body, "osheet-row")[0]); await flush();
+      const next = () => all(body, "collection-pager")[0].children.find(n => n.props["aria-label"] === "Next page")!;
+      click(next()); await flush();
+      assert.ok(requests.some(p => p?.page === 2));
+      click(next()); await flush();
+      click(all(body, "osheet-row")[0]); await flush();
+      assert.deepEqual(selected.value, [64, 1, 41]);
+      const input = all(body, "osheet-search")[0];
+      input.value = "skill-6"; input.on.input({ target: input });
+      await sleep(240); await flush();
+      assert.ok(requests.some(p => p?.search === "skill-6" && p.page === 1));
+      assert.deepEqual(selected.value, [64, 1, 41]);
+      assert.equal(all(body, "osheet-row").length, 7);
+    } finally { app.unmount(); }
+  });
+}
 
 test("600 options render one page, grow by page, and search narrows with highlight after debounce", async () => {
   const model = ref<string[]>(["2", "5"]);
@@ -318,14 +488,14 @@ test("skill picker groups by source, badges imports, and flags selected-but-unav
     assert.match(textOf(all(root, "skill-total")[0]), /502/);
 
     click(all(root, "skill-toggle")[0]); await nextTick();
-    assert.deepEqual(all(body, "osheet-tab").map(textOf), ["全部 502", "已选 2", "系统 1", "导入 500", "我的 1"]);
-    assert.equal(all(body, "osheet-row").length, PAGE_SIZE);
+    assert.deepEqual(all(body, "osheet-tab").map(n => textOf(n).trim()), ["全部", "已选 3", "系统", "导入", "我的"]);
+    assert.equal(all(body, "osheet-row").length, 20);
     assert.equal(textOf(all(all(body, "osheet-row")[0], "osheet-badge")[0]), "导入");
     assert.equal(all(body, "osheet-search")[0].props.placeholder, "搜索技能名称、描述、分类");
 
     click(all(chips[2], "skill-chip-remove")[0]);
     assert.deepEqual(model.value, [3, 900]);
-    await nextTick();
+    await flush();
     click(all(all(root, "skill-chip")[0], "skill-chip-remove")[0]);
     assert.deepEqual(model.value, [900]);
   } finally { app.unmount(); }
@@ -358,7 +528,10 @@ for (const kind of ["skill", "tool"] as const) {
       await flush();
       assert.match(textOf(root), /Maximum 50/);
       click(all(root, `${kind}-toggle`)[0]); await nextTick();
-      click(all(body, "osheet-more")[0]); await nextTick();
+      for (let i = 0; i < 2; i++) {
+        click(all(body, "collection-pager")[0].children.find(n => n.props["aria-label"] === "Next page")!);
+        await flush();
+      }
       assert.equal(all(body, "osheet-row").at(-1)?.props.disabled, true);
       assert.equal(all(body, "osheet-row")[0].props.disabled, false);
       click(all(root, `${kind}-chip-remove`)[0]); await nextTick();
@@ -607,6 +780,7 @@ for (const change of ["add", "remove", "clear"] as const) {
         click(all(root, "skill-chip-remove")[0]); await nextTick();
         if (change === "clear") { click(all(root, "tool-chip-remove")[0]); await nextTick(); }
       }
+      await flush();
       const skills = all(root, "skill-chip-name").map(textOf);
       const tools = all(root, "tool-chip-name").map(textOf);
       for (let i = 0; i < 6; i++) {
@@ -798,9 +972,10 @@ for (const narrow of [false, true]) {
         click(all(root, "skill-toggle")[0]); await nextTick();
         assert.equal(writes.length, 0, "selection alone cannot create or execute a turn");
         if (clear) {
-          click(all(root, "skill-chip-remove")[0]); await nextTick();
+          await flush();
+          click(all(root, "skill-chip-remove")[0]); await flush();
           while (all(root, "tool-chip-remove").length) {
-            click(all(root, "tool-chip-remove")[0]); await nextTick();
+            click(all(root, "tool-chip-remove")[0]); await flush();
           }
         }
         resize(narrow); await flush();

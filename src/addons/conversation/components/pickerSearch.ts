@@ -2,8 +2,8 @@
  * Option search for pickers with hundreds of rows (L7 PICKER-WEB): source
  * groups, case-insensitive search over label/note/keywords, highlight, paging,
  * debounce. Pure so node --test covers it without a DOM.
- * ponytail: client-side filter over the full GET /skill list; fine to ~1000 rows,
- * add ?q=&category=&page= on the backend before importing the 20k market.
+ * Static option sets use these local helpers. Skill/tool resource lists use
+ * remote search and pagination, including the selected-resource view.
  */
 import type { Skill } from "../api/types.ts";
 

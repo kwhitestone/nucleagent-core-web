@@ -6,38 +6,50 @@
  * 文件浏览（左树右文抽屉）/ 下载。不含 git 导入、知识库绑定、SKILL.md 在线编辑
  * （依赖 agentia 独有 service，nucleagent 侧无对应物）。
  */
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError, getPlatformRuntime } from "@/contracts/platform-runtime";
 import {
   deleteSkill,
   fetchSkillDownloadURL,
-  listAllSkills,
-  listSkillFiles,
+  adminSkillPage,
+  skillFilePage,
   readSkillFile,
   updateSkill,
-  type SkillFileNode,
 } from "../../api/admin";
 import { toast } from "@/composables/useToast";
 import type { Skill } from "../../api/types";
-import SkillFileTreeNode from "./SkillFileTreeNode.vue";
+import { ArrowLeft, File, Folder, X } from "@lucide/vue";
+import CollectionPager from "@/components/CollectionPager.vue";
+import ResourceRelations from "./ResourceRelations.vue";
+import CreateSkill from "./CreateSkill.vue";
+import { useRemotePage } from "@/composables/useRemotePage";
+import { resourcePage } from "@/api/resourcePage";
+import { trapDialogFocus } from "../../agents/definition/focus";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const zh = computed(() => locale.value.startsWith("zh"));
+const drawer = ref<HTMLElement>();
+let previousFocus: HTMLElement | null = null;
 
-const loading = ref(false);
-const skills = ref<Skill[]>([]);
+const collection = useRemotePage(adminSkillPage);
+const { rows: skills, loading, query, page, total, hasMore, failed } = collection;
 const uploading = ref(false);
+const relationId = ref<number>();
+const creating = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 // ---- 文件浏览抽屉 ----
 const browsingSkill = ref<Skill | null>(null);
-const fileTree = ref<SkillFileNode[]>([]);
-const treeLoading = ref(false);
+const directory = ref("");
+const files = useRemotePage((params, signal) =>
+  skillFilePage(browsingSkill.value!.id, { ...params, directory: directory.value }, signal));
+const { rows: fileTree, loading: treeLoading, query: fileQuery } = files;
 const selectedFile = ref("");
 const fileContent = ref("");
 const fileLoading = ref(false);
-/** 展开的目录 path 集合。 */
-const expandedDirs = ref<Set<string>>(new Set());
+let fileSequence = 0;
+let fileController: AbortController | undefined;
 
 function skillDescription(s: Skill): string {
   const v = s.config?.description;
@@ -45,13 +57,16 @@ function skillDescription(s: Skill): string {
 }
 
 async function load(): Promise<void> {
-  loading.value = true;
+  await collection.load();
+}
+
+async function refreshRelation(id: number): Promise<void> {
   try {
-    skills.value = await listAllSkills();
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : t("admin.skills.loadFailed"));
-  } finally {
-    loading.value = false;
+    const result = await resourcePage<Skill>("/api/v1/addons/admin/skill", { page: 1, pageSize: 1, ids: [id] });
+    const updated = result.data[0];
+    if (updated) skills.value = skills.value.map(row => row.id === id ? updated : row);
+  } catch {
+    toast.error(t("common.operationFailed"));
   }
 }
 
@@ -86,7 +101,7 @@ async function onFileChange(event: Event): Promise<void> {
 
 async function toggleActive(s: Skill): Promise<void> {
   try {
-    await updateSkill(s.id, { isActive: !s.isActive });
+    await updateSkill(s.id, { isActive: !s.isActive }, s.revision);
     await load();
   } catch (error) {
     toast.error(error instanceof ApiError ? error.message : t("common.operationFailed"));
@@ -96,7 +111,7 @@ async function toggleActive(s: Skill): Promise<void> {
 async function remove(s: Skill): Promise<void> {
   if (!window.confirm(t("admin.skills.confirmDelete", { name: s.name }))) return;
   try {
-    await deleteSkill(s.id);
+    await deleteSkill(s.id, s.revision);
     toast.success(t("admin.skills.deleted"));
     await load();
   } catch (error) {
@@ -106,49 +121,32 @@ async function remove(s: Skill): Promise<void> {
 
 // ---- 文件浏览 ----
 
-/** 深度优先找第一个 SKILL.md（默认选中）。 */
-function firstSKILLMD(nodes: SkillFileNode[]): string {
-  for (const n of nodes) {
-    if (n.isDir) {
-      const found = firstSKILLMD(n.children ?? []);
-      if (found) return found;
-    } else if (n.name === "SKILL.md") {
-      return n.path;
-    }
-  }
-  return "";
-}
-
 async function openBrowser(s: Skill): Promise<void> {
+  closeBrowser();
+  previousFocus = document.activeElement as HTMLElement | null;
   browsingSkill.value = s;
-  fileTree.value = [];
   selectedFile.value = "";
   fileContent.value = "";
-  expandedDirs.value = new Set();
-  treeLoading.value = true;
-  try {
-    fileTree.value = await listSkillFiles(s.id);
-    const skillMD = firstSKILLMD(fileTree.value);
-    if (skillMD) {
-      // 展开到 SKILL.md 的父目录并选中。
-      const parts = skillMD.split("/");
-      parts.pop();
-      let prefix = "";
-      for (const part of parts) {
-        prefix = prefix ? `${prefix}/${part}` : part;
-        expandedDirs.value.add(prefix);
-      }
-      await selectFile(skillMD);
-    }
-  } catch (error) {
-    toast.error(error instanceof ApiError ? error.message : t("admin.skills.browseFailed"));
-  } finally {
-    treeLoading.value = false;
-  }
+  void enterDirectory("");
+  await nextTick();
+  drawer.value?.querySelector<HTMLInputElement>("input")?.focus();
 }
 
 function closeBrowser(): void {
+  files.reset();
+  fileSequence++;
+  fileController?.abort();
+  fileLoading.value = false;
   browsingSkill.value = null;
+  previousFocus?.focus?.();
+  previousFocus = null;
+}
+
+function onCreated(skill: Skill) {
+  creating.value = false;
+  relationId.value = skill.id;
+  query.value = skill.slug;
+  void load();
 }
 
 function onMaskClick(e: MouseEvent): void {
@@ -156,24 +154,28 @@ function onMaskClick(e: MouseEvent): void {
 }
 
 async function selectFile(path: string): Promise<void> {
-  if (!browsingSkill.value || fileLoading.value) return;
+  if (!browsingSkill.value) return;
+  const sequence = ++fileSequence;
+  fileController?.abort();
+  fileController = new AbortController();
   selectedFile.value = path;
   fileContent.value = "";
   fileLoading.value = true;
   try {
-    fileContent.value = await readSkillFile(browsingSkill.value.id, path);
+    const content = await readSkillFile(browsingSkill.value.id, path, fileController.signal);
+    if (sequence === fileSequence) fileContent.value = content;
   } catch (error) {
-    fileContent.value = error instanceof ApiError ? error.message : t("admin.skills.readFileFailed");
+    if (sequence === fileSequence) fileContent.value = error instanceof ApiError ? error.message : t("admin.skills.readFileFailed");
   } finally {
-    fileLoading.value = false;
+    if (sequence === fileSequence) fileLoading.value = false;
   }
 }
 
-function toggleDir(path: string): void {
-  const next = new Set(expandedDirs.value);
-  if (next.has(path)) next.delete(path);
-  else next.add(path);
-  expandedDirs.value = next;
+async function enterDirectory(path: string): Promise<void> {
+  directory.value = path;
+  fileQuery.value = "";
+  files.reset();
+  await files.load();
 }
 
 async function download(s: Skill): Promise<void> {
@@ -189,13 +191,19 @@ function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Escape" && browsingSkill.value) closeBrowser();
 }
 onMounted(() => window.addEventListener("keydown", onKeydown));
-onUnmounted(() => window.removeEventListener("keydown", onKeydown));
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown);
+  fileSequence++;
+  fileController?.abort();
+});
 </script>
 
 <template>
   <div class="skills-view">
     <div class="list-header">
-      <span class="count-hint">{{ t("admin.skills.count", { n: skills.length }) }}</span>
+      <span class="count-hint">{{ t("admin.skills.count", { n: total }) }}</span>
+      <button class="btn-primary" type="button" @click="creating = true">{{ zh ? '新建技能' : 'Create skill' }}</button>
+      <input v-model="query" type="search" class="list-search" :aria-label="t('common.search')" :placeholder="t('common.search')" />
       <input
         ref="fileInput"
         type="file"
@@ -225,6 +233,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
           <div v-if="skillDescription(s)" class="skill-desc">{{ skillDescription(s) }}</div>
         </div>
         <div class="skill-actions">
+          <button class="btn-ghost" type="button" :aria-expanded="relationId === s.id" @click="relationId = relationId === s.id ? undefined : s.id">{{ zh ? '绑定工具' : 'Bound tools' }}</button>
           <button class="btn-ghost" type="button" @click="toggleActive(s)">
             {{ s.isActive ? t("common.disable") : t("common.enable") }}
           </button>
@@ -232,36 +241,41 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
           <button class="btn-ghost" type="button" @click="download(s)">{{ t("common.download") }}</button>
           <button class="btn-ghost danger" type="button" @click="remove(s)">{{ t("common.delete") }}</button>
         </div>
+        <ResourceRelations v-if="relationId === s.id" kind="skill" :id="s.id" :revision="s.revision" @changed="refreshRelation(s.id)" />
       </div>
     </div>
 
+    <CollectionPager :page="page" :total="total" :has-more="hasMore" :loading="loading" :failed="failed" @page="collection.go" @retry="load" />
+    <CreateSkill v-if="creating" @close="creating = false; load()" @created="onCreated" />
     <!-- 文件浏览抽屉 -->
     <div v-if="browsingSkill" class="drawer-mask" @click="onMaskClick">
-      <div class="drawer">
+      <div ref="drawer" class="drawer" role="dialog" aria-modal="true" :aria-label="browsingSkill.name" @keydown="trapDialogFocus">
         <div class="drawer-header">
           <div class="drawer-title">
             <span class="skill-name">{{ browsingSkill.name }}</span>
             <span class="skill-slug">{{ browsingSkill.slug }}</span>
           </div>
-          <button class="icon-btn" type="button" @click="closeBrowser">✕</button>
+          <button class="icon-btn" type="button" :aria-label="t('common.close')" @click="closeBrowser"><X :size="16" /></button>
         </div>
         <div class="drawer-body">
           <!-- 左：文件树 -->
           <div class="tree-pane">
+            <input v-model="fileQuery" type="search" class="file-search" :aria-label="t('common.search')" :placeholder="t('common.search')" />
+            <button v-if="directory" type="button" class="file-entry" :title="directory" @click="enterDirectory(directory.split('/').slice(0, -1).join('/'))"><ArrowLeft :size="16" />{{ directory }}</button>
             <p v-if="treeLoading" class="tree-hint">{{ t("common.loading") }}</p>
             <template v-else>
-              <SkillFileTreeNode
+              <button
                 v-for="node in fileTree"
                 :key="node.path"
-                :node="node"
-                :depth="0"
-                :selected="selectedFile"
-                :expanded="expandedDirs"
-                @select="selectFile"
-                @toggle="toggleDir"
-              />
+                type="button"
+                class="file-entry"
+                :aria-pressed="!node.isDir && selectedFile === node.path"
+                :title="node.path"
+                @click="node.isDir ? enterDirectory(node.path) : selectFile(node.path)"
+              ><component :is="node.isDir ? Folder : File" :size="16" /><span>{{ fileQuery ? node.path : node.name }}</span></button>
               <p v-if="!fileTree.length" class="tree-hint">{{ t("admin.skills.noFiles") }}</p>
             </template>
+            <CollectionPager :page="files.page.value" :total="files.total.value" :has-more="files.hasMore.value" :loading="treeLoading" :failed="files.failed.value" @page="files.go" @retry="files.load" />
           </div>
           <!-- 右：文件内容 -->
           <div class="content-pane">
@@ -279,7 +293,9 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 <style scoped>
 .skills-view { display: flex; flex-direction: column; gap: 14px; }
 
-.list-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.list-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.list-search { flex: 1; min-width: 140px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); }
+@media (max-width: 600px) { .skill-card { flex-direction: column; align-items: flex-start; } .tree-pane { width: 140px; } }
 .count-hint { font-size: 12.5px; color: var(--text-tertiary); }
 
 .hidden-file { display: none; }
@@ -289,7 +305,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .skill-list { display: flex; flex-direction: column; gap: 10px; }
 
 .skill-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
   padding: 14px 16px;
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--shadow-xs);
@@ -299,6 +315,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 .skill-card.inactive { opacity: 0.6; }
 
 .skill-main { min-width: 0; flex: 1; }
+.skill-name, .skill-slug { overflow-wrap: anywhere; }
 .skill-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .skill-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .skill-slug { font-size: 11.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
@@ -346,6 +363,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   overflow-y: auto; padding: 8px 4px;
 }
 .tree-hint { color: var(--text-tertiary); font-size: 12px; padding: 12px; }
+.file-search { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); }
+.file-entry { display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px; text-align: left; background: transparent; color: var(--text-primary); border: 0; cursor: pointer; overflow-wrap: anywhere; }
+.file-entry svg { flex-shrink: 0; }
+.file-entry:hover, .file-entry[aria-pressed=true] { background: var(--bg-hover); }
 
 .content-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .content-head {
@@ -383,4 +404,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 }
 .btn-ghost:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .btn-ghost.danger:hover { border-color: var(--rose-400); color: var(--rose-500); }
+@media (max-width: 600px) {
+  .drawer { width: 100%; }
+  .drawer-body { flex-direction: column; }
+  .tree-pane { width: 100%; max-height: 45%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .content-head, .drawer-title { overflow-wrap: anywhere; min-width: 0; }
+}
 </style>

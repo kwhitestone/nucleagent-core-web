@@ -193,6 +193,7 @@ watch(form, () => { draftSaved.value = false; });
 
 async function launch(): Promise<void> {
   if (submitting.value) return;
+  if (toolsLoading.value || toolsFailed.value) { toast.warning(t("common.bindingsLoadFailed")); return; }
   if (targetDeviceId.value.length > 64) { toast.error("设备编号无效"); return; }
   launchError.value = "";
   if (!backendCompatible.value) {

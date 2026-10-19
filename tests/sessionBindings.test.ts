@@ -23,6 +23,7 @@ for (const [view, fn, end] of [
       const context = {
         input: { value: "test fixture" }, genOn: { value: false }, canSend: { value: true },
         submitting: { value: false }, backendCompatible: { value: true }, broadcast: { value: false },
+        toolsLoading: { value: false }, toolsFailed: { value: false },
         modelChoice: { value: null }, executionBackend: { value: "codex" }, attachments: { value: [] },
         createBindings: { value: picks }, form: { name: "fixture", desc: "fixture" },
         targetDeviceId: { value: "" }, launchError: { value: "" }, nameError: { value: false }, narrow: { value: false },

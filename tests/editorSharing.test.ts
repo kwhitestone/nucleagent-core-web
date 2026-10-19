@@ -12,7 +12,9 @@ import { definitionFields } from "../src/addons/administration/agents/definition
 import { groups, ownerGroups } from "../src/components/agent-edit/groups.ts";
 
 let vite: ViteDevServer, Wizard: any, Fields: any, Skills: any, Avatar: any, zh: any;
+let unregister: () => void;
 before(async () => {
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
   vite = await createServer({
     configFile: false, envFile: false, plugins: [vue()], appType: "custom",
     resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } },
@@ -32,11 +34,20 @@ before(async () => {
   const transformed = await vite.ssrTransform(js.code, null, path);
   const exports: any = {};
   await new Function("__vite_ssr_exports__", "__vite_ssr_import__", `return (async () => {${transformed!.code}})()`)(
-    exports, (id: string) => id.startsWith(".") ? vite.ssrLoadModule(new URL(id, `file://${path}`).pathname) : import(id));
+    exports, (id: string) => id.startsWith("@/") ? vite.ssrLoadModule(`/src/${id.slice(2)}`)
+      : id.startsWith(".") ? vite.ssrLoadModule(new URL(id, `file://${path}`).pathname) : import(id));
   Skills = exports.default;
   zh = (await vite.ssrLoadModule("/src/i18n/zh.ts")).default;
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  unregister = registerPlatformRuntime({ http: { get: async (_path: string, config: any) => {
+    const rows = config.params.ids ? [] : [
+      { id: 1, name: "Available", slug: "one", isActive: true },
+      { id: 2, name: "Disabled", slug: "two", isActive: false },
+    ];
+    return { data: { data: rows, page: 1, pageSize: config.params.pageSize, total: rows.length, hasMore: false } };
+  } } });
 });
-after(async () => { await vite?.close(); });
+after(async () => { unregister?.(); await vite?.close(); Reflect.deleteProperty(globalThis, "window"); });
 const i18n = () => createI18n({ legacy: false, locale: "zh", messages: { zh }, missingWarn: false, fallbackWarn: false });
 async function render(component: any, props: any) {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -88,6 +99,7 @@ test("shared skill picker preserves missing selected skills, permits removal and
     selected: [7], editable: true, onToggle: (id: number, checked: boolean) => toggles.push([id, checked]),
   });
   app.use(i18n()); app.provide(ssrContextKey, {}); app.mount(root);
+  for (let i = 0; i < 5; i++) await nextTick();
   let nodes = descendants(root);
   assert.ok(nodes.some(n => n.text === "#7"));
   nodes.find(n => n.props.class === "chip-remove")!.props.onClick();
@@ -96,7 +108,7 @@ test("shared skill picker preserves missing selected skills, permits removal and
   await nextTick();
   nodes = descendants(root);
   const inputs = nodes.filter(n => n.props.type === "checkbox");
-  assert.deepEqual(inputs.map(n => n.props.disabled), [false, true, false]);
+  assert.deepEqual(inputs.map(n => n.props.disabled), [false, true]);
   app.unmount();
 });
 
