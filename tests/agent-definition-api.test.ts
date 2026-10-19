@@ -99,9 +99,10 @@ test("creation uses catalog policy and actor-scoped idempotency, lookup never PO
   const catalog = { capabilities: { ...detail.capabilities, create: true }, fieldPolicy: detail.fieldPolicy, skills: [] };
   const calls: any[] = [];
   const api = createDefinitionApi(async (path, init) => {
-    calls.push({ path, init }); return ok(path.endsWith("/catalog") ? catalog : detail);
+    calls.push({ path, init }); return ok(path.endsWith("/catalog?includeSkills=false") ? catalog : detail);
   });
   assert.deepEqual(await api.catalog(), catalog);
+  assert.equal(calls[0].path, "/api/v1/addons/admin/agents/catalog?includeSkills=false");
   await api.create(catalog, "new-agent", { "/name": "New" }, "request_key_123456");
   assert.equal(calls.at(-1).init.headers["Idempotency-Key"], "request_key_123456");
   assert.deepEqual(JSON.parse(calls.at(-1).init.body), { slug: "new-agent", changes: { "/name": "New" } });

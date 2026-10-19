@@ -4,6 +4,7 @@
  * minus server-managed ones). Presentational: the parent submits, uploads the picked avatar and maps errors.
  * Every pickable value comes from a server list; "" = platform default. Nothing is stored until submit.
  */
+import { EditorView, DiscardDialog, type EditorField } from "@prism-fusion/editor-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { trapDialogFocus } from "../../administration/agents/definition/focus";
@@ -11,11 +12,7 @@ import { LIMITS, emptyDraft, validateDraft, type Draft, type UserAgentBackend } 
 import AgentAvatarPicker from "../../../shared/AgentAvatarPicker.vue";
 import { coveredBySkills, effectiveToolIds, toolLabel, type ToolCatalogItem } from "../api/toolCatalog";
 import type { Skill } from "../api/types";
-import EditSidebar from "../../../components/agent-edit/EditSidebar.vue";
-import EditorFields, { type EditorField } from "../../../components/agent-edit/EditorFields.vue";
 import { definitionFields } from "../../administration/agents/definition/draft";
-import DiscardDialog from "../../../components/agent-edit/DiscardDialog.vue";
-import EditorLayout from "../../../components/agent-edit/EditorLayout.vue";
 import SkillPicker from "../../../components/agent-edit/SkillPicker.vue";
 import ToolBindings from "../../../components/agent-edit/ToolBindings.vue";
 import { ownerGroups, groupLabels, type Group } from "../../../components/agent-edit/groups";
@@ -39,12 +36,15 @@ const emit = defineEmits<{ submit: [draft: Draft, avatar?: File]; cancel: [] }>(
 const { t, te, locale } = useI18n();
 
 const draft = reactive<Draft>(emptyDraft(props.initial));
+const selectedToolMetadata = ref<ToolCatalogItem[]>(props.tools ?? []);
+const toolMetadataReady = ref(!draft.toolIds.length);
 const local = ref<Partial<Record<string, string>>>({});
 const editing = computed(() => !!props.initial);
 const active = ref<Group>("basic");
 const sidebarGroups = computed(() => ownerGroups.map(id => ({ id, label: text(groupLabels[id], locale.value) })));
-function goTo(group: Group) {
-  active.value = group;
+function goTo(group: string) {
+  if (!ownerGroups.includes(group as Group)) return;
+  active.value = group as Group;
   dialog.value?.querySelector(`#ua-group-${group}`)?.scrollIntoView({ behavior: "auto", block: "start" });
 }
 // Keep the current value selectable even if it was later closed to users.
@@ -109,6 +109,15 @@ function controls(group: "basic" | "persona" | "model" | "gen") {
     : group === "model" ? ["/config/defaults/executionBackend", "/config/defaults/model"].includes(field.path)
     : definitionFields.some(schema => schema.path === field.path && schema.genKind));
 }
+const editorGroups = computed(() => sidebarGroups.value.map(group => ({
+  ...group,
+  fields: group.id === "skills" ? [] : group.id === "model" ? [...controls("model"), ...controls("gen")]
+    : group.id === "basic" ? [
+      ...(editing.value && props.initial?.slug ? [{ path: "/slug", id: "ua-slug", label: t("agents.mine.slug"),
+        modelValue: props.initial.slug, editable: false, hint: t("agents.mine.slugHint"), controlAttrs: { "data-testid": "ua-slug" } }] : []),
+      ...controls("basic"),
+    ] : controls("persona"),
+})));
 function changeField(path: string, value: string | boolean) {
   if (props.busy || !ownerControls.value.some(field => field.path === path)) return;
   const key = ownerKeys[path as keyof typeof ownerKeys];
@@ -199,11 +208,16 @@ function requestLeave(): Promise<boolean> {
 defineExpose({ requestLeave });
 function submit() {
   if (props.busy || discard.value) return;
+  if (draft.toolIds.length && !toolMetadataReady.value) {
+    local.value = { bindings: "common.bindingsLoadFailed" };
+    void locateErrors(local.value);
+    return;
+  }
   local.value = validateDraft(draft, !editing.value);
   if (Object.keys(local.value).length) { void locateErrors(local.value); return; }
   // A tool a picked skill brings is dropped (the server refuses the pair: tool_covered_by_skill).
   emit("submit", { ...draft, gen: { ...draft.gen }, skillIds: [...draft.skillIds],
-    toolIds: effectiveToolIds(draft.toolIds, props.tools ?? [], draft.skillIds) }, avatarFile.value);
+    toolIds: effectiveToolIds(draft.toolIds, selectedToolMetadata.value, draft.skillIds) }, avatarFile.value);
 }
 </script>
 
@@ -212,40 +226,17 @@ function submit() {
     <form class="ua-wizard" data-testid="ua-wizard" novalidate
       @submit.prevent="submit" @keydown="trapDialogFocus">
       <h2 id="ua-title">{{ editing ? t("agents.mine.editTitle") : t("agents.mine.wizardTitle") }}</h2>
-      <EditorLayout class="ua-layout">
-      <template #navigation>
-      <!-- @vue-generic {Group} -->
-      <EditSidebar :groups="sidebarGroups" :active="active" :aria-label="text('fields', locale)" @select="goTo" />
-      </template>
-      <div class="ua-content">
-      <section id="ua-group-basic" @focusin="active = 'basic'">
-      <h3>{{ text(groupLabels.basic, locale) }}</h3>
-      <p class="ua-hint">{{ t("agents.mine.wizardHint") }}</p>
-      <AgentAvatarPicker id="ua-avatar" v-model="avatarFile" :current="initial?.avatar" :name="draft.name" :disabled="busy" :error="errors.avatar" />
-
-      <template v-if="editing && initial?.slug">
-        <EditorFields :fields="[{ path: '/slug', id: 'ua-slug', label: t('agents.mine.slug'), modelValue: initial.slug,
-          editable: false, hint: t('agents.mine.slugHint'), controlAttrs: { 'data-testid': 'ua-slug' } }]" />
-      </template>
-
-      <EditorFields :fields="controls('basic')" @change="changeField" />
-      </section>
-      <section id="ua-group-persona" @focusin="active = 'persona'">
-      <h3>{{ text(groupLabels.persona, locale) }}</h3>
-      <EditorFields :fields="controls('persona')" @change="changeField" />
-      </section>
-      <section id="ua-group-model" @focusin="active = 'model'">
-      <h3>{{ text(groupLabels.model, locale) }}</h3>
-      <EditorFields :fields="controls('model')" @change="changeField" />
-
-      <fieldset v-if="kinds.length" class="ua-gen" data-testid="ua-gen">
-        <legend>{{ t("agents.mine.genModels") }}</legend>
-        <EditorFields :fields="controls('gen')" @change="changeField" />
-        <p id="ua-gen-err" class="ua-row"><span class="ua-err">{{ message("gen") }}</span></p>
-      </fieldset>
-      </section>
-      <section id="ua-group-skills" @focusin="active = 'skills'">
-      <h3>{{ text(groupLabels.skills, locale) }}</h3>
+      <EditorView class="ua-layout" :groups="editorGroups" :active="active" :ariaLabel="text('fields', locale)"
+        id-prefix="ua-group-" :busy="busy" @select="goTo" @change="changeField">
+        <template #avatar="{ groupId }">
+          <template v-if="groupId === 'basic'">
+            <p class="ua-hint">{{ t("agents.mine.wizardHint") }}</p>
+            <AgentAvatarPicker id="ua-avatar" v-model="avatarFile" :current="initial?.avatar" :name="draft.name" :disabled="busy" :error="errors.avatar" />
+          </template>
+        </template>
+        <template #bindings="{ groupId }">
+          <p v-if="groupId === 'model' && kinds.length" id="ua-gen-err" class="ua-row"><span class="ua-err">{{ message("gen") }}</span></p>
+          <template v-if="groupId === 'skills'">
       <fieldset class="ua-gen" data-testid="ua-skills">
         <legend>{{ t("agents.mine.skills") }}</legend>
         <p class="ua-row"><span>{{ t("agents.mine.bindingsHint") }}</span></p>
@@ -255,13 +246,14 @@ function submit() {
         <legend>{{ t("agents.mine.tools") }}</legend>
         <p v-if="!toolRows.length" class="ua-row"><span>{{ t("agents.mine.bindingsEmpty") }}</span></p>
         <ToolBindings :rows="toolRows" :selected="draft.toolIds" :editable="!busy" omit-covered
+          :skill-ids="draft.skillIds" @metadata="selectedToolMetadata = $event" @ready="toolMetadataReady = $event"
           :covered-label="t('common.toolCoveredBySkill')" :unavailable-label="t('agents.mine.bindingUnavailable')"
           @toggle="(id, checked) => toggle('toolIds', id, checked)" />
         <p id="ua-bindings-err" class="ua-row" tabindex="-1"><span class="ua-err">{{ message("bindings") }}</span></p>
       </fieldset>
-      </section>
-      </div>
-      </EditorLayout>
+          </template>
+        </template>
+      </EditorView>
       <div v-if="formErrors.length" class="ua-form-err" role="alert" tabindex="-1" data-testid="ua-form-error">
         <p v-for="(error, index) in formErrors" :key="index">{{ error }}</p>
       </div>

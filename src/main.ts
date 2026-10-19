@@ -1,3 +1,4 @@
+import "@prism-fusion/editor-ui/style.css";
 import {
   createPluginHost,
   type HeadlessPluginHost,

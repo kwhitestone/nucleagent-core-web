@@ -12,7 +12,9 @@ import { definitionFields } from "../src/addons/administration/agents/definition
 import { groups, ownerGroups } from "../src/components/agent-edit/groups.ts";
 
 let vite: ViteDevServer, Wizard: any, Fields: any, Skills: any, Avatar: any, zh: any;
+let unregister: () => void;
 before(async () => {
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });
   vite = await createServer({
     configFile: false, envFile: false, plugins: [vue()], appType: "custom",
     resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } },
@@ -32,11 +34,20 @@ before(async () => {
   const transformed = await vite.ssrTransform(js.code, null, path);
   const exports: any = {};
   await new Function("__vite_ssr_exports__", "__vite_ssr_import__", `return (async () => {${transformed!.code}})()`)(
-    exports, (id: string) => id.startsWith(".") ? vite.ssrLoadModule(new URL(id, `file://${path}`).pathname) : import(id));
+    exports, (id: string) => id.startsWith("@/") ? vite.ssrLoadModule(`/src/${id.slice(2)}`)
+      : id.startsWith(".") ? vite.ssrLoadModule(new URL(id, `file://${path}`).pathname) : import(id));
   Skills = exports.default;
   zh = (await vite.ssrLoadModule("/src/i18n/zh.ts")).default;
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  unregister = registerPlatformRuntime({ http: { get: async (_path: string, config: any) => {
+    const rows = config.params.ids ? [] : [
+      { id: 1, name: "Available", slug: "one", isActive: true },
+      { id: 2, name: "Disabled", slug: "two", isActive: false },
+    ];
+    return { data: { data: rows, page: 1, pageSize: config.params.pageSize, total: rows.length, hasMore: false } };
+  } } });
 });
-after(async () => { await vite?.close(); });
+after(async () => { unregister?.(); await vite?.close(); Reflect.deleteProperty(globalThis, "window"); });
 const i18n = () => createI18n({ legacy: false, locale: "zh", messages: { zh }, missingWarn: false, fallbackWarn: false });
 async function render(component: any, props: any) {
   const app = createSSRApp({ render: () => h(component, props) });
@@ -74,11 +85,12 @@ test("editor surfaces import one implementation of every shared control", () => 
   const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
   const user = source("addons/conversation/components/UserAgentWizard.vue");
   const admin = source("addons/administration/agents/definition/DefinitionDrawer.vue");
-  for (const component of ["EditSidebar", "SkillPicker", "ToolBindings"]) {
+  for (const component of ["SkillPicker", "ToolBindings"]) {
     for (const consumer of [user, admin]) assert.ok(consumer.includes(`components/agent-edit/${component}.vue`));
   }
   for (const consumer of [user, source("addons/administration/agents/definition/DefinitionFields.vue")])
-    assert.ok(consumer.includes("components/agent-edit/EditorFields.vue"));
+    assert.ok(consumer.includes('from "@prism-fusion/editor-ui"'));
+  for (const consumer of [user, admin]) assert.ok(consumer.includes("<EditorView"));
 });
 
 test("shared renderer preserves admin field errors and generation catalog states", async () => {
@@ -95,23 +107,26 @@ test("shared renderer preserves admin field errors and generation catalog states
   assert.match(html, /id="definition-config-defaults-videoModel"[^>]*disabled/);
 });
 
-test("one schema renderer rejects readonly and forged field changes", async () => {
-  const Renderer = (await vite.ssrLoadModule("/src/components/agent-edit/EditorFields.vue")).default;
-  let state: any;
+test("installed schema renderer rejects readonly field changes", async () => {
+  const { EditorFields: Renderer } = await import("@prism-fusion/editor-ui");
   const updates: unknown[] = [];
-  const app = renderer.createApp({ render: () => h({ ...Renderer, render: () => null }, {
+  const root = hostNode("root");
+  const app = renderer.createApp({ render: () => h(Renderer, {
     fields: [
       { id: "allowed", path: "/name", label: "Name", modelValue: "Synthetic", editable: true },
       { id: "denied", path: "/config/defaults/providerId", label: "Provider", modelValue: 1, editable: false },
     ],
     onChange: (...args: unknown[]) => updates.push(args),
-    onVnodeMounted: (v: any) => { state = v.component.setupState; },
   }) });
-  app.provide(ssrContextKey, {}); app.mount(hostNode("root"));
+  app.provide(ssrContextKey, {}); app.mount(root);
   try {
-    state.change("/name", "Allowed");
-    state.change("/config/defaults/providerId", "2");
-    state.change("/authAgentUserId", "999");
+    const input = (id: string) => descendants(root).find(node => node.tag === "input" && node.props.id === id)!;
+    input("allowed").props.onInput({ target: { value: "Allowed" } });
+    input("denied").props.onInput({ target: { value: "2" } });
+    const fields = (app as any)._instance.subTree.component;
+    const find = (v: any): any => v?.props?.id === "denied" && v?.props?.["onUpdate:modelValue"] ? v
+      : (Array.isArray(v?.children) ? v.children.map(find).find(Boolean) : undefined);
+    find(fields.subTree).props["onUpdate:modelValue"]("Forged");
     assert.deepEqual(updates, [["/name", "Allowed"]]);
   } finally { app.unmount(); }
 });
@@ -123,6 +138,7 @@ test("shared skill picker preserves missing selected skills, permits removal and
     selected: [7], editable: true, onToggle: (id: number, checked: boolean) => toggles.push([id, checked]),
   });
   app.use(i18n()); app.provide(ssrContextKey, {}); app.mount(root);
+  for (let i = 0; i < 5; i++) await nextTick();
   let nodes = descendants(root);
   assert.ok(nodes.some(n => n.text === "#7"));
   nodes.find(n => n.props.class === "chip-remove")!.props.onClick();
@@ -131,7 +147,7 @@ test("shared skill picker preserves missing selected skills, permits removal and
   await nextTick();
   nodes = descendants(root);
   const inputs = nodes.filter(n => n.props.type === "checkbox");
-  assert.deepEqual(inputs.map(n => n.props.disabled), [false, true, false]);
+  assert.deepEqual(inputs.map(n => n.props.disabled), [false, true]);
   app.unmount();
 });
 

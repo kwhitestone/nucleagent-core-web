@@ -14,6 +14,7 @@ let comparison: Component;
 let drawer: Component;
 before(async () => {
   vite = await createServer({ configFile: false, envFile: false, plugins: [vue()], appType: "custom",
+    resolve: { alias: { "@": new URL("../src", import.meta.url).pathname } },
     optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   const { default: loaded } = await vite.ssrLoadModule("/src/addons/administration/agents/definition/ConflictComparison.vue");
   // Real setup, computed values and watchers; only rendering is replaced (no DOM needed).
@@ -177,5 +178,26 @@ test("conflict change clears choices of rows that stopped conflicting (no silent
     editor.resolve({ ...state().choices } as Record<string, "mine" | "current">);
     assert.equal(editor.changes["/slug"], "slug-mine", "user's /slug edit must survive");
     assert.equal(editor.changes["/name"], "mine");
+  } finally { app.unmount(); }
+});
+
+test("paged skill metadata supplies install paths and later pages preserve pending paths", async () => {
+  let instance: ComponentInternalInstance | null = null;
+  const app = renderer.createApp({ render: () => h(drawer, {
+    detail: record("1", "original"),
+    api: { models: async () => [], backends: async () => [], genModels: async () => [] },
+    onVnodeMounted: (vnode: { component: ComponentInternalInstance | null }) => { instance = vnode.component; },
+  }) });
+  app.use(createI18n({ legacy: false, locale: "en", messages: { en: {} } }));
+  app.provide(ssrContextKey, {}); app.mount({});
+  try {
+    const state = instance!.setupState as any;
+    state.skillMetadata = [{ id: 3, defaultInstallPath: "skills/writer" }];
+    state.selectSkill(3, true);
+    state.skillMetadata = [{ id: 8, defaultInstallPath: "skills/reviewer" }];
+    state.selectSkill(8, true);
+    assert.deepEqual(state.editor.bindings, [
+      { skillId: 3, installPath: "skills/writer" }, { skillId: 8, installPath: "skills/reviewer" },
+    ]);
   } finally { app.unmount(); }
 });

@@ -165,7 +165,7 @@ export function createDefinitionApi(transport: Transport) {
   }
   return {
     async catalog(): Promise<Catalog> {
-      const { data } = await request<Catalog>(`${BASE}/catalog`);
+      const { data } = await request<Catalog>(`${BASE}/catalog?includeSkills=false`);
       if (!validCapabilities(data.capabilities) || typeof data.capabilities.create !== "boolean"
         || !validPolicy(data.fieldPolicy) || !Array.isArray(data.skills)) throw new Error("Invalid catalog contract");
       return data;

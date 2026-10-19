@@ -37,12 +37,12 @@ test("api.genModels reads the media catalog (no code envelope) and throws on old
 });
 
 test("view: block heading, platform-default first option, verified tags, red delisted, readonly via editablePaths", () => {
-  const fields = readFileSync(new URL("../src/addons/administration/agents/definition/DefinitionFields.vue", import.meta.url), "utf8");
+  const fields = readFileSync(new URL("../src/addons/administration/agents/definition/useDefinitionFields.ts", import.meta.url), "utf8");
   const drawer = readFileSync(new URL("../src/addons/administration/agents/definition/DefinitionDrawer.vue", import.meta.url), "utf8");
   assert.match(fields, /label\(["']genInherit["']\)/);
   assert.match(fields, /label\('genVerified'\)/);
   assert.match(fields, /label\('genUnverified'\)/);
   assert.match(fields, /label\(["']genDelisted["']\)/);
-  assert.match(drawer, /label\('genModels'\)/);
+  assert.match(drawer, /fields: controls\.value\.filter/);
   assert.match(drawer, /api\.genModels/);
 });

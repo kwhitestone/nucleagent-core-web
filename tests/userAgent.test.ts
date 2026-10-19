@@ -485,7 +485,7 @@ describe("edit fields (UA-EDIT-FIELDS-1230)", () => {
     assert.match(html, /<option value="codex" selected[^>]*>Codex<\/option>/);
     assert.match(html, /<option value="img-1" selected[^>]*>img-1<\/option>/);
     assert.match(html, /<option value="vid-1"[^>]*>vid-1<\/option>/);
-    assert.match(html, new RegExp(`<option value="" selected[^>]*>${zh.agents.mine.platformDefault}</option>`), "empty video = platform default");
+    assert.match(html, new RegExp(`<option value(?:="")? selected[^>]*>${zh.agents.mine.platformDefault}</option>`), "empty video = platform default");
     assert.match(html, new RegExp(zh.agents.mine.gen_image));
     assert.match(html, new RegExp(zh.agents.mine.gen_video));
     assert.doesNotMatch(html, /type="checkbox"[^>]*checked[^>]*data-testid="ua-memory"/, "memory off");

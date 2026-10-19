@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter, RouterView } from "vue-router";
 import { loadRuntimeConfig } from "../../../src/runtimeConfig";
 import "../../../src/styles/aurora.css";
 import "../../../src/styles/global.css";
+import "@prism-fusion/editor-ui/style.css";
 
 await loadRuntimeConfig("https://core.editor.test", async () => new Response(JSON.stringify({
   VITE_CORE_WEB_URL: "https://core.editor.test", VITE_SHELL_URL: "https://shell.editor.test",
@@ -35,13 +36,18 @@ const calls = [];
 let hold = false, pending = [], deny = false;
 platformRuntime.http.defaults.adapter = async config => {
   const method = (config.method ?? "get").toUpperCase(), path = config.url.split("?")[0];
-  calls.push({ method, path });
+  calls.push({ method, path, params: config.params });
   if (hold && method !== "GET") await new Promise(resolve => pending.push(resolve));
   const response = data => ({ data: structuredClone({ code: 0, data, typesAvailable: true, total: Array.isArray(data) ? data.length : undefined }),
     status: 200, statusText: "Synthetic", headers: { etag: `"agent-9001-${definition.revision}"` }, config });
   if (deny) {
     const { AxiosError } = await import("axios");
     throw new AxiosError("Synthetic denied", "ERR_BAD_REQUEST", config, null, { ...response(null), status: 403 });
+  }
+  if (method === "POST" && path.endsWith("/mine/definitions/9001/avatar")) {
+    if (!(config.data instanceof FormData) || !config.data.get("file")) throw Error("Missing synthetic avatar");
+    definition.config.avatar = "/api/v1/avatars/synthetic";
+    return response({ fileId: "synthetic", path: definition.config.avatar });
   }
   if (method === "PATCH") {
     const body = JSON.parse(config.data);
@@ -72,6 +78,11 @@ platformRuntime.http.defaults.adapter = async config => {
   if (path.endsWith("/mine/gen-models")) return response({});
   if (path.endsWith("/provider/models")) return response([{ providerId: 1, model: "synthetic-model", type: "chat" }]);
   if (path.endsWith("/media/models")) return response([]);
+  if (path.endsWith("/skill") || path.endsWith("/tool/catalog")) {
+    const result = response([]);
+    Object.assign(result.data, { page: Number(config.params?.page ?? 1), pageSize: Number(config.params?.pageSize ?? 20), total: 0, hasMore: false });
+    return result;
+  }
   if (["/mine/backends", "/execution-backends", "/skill", "/tool/catalog", "/conversation", "/instances", "/audits"].some(end => path.endsWith(end))) return response([]);
   throw Error(`Unmapped synthetic read: ${path}`);
 };
