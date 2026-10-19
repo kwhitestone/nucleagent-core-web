@@ -85,11 +85,50 @@ test("editor surfaces import one implementation of every shared control", () => 
   const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
   const user = source("addons/conversation/components/UserAgentWizard.vue");
   const admin = source("addons/administration/agents/definition/DefinitionDrawer.vue");
-  for (const component of ["EditSidebar", "SkillPicker", "ToolBindings"]) {
+  for (const component of ["SkillPicker", "ToolBindings"]) {
     for (const consumer of [user, admin]) assert.ok(consumer.includes(`components/agent-edit/${component}.vue`));
   }
   for (const consumer of [user, source("addons/administration/agents/definition/DefinitionFields.vue")])
-    assert.ok(consumer.includes("components/agent-edit/EditField.vue"));
+    assert.ok(consumer.includes('from "@prism-fusion/editor-ui"'));
+  for (const consumer of [user, admin]) assert.ok(consumer.includes("<EditorView"));
+});
+
+test("shared renderer preserves admin field errors and generation catalog states", async () => {
+  const html = await render(Fields, {
+    baseline: { name: "Synthetic", config: { defaults: { imageModel: "gone" } } },
+    changes: { "/name": "" }, editablePaths: ["/name", "/config/defaults/imageModel"],
+    readonlyFields: [], backends: [], providers: [], models: [],
+    genModels: { image: [{ model: "available", kind: "image", verified: true }], video: null },
+  });
+  assert.match(html, /id="definition-name"[^>]*aria-invalid="true"/);
+  assert.match(html, /id="definition-config-defaults-imageModel"[^>]*aria-invalid="true"/);
+  assert.match(html, /value="gone"[^>]*disabled/);
+  assert.match(html, /value="available"/);
+  assert.match(html, /id="definition-config-defaults-videoModel"[^>]*disabled/);
+});
+
+test("installed schema renderer rejects readonly field changes", async () => {
+  const { EditorFields: Renderer } = await import("@prism-fusion/editor-ui");
+  const updates: unknown[] = [];
+  const root = hostNode("root");
+  const app = renderer.createApp({ render: () => h(Renderer, {
+    fields: [
+      { id: "allowed", path: "/name", label: "Name", modelValue: "Synthetic", editable: true },
+      { id: "denied", path: "/config/defaults/providerId", label: "Provider", modelValue: 1, editable: false },
+    ],
+    onChange: (...args: unknown[]) => updates.push(args),
+  }) });
+  app.provide(ssrContextKey, {}); app.mount(root);
+  try {
+    const input = (id: string) => descendants(root).find(node => node.tag === "input" && node.props.id === id)!;
+    input("allowed").props.onInput({ target: { value: "Allowed" } });
+    input("denied").props.onInput({ target: { value: "2" } });
+    const fields = (app as any)._instance.subTree.component;
+    const find = (v: any): any => v?.props?.id === "denied" && v?.props?.["onUpdate:modelValue"] ? v
+      : (Array.isArray(v?.children) ? v.children.map(find).find(Boolean) : undefined);
+    find(fields.subTree).props["onUpdate:modelValue"]("Forged");
+    assert.deepEqual(updates, [["/name", "Allowed"]]);
+  } finally { app.unmount(); }
 });
 
 test("shared skill picker preserves missing selected skills, permits removal and blocks additions", async () => {

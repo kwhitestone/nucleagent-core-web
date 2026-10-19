@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Plus, X, Search, Sparkles } from "@lucide/vue";
 import { text, type MessageKey } from "../../addons/administration/agents/definition/messages";
@@ -9,15 +9,17 @@ import CollectionPager from "@/components/CollectionPager.vue";
 export interface Skill {
   id: number; name: string; slug: string; isActive: boolean;
   version?: string; sourceSHA256?: string; missing?: boolean;
+  defaultInstallPath?: string;
 }
 
 const props = defineProps<{ skills: Skill[]; selected: number[]; editable: boolean; installPath?: (id: number) => string }>();
-const emit = defineEmits<{ toggle: [skillId: number, checked: boolean] }>();
+const emit = defineEmits<{ toggle: [skillId: number, checked: boolean]; metadata: [skills: Skill[]] }>();
 const { locale } = useI18n();
 const label = (key: MessageKey) => text(key, locale.value);
 const open = ref(false);
 const { rows: matches, known, selectedPage, hydratedLoaded, query, page, total, hasMore, loading, failed, go, load } =
   useResourceOptions<Skill>("/api/v1/addons/skill", () => props.selected, true);
+watch(known, rows => emit("metadata", rows), { immediate: true });
 const search = ref<HTMLInputElement>();
 const rows = computed<Skill[]>(() => [...known.value, ...props.skills.filter(s => !known.value.some(row => row.id === s.id)),
   ...props.selected.filter(id => !known.value.some(s => s.id === id) && !props.skills.some(s => s.id === id))

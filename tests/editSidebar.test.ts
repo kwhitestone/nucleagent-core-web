@@ -5,7 +5,7 @@ import { h, nextTick, ref } from "vue";
 import { descendants, hostNode, loadComponent, renderer } from "./vueComponentHarness.ts";
 import { groups } from "../src/addons/administration/agents/definition/groups.ts";
 
-const Sidebar = loadComponent(new URL("../src/components/agent-edit/EditSidebar.vue", import.meta.url));
+const { EditSidebar: Sidebar } = await import("@prism-fusion/editor-ui");
 
 test("shared sidebar renders the full admin order, selection and dirty marker", () => {
   const root = hostNode("root");
@@ -52,8 +52,8 @@ test("shared sidebar respects the caller subset and navigates by click and arrow
 
 test("admin drawer imports shared navigation and keeps group ownership", () => {
   const drawer = readFileSync(new URL("../src/addons/administration/agents/definition/DefinitionDrawer.vue", import.meta.url), "utf8");
-  assert.match(drawer, /import EditSidebar from ".*components\/agent-edit\/EditSidebar.vue"/);
-  assert.match(drawer, /<EditSidebar[^>]+@select="goTo"/);
+  assert.match(drawer, /import \{ EditorView, DiscardDialog \} from "@prism-fusion\/editor-ui"/);
+  assert.match(drawer, /<EditorView[\s\S]+@select="selectGroup"/);
   assert.doesNotMatch(drawer, /function onNavKey|<nav class="group-nav"/);
   assert.match(drawer, /groups\.map\(id =>/);
 });

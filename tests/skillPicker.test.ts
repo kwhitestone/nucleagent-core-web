@@ -307,7 +307,9 @@ for (const kind of ["skill", "tool"] as const) {
       assert.deepEqual(selected.value,[1,41]);
       assert.ok(requests.some(p=>p?.page===3 && p.pageSize===20));
       const input = descendants(root,"input").find(n=>n.props.type==="search")!;
-      input.value="skill-6"; input.on.input({target:input}); await sleep(240); await flush();
+      input.value="skill-6";
+      const inputHandler = input.on.input ?? input.props.onInput as (event: unknown) => void;
+      inputHandler({target:input}); await sleep(240); await flush();
       assert.equal(choices().length,7);
       assert.ok(requests.some(p=>p?.page===1 && p.search==="skill-6"));
       assert.deepEqual(selected.value,[1,41]);

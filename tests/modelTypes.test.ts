@@ -221,8 +221,8 @@ test("W4 AdminAgents: defaults use authorized chat catalog selectors, save error
       };
       const provider = select("definition-config-defaults-providerId");
       const model = select("definition-config-defaults-model");
-      assert.deepEqual(provider.options.map(m => /value="([^"]*)"/.exec(m[1])![1]), ["", "7", "8"]);
-      assert.deepEqual(model.options.map(m => /value="([^"]*)"/.exec(m[1])![1]), ["", "legacy-model", "authorized-chat"]);
+      assert.deepEqual(provider.options.map(m => /value(?:="([^"]*)")?/.exec(m[1])?.[1] ?? ""), ["", "7", "8"]);
+      assert.deepEqual(model.options.map(m => /value(?:="([^"]*)")?/.exec(m[1])?.[1] ?? ""), ["", "legacy-model", "authorized-chat"]);
       assert.match(model.options[1][1], /disabled/);
       for (const field of [provider, model]) assert.equal(/\bdisabled\b/.test(field.attrs), !writable);
       assert.doesNotMatch(html, /<input[^>]*id="definition-config-defaults-(providerId|model)"/);

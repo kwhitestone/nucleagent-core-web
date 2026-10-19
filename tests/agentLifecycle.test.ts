@@ -135,7 +135,7 @@ test("views: deleted banner on the agent page and the conversation page; admin e
 
 test("conflict locking retains the server field policy without implying permission loss", () => {
   const drawer = src("addons/administration/agents/definition/DefinitionDrawer.vue");
-  assert.match(drawer, /:editable-paths="record\.capabilities\.write && !editor\.denied \? record\.fieldPolicy\.editablePaths : \[\]"/);
+  assert.match(drawer, /get editablePaths\(\) \{ return record\.value\.capabilities\.write && !editor\.denied \? record\.value\.fieldPolicy\.editablePaths : \[\]; \}/);
   assert.match(drawer, /:busy="locked"/);
 });
 

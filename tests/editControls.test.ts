@@ -7,7 +7,7 @@ import { compileScript, parse } from "@vue/compiler-sfc";
 import { createServer, transformWithEsbuild, type ViteDevServer } from "vite";
 import { descendants, hostNode, loadComponent, renderer } from "./vueComponentHarness.ts";
 
-const Field = loadComponent(new URL("../src/components/agent-edit/EditField.vue", import.meta.url));
+const { EditField: Field } = await import("@prism-fusion/editor-ui");
 let Tools: any, vite: ViteDevServer, unregister: () => void;
 before(async () => {
   Object.defineProperty(globalThis, "window", { configurable: true, value: new EventTarget() });

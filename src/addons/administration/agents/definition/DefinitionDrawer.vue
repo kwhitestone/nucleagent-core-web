@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { EditorView, DiscardDialog } from "@prism-fusion/editor-ui";
+import { useDefinitionFields } from "./useDefinitionFields";
 import { trapDialogFocus } from "./focus";
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -8,12 +10,10 @@ import ConflictComparison from "./ConflictComparison.vue";
 import ToolEditor from "./ToolEditor.vue";
 import SkillPicker from "../../../../components/agent-edit/SkillPicker.vue";
 import ToolBindings from "../../../../components/agent-edit/ToolBindings.vue";
-import AgentPreview from "./AgentPreview.vue";
-import EditSidebar from "../../../../components/agent-edit/EditSidebar.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, groupLabels, initial, type Group } from "./groups";
 import { DefinitionError, type Catalog, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
-import { definitionFields, genModelPaths, readPath, reconcileBindings, validateChanges } from "./draft";
+import { definitionFields, readPath, reconcileBindings, validateChanges } from "./draft";
 import { errorKey, text, type MessageKey } from "./messages";
 
 const props = defineProps<{ api: DefinitionApi; detail: Detail; catalog?: Catalog }>();
@@ -37,12 +37,14 @@ const acknowledged = ref(false);
 const typedSlug = ref("");
 const acting = ref(false);
 const bindingChoice = ref<"mine" | "current">();
+const toolChoice = ref<"mine" | "current">();
 const audits = ref<Audit[]>([]);
 const instances = ref<Instance[]>([]);
 const page = ref(0);
 const total = ref(0);
 const pageLoading = ref(false);
 const toolId = ref<number>();
+const toolBindings = ref<InstanceType<typeof ToolBindings>>();
 let mounted = true;
 let readGeneration = 0;
 let pageGeneration = 0;
@@ -65,11 +67,18 @@ const readonlyFields = computed<ReadonlyField[]>(() => {
     ...policy.unknownPaths.map(field => ({ ...field, reason: label("unknownReason"), hidden: true }))];
 });
 const selectedSkills = computed(() => (editor.bindings ?? record.value.skillBindings).map(item => item.skillId));
+const skillMetadata = ref<NonNullable<typeof props.catalog>["skills"]>([]);
 const availableSkills = computed(() => record.value.capabilities.readSkills
   ? [...new Map([...record.value.skills, ...(props.catalog?.skills ?? [])].map(skill => [skill.id, skill])).values()] : []);
 // L6 tool_bindings: pending selection, else the stored one; a stored id missing from the catalog stays listed (flagged).
 const selectedTools = computed(() => editor.tools ?? record.value.toolBindings ?? []);
 const canPickTools = computed(() => writable.value && record.value.capabilities.writeToolBindings === true);
+function editTool(id: number) {
+  if (!locked.value && record.value.capabilities.readTools) toolId.value = id;
+}
+async function toolChanged() {
+  await Promise.all([refresh(), toolBindings.value?.refresh()]);
+}
 function selectTool(id: number, checked: boolean) {
   if (!canPickTools.value) return;
   editor.tools = checked ? [...new Set([...selectedTools.value, id])] : selectedTools.value.filter(x => x !== id);
@@ -115,11 +124,11 @@ function selectSkill(skillId: number, checked: boolean) {
   if (!writable.value || !record.value.capabilities.writeSkillBindings) return;
   const selected = selectedSkills.value.filter(id => id !== skillId);
   if (checked) selected.push(skillId);
-  editor.bindings = reconcileBindings(record.value.skillBindings, selected,
-    (props.catalog?.skills ?? []).map(skill => ({ skillId: skill.id, installPath: skill.defaultInstallPath ?? "" })));
+  editor.bindings = reconcileBindings(editor.bindings ?? record.value.skillBindings, selected,
+    [...(props.catalog?.skills ?? []), ...skillMetadata.value].map(skill => ({ skillId: skill.id, installPath: skill.defaultInstallPath ?? "" })));
 }
 function resolve(choices: Record<string, "mine" | "current">) {
-  try { editor.resolve(choices, bindingChoice.value); bindingChoice.value = undefined; }
+  try { editor.resolve(choices, bindingChoice.value, toolChoice.value); bindingChoice.value = undefined; toolChoice.value = undefined; }
   catch { status.value = "bindingConflict"; }
 }
 async function prepare(next: LifecycleAction | "save") {
@@ -225,7 +234,6 @@ function leave() { if (closing.value) return; closing.value = true; setTimeout((
 const groupLabel = groupLabels;
 const allPaths = definitionFields.map(field => field.path);
 const activeGroup = ref<Group>("basic");
-const body = ref<HTMLElement>();
 const dirtyGroupSet = computed(() => dirtyGroups(editor.changes, editor.bindings, editor.tools));
 const pending = computed(() => changeCount(editor.changes, editor.bindings, editor.tools));
 // Backend refuses enabling without an explicit model (422); gate it here instead of failing late.
@@ -236,17 +244,26 @@ const draftName = computed(() => String(draftValue("/name") ?? ""));
 const headerAvatar = computed(() => avatarUrl(draftValue("/config/avatar")));
 const alertKey = computed(() => (editor.error === "conflict" && editor.current) ? "" : editor.error || (status.value === "saved" ? "" : status.value));
 const installPath = (id: number) => (editor.bindings ?? record.value.skillBindings).find(item => item.skillId === id)?.installPath || "";
-function goTo(group: Group) {
-  activeGroup.value = group;
+function selectGroup(group: string) {
+  if (!groups.includes(group as Group)) return;
+  activeGroup.value = group as Group;
   if (group === "history" && !["usage", "audits"].includes(tab.value)) tab.value = "usage";
-  body.value?.querySelector(`#group-${group}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-const sidebarGroups = computed(() => groups.map(id => ({ id, label: label(groupLabel[id]), dirty: dirtyGroupSet.value.has(id) })));
-function onScroll() {
-  const top = body.value?.getBoundingClientRect().top ?? 0;
-  const passed = groups.filter(group => (body.value?.querySelector(`#group-${group}`)?.getBoundingClientRect().top ?? Infinity) - top < 80);
-  if (passed.length) activeGroup.value = passed.at(-1)!;
-}
+const { controls, update: updateField, touched } = useDefinitionFields({
+  get baseline() { return record.value.definition; },
+  get changes() { return editor.changes; },
+  get editablePaths() { return record.value.capabilities.write && !editor.denied ? record.value.fieldPolicy.editablePaths : []; },
+  get readonlyFields() { return readonlyFields.value; },
+  get backends() { return backends.value.map(item => ({ value: item.id, label: item.displayName })); },
+  get providers() { return providerChoices.value; },
+  get models() { return modelChoices.value; },
+  get genModels() { return genModels.value; },
+  get busy() { return locked.value; },
+}, (_event, path, value) => change(path, value));
+const editorGroups = computed(() => groups.map(id => ({
+  id, label: label(groupLabel[id]), dirty: dirtyGroupSet.value.has(id),
+  fields: controls.value.filter(field => groupPaths(id, allPaths).includes(field.path)),
+})));
 function shortcut(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
     event.preventDefault();
@@ -282,10 +299,9 @@ onUnmounted(() => clearTimeout(toastTimer));
       </div>
     </header>
     <div v-if="!editor.record" class="drawer-body"><p role="alert">{{ label('readDenied') }}</p><button type="button" @click="emit('close')">{{ label('close') }}</button></div>
-    <div v-else class="drawer-grid">
-      <!-- @vue-generic {Group} -->
-      <EditSidebar :groups="sidebarGroups" :active="activeGroup" :aria-label="label('title')" :dirty-label="label('unsaved')" @select="goTo" />
-      <div ref="body" class="drawer-body" @scroll.passive="onScroll">
+    <EditorView v-else :groups="editorGroups" :active="activeGroup" :ariaLabel="label('title')"
+      :dirty-label="label('unsaved')" :busy="locked" @select="selectGroup" @change="updateField" @touch="touched.add($event)">
+      <template #status>
         <p v-if="alertKey" role="alert" class="notice" :class="editor.error === 'uncertain' ? 'warn' : 'error'"><TriangleAlert :size="16" aria-hidden="true" />{{ label(alertKey as MessageKey) }}
           <button v-if="editor.verificationRequired" type="button" class="ghost" @click="refresh">{{ label('queryResult') }}</button></p>
         <p v-if="!record.capabilities.write" class="notice muted-note">{{ label('viewOnly') }}</p>
@@ -301,32 +317,29 @@ onUnmounted(() => clearTimeout(toastTimer));
                 <small>{{ editor.current.skillBindings.map(b => availableSkills.find(s => s.id === b.skillId)?.name ?? `#${b.skillId}`).join(', ') || '—' }}</small></label>
             </div>
           </fieldset>
+          <fieldset v-if="editor.toolConflict" class="binding-conflict"><legend>{{ label('tools') }}</legend>
+            <label><input v-model="toolChoice" type="radio" value="mine" name="tools" />{{ label('mine') }}: {{ editor.tools?.join(', ') }}</label>
+            <label><input v-model="toolChoice" type="radio" value="current" name="tools" />{{ label('current') }}: {{ editor.current.toolBindings?.join(', ') }}</label>
+          </fieldset>
           <ConflictComparison :baseline="record.definition" :changes="editor.changes" :current="editor.current.definition" @resolve="resolve" />
         </section>
         <p v-if="catalogError" role="status" class="notice warn">{{ label('catalogError') }}</p>
-        <section v-for="group in (['basic', 'persona', 'model'] as const)" :id="`group-${group}`" :key="group" class="form-card">
-          <h3>{{ label(groupLabel[group]) }}<span v-if="dirtyGroupSet.has(group)" class="dirty-dot" aria-hidden="true"></span></h3>
-          <DefinitionFields :only="groupPaths(group, allPaths).filter(path => !genModelPaths.includes(path))" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
-            :readonly-fields="readonlyFields" :backends="backends.map(item => ({ value: item.id, label: item.displayName }))"
-            :providers="providerChoices" :models="modelChoices" :busy="locked" @change="change" />
-          <template v-if="group === 'model' && genModelPaths.length">
-            <h4>{{ label('genModels') }}</h4>
-            <DefinitionFields :only="genModelPaths" :baseline="record.definition" :changes="editor.changes" :editable-paths="record.capabilities.write && !editor.denied ? record.fieldPolicy.editablePaths : []"
-              :readonly-fields="readonlyFields" :backends="[]" :providers="[]" :models="[]" :gen-models="genModels" :busy="locked" @change="change" />
-          </template>
-        </section>
-        <section id="group-skills" class="form-card">
-          <h3>{{ label('groupSkills') }}<span v-if="dirtyGroupSet.has('skills')" class="dirty-dot" aria-hidden="true"></span></h3>
+      </template>
+      <template #bindings="{ groupId }">
+        <template v-if="groupId === 'skills'">
           <h4>{{ label('skills') }}</h4>
           <p v-if="!record.capabilities.readSkills" class="muted">{{ label('readonly') }}</p>
-          <SkillPicker v-else :skills="availableSkills" :selected="selectedSkills" :editable="writable && record.capabilities.writeSkillBindings" :install-path="installPath" @toggle="selectSkill" />
+          <SkillPicker v-else :skills="availableSkills" :selected="selectedSkills" :editable="writable && record.capabilities.writeSkillBindings" :install-path="installPath" @metadata="skillMetadata = $event" @toggle="selectSkill" />
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
-          <ToolBindings v-if="record.capabilities.readTools" :rows="[]" :selected="selectedTools" :editable="canPickTools"
+          <ToolBindings v-if="record.capabilities.readTools" ref="toolBindings" :rows="[]" :selected="selectedTools" :editable="canPickTools"
             :skill-ids="selectedSkills" :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
-            @toggle="selectTool" />
-        </section>
-        <section id="group-visibility" class="form-card">
+            :manageable="!locked && record.capabilities.readTools" :edit-label="label('edit')"
+            data-testid="admin-tool-bindings" @toggle="selectTool" @edit="editTool" />
+        </template>
+      </template>
+      <template #lifecycle="{ groupId }">
+        <section v-if="groupId === 'visibility'">
           <h3>{{ label('visibility') }}</h3>
           <p class="muted">{{ label('visibilityNote') }}</p>
           <dl class="facts">
@@ -334,7 +347,7 @@ onUnmounted(() => clearTimeout(toastTimer));
               <dt>{{ label(key) }}</dt><dd><span class="pill" :class="allowed ? 'active' : 'disabled'">{{ label(allowed ? 'yes' : 'no') }}</span></dd></template>
           </dl>
         </section>
-        <section id="group-history" class="form-card">
+        <section v-if="groupId === 'history'">
           <h3>{{ label('history') }}</h3>
           <div class="segmented" role="group" :aria-label="label('history')">
             <button v-for="view in (['usage', 'audits'] as const)" :key="view" type="button" :aria-pressed="tab === view" @click="tab = view">{{ label(view) }}</button>
@@ -353,7 +366,7 @@ onUnmounted(() => clearTimeout(toastTimer));
           </template>
           <button v-else type="button" class="ghost" @click="tab = 'usage'">{{ label('usage') }}</button>
         </section>
-        <section id="group-advanced" class="form-card">
+        <section v-if="groupId === 'advanced'">
           <details class="advanced">
             <summary><h3>{{ label('advanced') }} · {{ label('technical') }}</h3></summary>
             <dl class="facts">
@@ -366,19 +379,12 @@ onUnmounted(() => clearTimeout(toastTimer));
             <DefinitionFields v-if="readonlyFields.length" :baseline="record.definition" :changes="{}" :editable-paths="[]" :readonly-fields="readonlyFields" :only="[]" :backends="[]" :providers="[]" :models="[]" busy />
           </details>
         </section>
-        <AgentPreview class="inline-preview" :id="record.definition.id" :name="draftName" :description="String(draftValue('/config/description') ?? '')" :avatar="draftValue('/config/avatar')"
-          :active="record.definition.isActive" :deleted="!!record.definition.deletedAt" :model="String(draftValue('/config/defaults/model') ?? '')" />
-      </div>
-      <AgentPreview class="side-preview" :id="record.definition.id" :name="draftName" :description="String(draftValue('/config/description') ?? '')" :avatar="draftValue('/config/avatar')"
-        :active="record.definition.isActive" :deleted="!!record.definition.deletedAt" :model="String(draftValue('/config/defaults/model') ?? '')" />
-      <div v-if="discard" class="overlay" @click.self="discard = false">
-        <section class="overlay-dialog" role="alertdialog" aria-labelledby="discard-title" aria-modal="true">
-          <h3 id="discard-title">{{ label('discard') }}</h3>
-          <p>{{ label('discardCount') }}：{{ pending }}{{ label('changesUnit') }}</p>
-          <div class="commands end"><button type="button" class="ghost" @click="discard = false">{{ label('keepEditing') }}</button>
-            <button type="button" class="ghost danger outline" @click="leave">{{ label('discardChanges') }}</button></div>
-        </section>
-      </div>
+      </template>
+      <template #overlay>
+      <DiscardDialog v-if="discard" :title="label('discard')" :keep-label="label('keepEditing')" :discard-label="label('discardChanges')"
+        :busy="editor.busy || acting" @keep="discard = false" @discard="!editor.busy && !acting && leave()">
+        <p>{{ label('discardCount') }}：{{ pending }}{{ label('changesUnit') }}</p>
+      </DiscardDialog>
       <div v-else-if="action && impact" class="overlay">
         <section class="overlay-dialog" :class="{ dangerous: action === 'delete' || action === 'disable' }" role="alertdialog" aria-labelledby="impact-title" aria-modal="true">
           <h3 id="impact-title">{{ label('impact') }} · {{ label(action) }}</h3>
@@ -392,7 +398,8 @@ onUnmounted(() => clearTimeout(toastTimer));
             <button type="button" :class="action === 'delete' ? 'solid-danger' : 'primary'" :disabled="!acknowledged || acting || (action === 'delete' && typedSlug !== record.definition.slug)" @click="confirmAction"><LoaderCircle v-if="acting" :size="16" class="spin" />{{ label(acting ? 'saving' : action) }}</button></div>
         </section>
       </div>
-    </div>
+      </template>
+    </EditorView>
     <footer v-if="editor.record">
       <button type="button" class="icon" :disabled="editor.busy || acting" :title="label('refresh')" :aria-label="label('refresh')" @click="refresh"><RefreshCw :size="16" /></button>
       <span class="muted hint">{{ editor.dirty ? label('shortcuts') : label('noChanges') }}</span>
@@ -400,7 +407,7 @@ onUnmounted(() => clearTimeout(toastTimer));
       <button v-if="record.capabilities.write" type="button" class="primary" :disabled="!writable || !editor.dirty || !!editor.current || editor.verificationRequired || !!Object.keys(errors).length" @click="prepare('save')"><LoaderCircle v-if="editor.busy || acting" :size="16" class="spin" /><Save v-else :size="16" />{{ label(editor.busy ? 'saving' : 'save') }}</button>
     </footer>
     <p v-if="status === 'saved'" role="status" class="toast"><Check :size="16" aria-hidden="true" />{{ label('savedToast') }}</p>
-    <ToolEditor v-if="toolId" :id="toolId" :api="api" @close="toolId = undefined" @changed="refresh" />
+    <ToolEditor v-if="toolId" :id="toolId" :api="api" @close="toolId = undefined" @changed="toolChanged" />
   </dialog>
 </template>
 
@@ -418,13 +425,9 @@ h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 1
 .unsaved-badge { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: var(--r-full); background: #fffbeb; color: #b45309; animation: scale-in .4s var(--ease-spring) both; }
 .revision { display: inline-block; animation: scale-in .4s var(--ease-spring) both; }
 .head-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.drawer-grid { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 180px minmax(0, 1fr) 280px; }
 .dirty-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--amber-500); flex-shrink: 0; animation: scale-in .4s var(--ease-spring) both; }
 .drawer-body { padding: 16px 20px 32px; overflow: auto; min-height: 0; display: grid; gap: 14px; align-content: start; scroll-behavior: smooth; }
-.side-preview { padding: 16px 14px; border-left: 1px solid var(--border); background: var(--bg-card); overflow: auto; }
-.inline-preview { display: none; }
-.form-card { scroll-margin-top: 12px; padding: 14px 16px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-card); box-shadow: var(--shadow-xs); transition: all .25s var(--ease); animation: fade-in-up .5s var(--ease-out) both; }
-.form-card:hover { border-color: var(--border-strong); }
+.form-card { scroll-margin-top: 12px; padding: 0 0 20px; border-bottom: 1px solid var(--border); min-width: 0; }
 .form-card h3 { display: flex; align-items: center; margin: 0 0 12px; font-size: 14px; } .form-card h4 { margin: 14px 0 8px; font-size: 12.5px; color: var(--text-secondary); }
 .advanced summary { list-style: none; cursor: pointer; min-height: 32px; display: flex; align-items: center; } .advanced summary h3 { margin: 0; }
 .advanced summary::before { content: "›"; margin-right: 8px; transition: transform .25s var(--ease); } .advanced[open] summary::before { transform: rotate(90deg); }
@@ -470,12 +473,10 @@ footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; bord
 .spin { animation: spin 1s linear infinite; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 pre, code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 12px; }
-@media (max-width: 1200px) { .drawer-grid { grid-template-columns: 170px minmax(0, 1fr); } .side-preview { display: none; } .inline-preview { display: grid; } }
 @media (max-width: 600px) {
   .definition-drawer { width: 100%; border-left: 0; }
   .drawer-head { padding: 10px 12px; } .head-avatar { width: 32px; height: 32px; } h2 { font-size: 15px; }
   .head-actions .ghost { display: none; }
-  .drawer-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .drawer-body { padding: 12px 12px 24px; }
   .binding-options, .impact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   footer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); } footer .hint { display: none; } footer .primary { flex: 1; min-height: 44px; } footer { justify-content: flex-end; }

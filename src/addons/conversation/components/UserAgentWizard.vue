@@ -4,6 +4,7 @@
  * minus server-managed ones). Presentational: the parent submits, uploads the picked avatar and maps errors.
  * Every pickable value comes from a server list; "" = platform default. Nothing is stored until submit.
  */
+import { EditorView, DiscardDialog, type EditorField } from "@prism-fusion/editor-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { trapDialogFocus } from "../../administration/agents/definition/focus";
@@ -11,8 +12,7 @@ import { LIMITS, emptyDraft, validateDraft, type Draft, type UserAgentBackend } 
 import AgentAvatarPicker from "../../../shared/AgentAvatarPicker.vue";
 import { coveredBySkills, effectiveToolIds, toolLabel, type ToolCatalogItem } from "../api/toolCatalog";
 import type { Skill } from "../api/types";
-import EditSidebar from "../../../components/agent-edit/EditSidebar.vue";
-import EditField from "../../../components/agent-edit/EditField.vue";
+import { definitionFields } from "../../administration/agents/definition/draft";
 import SkillPicker from "../../../components/agent-edit/SkillPicker.vue";
 import ToolBindings from "../../../components/agent-edit/ToolBindings.vue";
 import { ownerGroups, groupLabels, type Group } from "../../../components/agent-edit/groups";
@@ -30,7 +30,7 @@ const props = defineProps<{
   busy: boolean;
   /** Already-translated messages per field, plus `form`; shown as text only. */
   errors: Record<string, string>;
-  initial?: Partial<Draft> & { id: number; slug?: string };
+  initial?: Partial<Draft> & { id: number; slug?: string; avatar?: string };
 }>();
 const emit = defineEmits<{ submit: [draft: Draft, avatar?: File]; cancel: [] }>();
 const { t, te, locale } = useI18n();
@@ -42,8 +42,9 @@ const local = ref<Partial<Record<string, string>>>({});
 const editing = computed(() => !!props.initial);
 const active = ref<Group>("basic");
 const sidebarGroups = computed(() => ownerGroups.map(id => ({ id, label: text(groupLabels[id], locale.value) })));
-function goTo(group: Group) {
-  active.value = group;
+function goTo(group: string) {
+  if (!ownerGroups.includes(group as Group)) return;
+  active.value = group as Group;
   dialog.value?.querySelector(`#ua-group-${group}`)?.scrollIntoView({ behavior: "auto", block: "start" });
 }
 // Keep the current value selectable even if it was later closed to users.
@@ -58,7 +59,6 @@ const kinds = computed(() => Object.keys(props.genModels ?? {}));
 for (const k of kinds.value) draft.gen[k] ??= "";
 const genOptions = (kind: string) => keep(draft.gen[kind] ?? "", props.genModels?.[kind] ?? []);
 const kindLabel = (kind: string) => (te(`agents.mine.gen_${kind}`) ? t(`agents.mine.gen_${kind}`) : kind);
-const count = (s: string) => [...s].length;
 // Picked ids no longer listed stay visible (checked, flagged) so the owner can untick them.
 const withMissing = <T extends { id: number }>(list: T[], picked: number[], stub: (id: number) => T) =>
   [...list, ...picked.filter((id) => !list.some((x) => x.id === id)).map(stub)];
@@ -74,11 +74,71 @@ function toggle(list: "skillIds" | "toolIds", id: number, on: boolean): void {
   draft[list] = on ? [...new Set([...draft[list], id])] : draft[list].filter((x) => x !== id);
 }
 const message = (field: string) => (local.value[field] ? t(local.value[field]!) : props.errors[field] ?? "");
+const ownerKeys = {
+  "/name": "name", "/config/description": "description", "/config/prompt": "prompt",
+  "/config/memory": "memory", "/config/defaults/executionBackend": "executionBackend",
+  "/config/defaults/model": "model",
+} as const;
+const ownerControls = computed<EditorField[]>(() => definitionFields.flatMap(field => {
+  const key = ownerKeys[field.path as keyof typeof ownerKeys];
+  if (!key && !(field.genKind && kinds.value.includes(field.genKind))) return [];
+  const gen = field.genKind;
+  const errorKey = gen ? "gen" : key;
+  return [{
+    path: field.path, id: gen ? `ua-gen-${gen}` : `ua-${key === "description" ? "desc" : key === "executionBackend" ? "backend" : key}`,
+    label: gen ? kindLabel(gen) : t(`agents.mine.${field.label}`),
+    modelValue: gen ? draft.gen[gen] : draft[key],
+    kind: field.kind === "textarea" ? "textarea" : field.kind === "boolean" ? "boolean"
+      : ["backend", "model", "genModel"].includes(field.kind) ? "select" : "text",
+    editable: !props.busy, required: key === "name" || key === "model",
+    rows: key === "prompt" ? 8 : 3,
+    placeholder: key === "prompt" && editing.value ? t("agents.mine.promptKeep") : "",
+    choices: gen ? genOptions(gen).map(value => ({ value, label: value }))
+      : key === "executionBackend" ? backendOptions.value.map(b => ({ value: b.id, label: b.displayName }))
+      : key === "model" ? options.value.map(value => ({ value, label: value })) : [],
+    emptyLabel: t(key === "model" ? "agents.mine.modelPlaceholder" : "agents.mine.platformDefault"),
+    emptyDisabled: key === "model", invalid: !!message(errorKey),
+    hint: message(errorKey) || (key === "memory" ? t("agents.mine.memoryHint") : ""),
+    max: key === "name" || key === "description" || key === "prompt" ? LIMITS[key] : undefined,
+    controlAttrs: { "data-testid": gen ? `ua-gen-${gen}` : `ua-${key === "executionBackend" ? "backend" : key}` },
+  } satisfies EditorField];
+}));
+function controls(group: "basic" | "persona" | "model" | "gen") {
+  return ownerControls.value.filter(field => group === "basic" ? ["/name", "/config/description"].includes(field.path)
+    : group === "persona" ? ["/config/prompt", "/config/memory"].includes(field.path)
+    : group === "model" ? ["/config/defaults/executionBackend", "/config/defaults/model"].includes(field.path)
+    : definitionFields.some(schema => schema.path === field.path && schema.genKind));
+}
+const editorGroups = computed(() => sidebarGroups.value.map(group => ({
+  ...group,
+  fields: group.id === "skills" ? [] : group.id === "model" ? [...controls("model"), ...controls("gen")]
+    : group.id === "basic" ? [
+      ...(editing.value && props.initial?.slug ? [{ path: "/slug", id: "ua-slug", label: t("agents.mine.slug"),
+        modelValue: props.initial.slug, editable: false, hint: t("agents.mine.slugHint"), controlAttrs: { "data-testid": "ua-slug" } }] : []),
+      ...controls("basic"),
+    ] : controls("persona"),
+})));
+function changeField(path: string, value: string | boolean) {
+  if (props.busy || !ownerControls.value.some(field => field.path === path)) return;
+  const key = ownerKeys[path as keyof typeof ownerKeys];
+  if (key === "memory") { if (typeof value === "boolean") draft.memory = value; }
+  else if (typeof value === "string") {
+    if (key) draft[key] = value;
+    else {
+      const gen = definitionFields.find(field => field.path === path)?.genKind;
+      if (gen && kinds.value.includes(gen)) draft.gen[gen] = value;
+    }
+  }
+}
 
 // Avatar: picked here, uploaded by the parent only on submit (cancel stores nothing).
 const avatarFile = ref<File>();
+const baseline = JSON.stringify(draft);
+const dirty = computed(() => !!avatarFile.value || JSON.stringify(draft) !== baseline);
+const discard = ref(false);
+let leaving: ((allow: boolean) => void) | undefined;
 
-const dialog = ref<HTMLElement>();
+const dialog = ref<HTMLDialogElement>();
 const errorTargets = computed(() => [
   { field: "avatar", group: "basic", id: "ua-avatar" },
   { field: "name", group: "basic", id: "ua-name" },
@@ -106,14 +166,48 @@ watch(() => props.errors, errors => {
   if (Object.values(errors).some(Boolean)) void locateErrors(errors);
 }, { deep: true, immediate: true });
 const previousFocus = typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null);
-onMounted(() => dialog.value?.querySelector<HTMLInputElement>("#ua-name")?.focus());
-onBeforeUnmount(() => { previousFocus?.focus?.(); });
+function beforeUnload(event: BeforeUnloadEvent) {
+  if (dirty.value || props.busy) { event.preventDefault(); event.returnValue = ""; }
+}
+onMounted(() => {
+  dialog.value?.showModal?.();
+  dialog.value?.querySelector<HTMLInputElement>("#ua-name")?.focus();
+  if (typeof window !== "undefined") window.addEventListener("beforeunload", beforeUnload);
+});
+onBeforeUnmount(() => {
+  leaving?.(false);
+  if (typeof window !== "undefined") window.removeEventListener("beforeunload", beforeUnload);
+  dialog.value?.close?.(); previousFocus?.focus?.();
+});
 
 function cancel() {
-  if (!props.busy) emit("cancel");
-}
-function submit() {
   if (props.busy) return;
+  if (dirty.value) discard.value = true;
+  else emit("cancel");
+}
+function keepEditing() {
+  discard.value = false; leaving?.(false); leaving = undefined;
+}
+function discardChanges() {
+  if (props.busy) return;
+  discard.value = false;
+  if (leaving) { leaving(true); leaving = undefined; }
+  else emit("cancel");
+}
+function escape() {
+  if (props.busy) return;
+  if (discard.value) keepEditing();
+  else cancel();
+}
+function requestLeave(): Promise<boolean> {
+  if (props.busy || leaving) return Promise.resolve(false);
+  if (!dirty.value) return Promise.resolve(true);
+  discard.value = true;
+  return new Promise(resolve => { leaving = resolve; });
+}
+defineExpose({ requestLeave });
+function submit() {
+  if (props.busy || discard.value) return;
   if (draft.toolIds.length && !toolMetadataReady.value) {
     local.value = { bindings: "common.bindingsLoadFailed" };
     void locateErrors(local.value);
@@ -128,68 +222,21 @@ function submit() {
 </script>
 
 <template>
-  <div class="ua-scrim" @click.self="cancel">
-    <form ref="dialog" class="ua-wizard" role="dialog" aria-modal="true" aria-labelledby="ua-title" data-testid="ua-wizard" novalidate
-      @submit.prevent="submit" @keydown.esc="cancel" @keydown="trapDialogFocus">
+  <dialog ref="dialog" class="ua-scrim" aria-labelledby="ua-title" @cancel.prevent="escape" @click.self="cancel">
+    <form class="ua-wizard" data-testid="ua-wizard" novalidate
+      @submit.prevent="submit" @keydown="trapDialogFocus">
       <h2 id="ua-title">{{ editing ? t("agents.mine.editTitle") : t("agents.mine.wizardTitle") }}</h2>
-      <div class="ua-layout">
-      <!-- @vue-generic {Group} -->
-      <EditSidebar :groups="sidebarGroups" :active="active" :aria-label="text('fields', locale)" @select="goTo" />
-      <div class="ua-content">
-      <section id="ua-group-basic" @focusin="active = 'basic'">
-      <h3>{{ text(groupLabels.basic, locale) }}</h3>
-      <p class="ua-hint">{{ t("agents.mine.wizardHint") }}</p>
-      <AgentAvatarPicker id="ua-avatar" v-model="avatarFile" :name="draft.name" :disabled="busy" :error="errors.avatar" />
-
-      <template v-if="editing && initial?.slug">
-        <EditField id="ua-slug" :label="t('agents.mine.slug')" :model-value="initial.slug" :editable="false" :control-attrs="{ 'data-testid': 'ua-slug' }">
-          <template #hint>{{ t("agents.mine.slugHint") }}</template>
-        </EditField>
-      </template>
-
-      <EditField id="ua-name" :label="`${t('agents.mine.name')} *`" v-model="draft.name" :editable="!busy" required :invalid="!!message('name')">
-        <template #hint><span class="ua-row"><span class="ua-err">{{ message("name") }}</span><span>{{ count(draft.name) }}/{{ LIMITS.name }}</span></span></template>
-      </EditField>
-      <EditField id="ua-desc" :label="t('agents.mine.description')" v-model="draft.description" :editable="!busy" kind="textarea" :rows="3" :invalid="!!message('description')">
-        <template #hint><span class="ua-row"><span class="ua-err">{{ message("description") }}</span><span>{{ count(draft.description) }}/{{ LIMITS.description }}</span></span></template>
-      </EditField>
-      </section>
-      <section id="ua-group-persona" @focusin="active = 'persona'">
-      <h3>{{ text(groupLabels.persona, locale) }}</h3>
-      <EditField id="ua-prompt" :label="t('agents.mine.prompt')" v-model="draft.prompt" :editable="!busy" kind="textarea" :rows="8"
-        :placeholder="editing ? t('agents.mine.promptKeep') : ''" :invalid="!!message('prompt')">
-        <template #hint><span class="ua-row"><span class="ua-err">{{ message("prompt") }}</span><span>{{ count(draft.prompt) }}/{{ LIMITS.prompt }}</span></span></template>
-      </EditField>
-      <EditField id="ua-memory" :label="t('agents.mine.memory')" v-model="draft.memory" :editable="!busy" kind="boolean" :control-attrs="{ 'data-testid': 'ua-memory' }">
-        <template #hint>{{ message("memory") || t("agents.mine.memoryHint") }}</template>
-      </EditField>
-      </section>
-      <section id="ua-group-model" @focusin="active = 'model'">
-      <h3>{{ text(groupLabels.model, locale) }}</h3>
-      <EditField id="ua-backend" :label="t('agents.mine.backend')" v-model="draft.executionBackend" :editable="!busy" kind="select"
-        :choices="backendOptions.map(b => ({ value: b.id, label: b.displayName }))" :empty-label="t('agents.mine.platformDefault')"
-        :invalid="!!message('executionBackend')" :control-attrs="{ 'data-testid': 'ua-backend' }">
-        <template #hint>{{ message("executionBackend") }}</template>
-      </EditField>
-      <EditField id="ua-model" :label="`${t('agents.mine.model')} *`" v-model="draft.model" :editable="!busy" kind="select" required
-        :choices="options.map(m => ({ value: m, label: m }))" :empty-label="t('agents.mine.modelPlaceholder')" empty-disabled :invalid="!!message('model')">
-        <template #hint>{{ message("model") }}</template>
-      </EditField>
-
-      <fieldset v-if="kinds.length" class="ua-gen" data-testid="ua-gen">
-        <legend>{{ t("agents.mine.genModels") }}</legend>
-        <template v-for="kind in kinds" :key="kind">
-          <EditField :id="`ua-gen-${kind}`" :label="kindLabel(kind)" v-model="draft.gen[kind]" :editable="!busy" kind="select"
-            :choices="genOptions(kind).map(m => ({ value: m, label: m }))" :empty-label="t('agents.mine.platformDefault')"
-            :control-attrs="{ 'data-testid': `ua-gen-${kind}` }" :invalid="!!message('gen')">
-            <template #hint>{{ message("gen") }}</template>
-          </EditField>
+      <EditorView class="ua-layout" :groups="editorGroups" :active="active" :ariaLabel="text('fields', locale)"
+        id-prefix="ua-group-" :busy="busy" @select="goTo" @change="changeField">
+        <template #avatar="{ groupId }">
+          <template v-if="groupId === 'basic'">
+            <p class="ua-hint">{{ t("agents.mine.wizardHint") }}</p>
+            <AgentAvatarPicker id="ua-avatar" v-model="avatarFile" :current="initial?.avatar" :name="draft.name" :disabled="busy" :error="errors.avatar" />
+          </template>
         </template>
-        <p id="ua-gen-err" class="ua-row"><span class="ua-err">{{ message("gen") }}</span></p>
-      </fieldset>
-      </section>
-      <section id="ua-group-skills" @focusin="active = 'skills'">
-      <h3>{{ text(groupLabels.skills, locale) }}</h3>
+        <template #bindings="{ groupId }">
+          <p v-if="groupId === 'model' && kinds.length" id="ua-gen-err" class="ua-row"><span class="ua-err">{{ message("gen") }}</span></p>
+          <template v-if="groupId === 'skills'">
       <fieldset class="ua-gen" data-testid="ua-skills">
         <legend>{{ t("agents.mine.skills") }}</legend>
         <p class="ua-row"><span>{{ t("agents.mine.bindingsHint") }}</span></p>
@@ -203,9 +250,9 @@ function submit() {
           @toggle="(id, checked) => toggle('toolIds', id, checked)" />
         <p id="ua-bindings-err" class="ua-row" tabindex="-1"><span class="ua-err">{{ message("bindings") }}</span></p>
       </fieldset>
-      </section>
-      </div>
-      </div>
+          </template>
+        </template>
+      </EditorView>
       <div v-if="formErrors.length" class="ua-form-err" role="alert" tabindex="-1" data-testid="ua-form-error">
         <p v-for="(error, index) in formErrors" :key="index">{{ error }}</p>
       </div>
@@ -216,19 +263,22 @@ function submit() {
         </button>
       </div>
     </form>
-  </div>
+    <DiscardDialog v-if="discard" :title="text('discard', locale)" :keep-label="text('keepEditing', locale)"
+      :discard-label="text('discardChanges', locale)" :busy="busy" @keep="keepEditing" @discard="discardChanges" />
+  </dialog>
 </template>
 
 <style>
 /* Non-scoped like AgentCard; ua-* is core-private. Tokens and aurora.css keyframes only. */
-.ua-scrim { position: fixed; inset: 0; z-index: 9000; display: grid; place-items: center; background: rgba(15, 23, 42, 0.36); }
-.ua-wizard { width: min(1000px, calc(100vw - 32px)); height: min(800px, calc(100dvh - 48px)); overflow: hidden; padding: 18px 0 0; border-radius: var(--r-lg); background: var(--bg-card); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 6px; animation: fade-in-up 0.24s var(--ease-out) both; }
-.ua-wizard > h2, .ua-wizard > .ua-form-err { padding: 0 24px; }
-.ua-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 0; flex: 1; border-block: 1px solid var(--border); }
-.ua-content { overflow: auto; padding: 0 24px; min-width: 0; }
+.ua-scrim { position: fixed; inset: 0 0 0 auto; margin: 0; padding: 0; border: 0; width: min(1040px, 94vw); max-width: 100%; height: 100dvh; max-height: 100dvh; background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-lg); }
+.ua-scrim::backdrop { background: rgba(15, 23, 42, 0.36); }
+.ua-wizard { box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; padding: 12px 0 0; background: var(--bg-card); display: flex; flex-direction: column; gap: 12px; animation: slide-in-right 0.24s var(--ease-out) both; }
+.ua-wizard > h2, .ua-wizard > .ua-form-err { padding: 0 16px; }
+.ua-layout { border-block: 1px solid var(--border); }
+.ua-content { overflow: auto; padding: 0 20px 32px; min-width: 0; }
 .ua-content section { display: grid; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--border); scroll-margin-top: 8px; }
 .ua-content h3 { margin: 0; font-size: 15px; color: var(--text-primary); }
-.ua-wizard h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.ua-wizard h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--text-primary); overflow-wrap: anywhere; }
 .ua-hint { margin: 0 0 8px; font-size: 12.5px; color: var(--text-tertiary); }
 .ua-wizard [aria-invalid="true"] { border-color: var(--rose-500); }
 .ua-row { margin: 0 0 4px; min-height: 16px; display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--text-tertiary); }
@@ -236,13 +286,15 @@ function submit() {
 .ua-form-err { margin: 0; font-size: 12.5px; }
 .ua-gen { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ua-gen legend { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); padding: 0 4px; }
-.ua-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 24px 16px; flex-shrink: 0; }
+.ua-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; flex-shrink: 0; }
 .ua-actions button { height: 36px; padding: 0 16px; font-size: 13px; }
 .ua-actions button:disabled { opacity: 0.6; cursor: progress; }
 @media (prefers-reduced-motion: reduce) { .ua-wizard { animation: none; } }
 @media (max-width: 600px) {
+  .ua-scrim { width: 100%; }
   .ua-wizard { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
-  .ua-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .ua-content { padding: 0 16px; }
+  .ua-actions { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .ua-actions button { min-height: 44px; }
 }
 </style>
