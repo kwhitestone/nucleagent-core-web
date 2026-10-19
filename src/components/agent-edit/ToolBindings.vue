@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { Pencil } from "@lucide/vue";
 import { ToolBindings as BindingList } from "@prism-fusion/editor-ui";
 import { useResourceOptions } from "@/composables/useResourceOptions";
-import { coveredBySkills, toolLabel, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
+import { coveredBySkills, toolLabel, toolUnavailable, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
 import CollectionPager from "@/components/CollectionPager.vue";
 const props = withDefaults(defineProps<{
   rows: { id: number; name: string; missing: boolean; covered: boolean }[];
@@ -18,12 +18,17 @@ const props = withDefaults(defineProps<{
   editLabel?: string;
 }>(), { omitCovered: false, skillIds: () => [] });
 const emit = defineEmits<{ toggle: [id: number, checked: boolean]; edit: [id: number]; metadata: [rows: ToolCatalogItem[]]; ready: [value: boolean] }>();
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+const reasonText = (reason: string) => (te(`common.toolReason.${reason}`) ? t(`common.toolReason.${reason}`) : reason);
 const { rows: candidates, known, hydratedLoaded, query, page, total, hasMore, loading, failed, go, load, filter } =
   useResourceOptions<ToolCatalogItem>("/api/v1/addons/tool/catalog", () => props.selected);
 const selectedOnly = ref(false);
-const visible = computed(() => candidates.value.map(row => ({ id: row.id, name: toolLabel(row, locale.value),
-  missing: false, covered: coveredBySkills(row, props.skillIds) })));
+// Unavailable rows (held/conflict/...) render as `missing`: unavailable label, not tickable (an existing pick can still be unticked).
+const visible = computed(() => candidates.value.map(row => {
+  const off = toolUnavailable(row);
+  return { id: row.id, name: off && row.reason ? `${toolLabel(row, locale.value)} · ${reasonText(row.reason)}` : toolLabel(row, locale.value),
+    missing: off, covered: coveredBySkills(row, props.skillIds) };
+}));
 const unavailable = computed(() => hydratedLoaded.value ? props.selected.filter(id => !known.value.some(row => row.id === id)) : []);
 watch(known, rows => emit("metadata", rows), { immediate: true });
 watch(hydratedLoaded, ready => emit("ready", ready), { immediate: true });

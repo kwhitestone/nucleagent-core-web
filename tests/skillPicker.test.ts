@@ -317,6 +317,53 @@ for (const kind of ["skill", "tool"] as const) {
   });
 }
 
+test("CATALOG-V2: ToolPicker renders held/removed/conflict as unavailable with reason and refuses the pick", async () => {
+  const v2 = [{ id: 1, name: "ok", status: "ready", skillIds: [] }, { id: 2, name: "h", status: "unavailable", reason: "held", imported: true, skillIds: [] },
+    { id: 3, name: "r", status: "unavailable", reason: "source_removed", imported: true, skillIds: [] },
+    { id: 4, name: "c", status: "unavailable", reason: "conflict", imported: true, skillIds: [] }, { id: 5, name: "cov", status: "ready", skillIds: [7] }];
+  respond = async () => ({ data: v2.map(r => ({ ...r })) });
+  const selected = ref<number[]>([3]);
+  const { root, app } = mount(toolPicker, () => ({ modelValue: selected.value, tools: [], skillIds: [7],
+    "onUpdate:modelValue": (ids: number[]) => { selected.value = ids; } }));
+  try {
+    await flush();
+    const chip = all(root, "tool-chip")[0];
+    assert.match(textOf(chip), /Unavailable/); // an existing unavailable pick is flagged, still removable
+    click(all(root, "tool-toggle")[0]); await flush();
+    const rows = all(body, "osheet-row");
+    assert.equal(rows.length, 5);
+    assert.deepEqual(rows.map(r => !!r.props.disabled), [false, true, true, true, true]);
+    assert.match(textOf(rows[1]), /Unavailable·sync held/);
+    assert.match(textOf(rows[2]), /Unavailable·source removed/);
+    assert.match(textOf(rows[3]), /Unavailable·sync conflict/);
+    assert.match(textOf(rows[4]), /Already provided by a selected skill/);
+    click(rows[1]); click(rows[3]); click(rows[4]); await flush();
+    assert.deepEqual(selected.value, [3]);
+    click(rows[0]); await flush();
+    assert.deepEqual(selected.value, [3, 1]);
+  } finally { app.unmount(); }
+});
+
+test("CATALOG-V2: agent ToolBindings marks unavailable rows (zh reason), not tickable; covered by skillIds", async () => {
+  respond = async () => ({ data: [{ id: 1, name: "ok", status: "ready", skillIds: [] }, { id: 2, name: "h", status: "unavailable", reason: "held", skillIds: [] },
+    { id: 3, name: "c", status: "unavailable", reason: "conflict", skillIds: [] }, { id: 4, name: "cov", status: "ready", skillIds: [7] }] });
+  const toggles: unknown[] = [];
+  const { root, app } = mount(agentToolPicker, () => ({ rows: [], selected: [], editable: true, skillIds: [7], coveredLabel: "已随技能提供", unavailableLabel: "不可用",
+    onToggle: (id: number, checked: boolean) => toggles.push([id, checked]) }), "zh");
+  try {
+    await flush();
+    const labels = descendants(all(root, "tool-bindings")[0], "li");
+    assert.equal(labels.length, 4);
+    const boxes = labels.map(li => descendants(li, "input")[0]);
+    assert.deepEqual(boxes.map(b => !!b.props.disabled), [false, true, true, true]);
+    assert.match(textOf(labels[1]), /h · 同步暂停.*不可用/);
+    assert.match(textOf(labels[2]), /c · 同步冲突.*不可用/);
+    assert.match(textOf(labels[3]), /已随技能提供/);
+    changeCheck(boxes[0], true); await flush();
+    assert.deepEqual(toggles, [[1, true]]);
+  } finally { app.unmount(); }
+});
+
 test("REMOTE: inline relation delta preserves cross-page selection and retains failed saves", async () => {
   let writes = 0;
   const bodies: any[] = [];

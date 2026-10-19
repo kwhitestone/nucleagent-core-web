@@ -113,6 +113,7 @@ export default {
     toolLoadFailed: "Could not load tools; you can launch without picking any",
     toolCoveredBySkill: "Already provided by a selected skill",
     toolBadgeInactive: "Unavailable",
+    toolReason: { held: "sync held", source_removed: "source removed", conflict: "sync conflict", not_admitted: "not admitted", engine_tools_disabled: "imported tools off", manual_disabled: "disabled" },
     executionBackend: "Execution backend",
     executionBackendLoadFailed: "Failed to load execution backends",
     executionBackendRestoreFailed: "Failed to load the current execution backend",

@@ -8,7 +8,7 @@
  */
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { coveredBySkills, toolLabel, toolOptions, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
+import { coveredBySkills, toolLabel, toolOptions, toolUnavailable, type ToolCatalogItem } from "@/addons/conversation/api/toolCatalog";
 import OptionSheet from "./OptionSheet.vue";
 import { BINDINGS_MAX } from "../api/sessionBindings";
 import { useResourceOptions } from "@/composables/useResourceOptions";
@@ -25,16 +25,18 @@ const props = withDefaults(defineProps<{
   row?: boolean;
 }>(), { skillIds: () => [], loading: false, failed: false, disabled: false, row: false });
 const emit = defineEmits<{ "update:modelValue": [value: number[]]; retry: [] }>();
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+const reasonText = (reason: string) => (te(`common.toolReason.${reason}`) ? t(`common.toolReason.${reason}`) : reason);
+const unavailableBadge = (reason: string) => (reason ? `${t("common.toolBadgeInactive")}·${reasonText(reason)}` : t("common.toolBadgeInactive"));
 const open = ref(false);
 const { rows, known, selectedPage, hydratedLoaded, loading, failed, total, page, hasMore, load, go, filter } =
   useResourceOptions<ToolCatalogItem>("/api/v1/addons/tool/catalog", () => props.modelValue, true);
-const options = computed(() => toolOptions(rows.value, locale.value, t("common.skillBadgeImported"), props.skillIds, t("common.toolCoveredBySkill")).map((option) => ({
+const options = computed(() => toolOptions(rows.value, locale.value, t("common.skillBadgeImported"), props.skillIds, t("common.toolCoveredBySkill"), unavailableBadge).map((option) => ({
   ...option, disabled: props.disabled || option.disabled || (props.modelValue.length >= BINDINGS_MAX && !props.modelValue.includes(Number(option.value))),
 })));
 const chips = computed(() => props.modelValue.map((id) => {
   const tool = known.value.find((x) => x.id === id);
-  return { id, name: tool ? toolLabel(tool, locale.value) : `#${id}`, missing: !tool && hydratedLoaded.value, covered: coveredBySkills(tool, props.skillIds) };
+  return { id, name: tool ? toolLabel(tool, locale.value) : `#${id}`, missing: (!tool && hydratedLoaded.value) || toolUnavailable(tool), covered: coveredBySkills(tool, props.skillIds) };
 }));
 const rowValue = computed(() => chips.value.length ? chips.value.map((c) => c.name).join("、") : t("common.toolNone"));
 const visibleChips = computed(() => chips.value.filter(chip =>

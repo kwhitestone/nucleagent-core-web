@@ -1,7 +1,7 @@
 /**
  * Tool catalog (L6 core f0bfbef, G-TASK-TOOL-PICK-1900): `GET /api/v1/addons/tool/catalog`
  * returns the tools a user may pick (toolselect.Selectable) with safe fields only
- * (id/name/description/i18n/skillIds/imported; never mcp_config / URLs). Readable with
+ * (id/name/description/i18n/skillIds/imported/status/reason; never mcp_config / URLs). Readable with
  * core:skill:read, so ordinary users get it. Picked ids go to POST /conversation `toolIds`
  * and to my agent's `toolIds`; the server re-checks every id.
  */
@@ -18,7 +18,13 @@ export interface ToolCatalogItem {
   /** Skills that bring this tool along; selecting one of them already exposes it. */
   skillIds?: number[];
   imported?: boolean;
+  /** catalog v2: anything but "ready" is listed for visibility only (held/source_removed/conflict/...); absent = older core = ready. */
+  status?: string;
+  reason?: string;
 }
+
+/** Listed but not pickable; the server refuses it on save (tool_not_selectable). */
+export const toolUnavailable = (tool: ToolCatalogItem | undefined) => !!tool && tool.status !== undefined && tool.status !== "ready";
 
 const localized = (tool: ToolCatalogItem, locale: string, key: "name" | "description"): string => {
   const bundle = tool.i18n?.[locale];
@@ -31,18 +37,21 @@ export const toolLabel = (tool: ToolCatalogItem, locale: string) => localized(to
 export const coveredBySkills = (tool: ToolCatalogItem | undefined, skillIds: readonly number[]) =>
   !!tool?.skillIds?.some((id) => skillIds.includes(id));
 
-/** Tools brought by one of `skillIds` are listed disabled with `coveredNote`. */
-export function toolOptions(tools: ToolCatalogItem[], locale: string, importedBadge: string, skillIds: readonly number[] = [], coveredNote = ""): SheetOption[] {
+/** Tools brought by one of `skillIds` are listed disabled with `coveredNote`; unavailable ones disabled with `unavailableBadge(reason)`. */
+export function toolOptions(tools: ToolCatalogItem[], locale: string, importedBadge: string, skillIds: readonly number[] = [], coveredNote = "",
+  unavailableBadge: (reason: string) => string = (reason) => reason): SheetOption[] {
   return tools.map((tool) => {
     const covered = coveredBySkills(tool, skillIds);
+    const unavailable = toolUnavailable(tool);
+    const badges = [...(tool.imported ? [importedBadge] : []), ...(unavailable ? [unavailableBadge(tool.reason ?? "")] : [])];
     return {
       value: String(tool.id),
       label: toolLabel(tool, locale),
       note: covered ? coveredNote : localized(tool, locale, "description") || tool.description || undefined,
       keywords: tool.name,
       group: tool.imported ? "imported" : "system",
-      badges: tool.imported ? [importedBadge] : undefined,
-      ...(covered ? { disabled: true } : {}),
+      badges: badges.length ? badges : undefined,
+      ...(covered || unavailable ? { disabled: true } : {}),
     };
   });
 }

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { registerPlatformRuntime } from "../src/contracts/platform-runtime.ts";
-import { coveredBySkills, effectiveToolIds, listToolCatalog, toolOptions, type ToolCatalogItem } from "../src/addons/conversation/api/toolCatalog.ts";
+import { coveredBySkills, effectiveToolIds, listToolCatalog, toolOptions, toolUnavailable, type ToolCatalogItem } from "../src/addons/conversation/api/toolCatalog.ts";
 import { readDraft } from "../src/addons/conversation/composables/taskDraft.ts";
 import { createDefinitionApi, DefinitionError } from "../src/addons/administration/agents/definition/api.ts";
 import { changeCount, dirtyGroups } from "../src/addons/administration/agents/definition/groups.ts";
@@ -46,6 +46,25 @@ test("options: covered ones disabled with the note, imported ones badged and gro
   assert.equal(c.group, "imported");
   assert.deepEqual(c.badges, ["IMP"]);
   assert.equal(a.group, "system");
+});
+
+test("catalog v2: status != ready is listed disabled with reason badge; covered still decided by skillIds", () => {
+  const rows = [tool(1, [], { status: "ready" }), tool(2, [9], { imported: true, status: "unavailable", reason: "held" }),
+    tool(3, [], { imported: true, status: "unavailable", reason: "conflict" }), tool(4, [], { status: "unavailable", reason: "source_removed" }), tool(5)];
+  assert.deepEqual(rows.map(toolUnavailable), [false, true, true, true, false]); // absent status = older core = ready
+  assert.equal(toolUnavailable(undefined), false);
+  const [a, b, c, d, e] = toolOptions(rows, "en", "IMP", [9], "COVERED", (r) => `OFF:${r}`);
+  assert.equal("disabled" in a, false);
+  assert.equal("disabled" in e, false);
+  assert.equal(b.disabled, true);
+  assert.equal(b.note, "COVERED"); // held tool owned by a picked skill: covered note, still disabled
+  assert.deepEqual(b.badges, ["IMP", "OFF:held"]);
+  assert.equal(c.disabled, true);
+  assert.deepEqual(c.badges, ["IMP", "OFF:conflict"]);
+  assert.equal(d.disabled, true);
+  assert.deepEqual(d.badges, ["OFF:source_removed"]);
+  assert.equal(coveredBySkills(rows[1], [9]), true);
+  assert.deepEqual(effectiveToolIds([1, 2, 3], rows, [9]), [1, 3]);
 });
 
 test("catalog: malformed rows dropped, skillIds normalised, 404 = [] (older core), other errors thrown", async () => {

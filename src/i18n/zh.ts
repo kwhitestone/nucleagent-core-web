@@ -113,6 +113,7 @@ export default {
     toolLoadFailed: "加载工具列表失败，可不选工具直接启动",
     toolCoveredBySkill: "已随所选技能提供",
     toolBadgeInactive: "不可用",
+    toolReason: { held: "同步暂停", source_removed: "来源已移除", conflict: "同步冲突", not_admitted: "未准入", engine_tools_disabled: "导入工具未开启", manual_disabled: "已停用" },
     executionBackend: "执行后端",
     executionBackendLoadFailed: "加载执行后端列表失败",
     executionBackendRestoreFailed: "当前会话执行后端加载失败",
