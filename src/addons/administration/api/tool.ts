@@ -35,7 +35,7 @@ export interface ToolConfig {
 }
 
 const BASE = "/api/v1/addons/tool";
-export const toolPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Tool>(BASE, params, signal);
+export const toolPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Tool>(`${BASE}/page`, params, signal);
 
 export async function listTools(): Promise<Tool[]> {
   const response = await http().get<Envelope<Tool[]>>(BASE);

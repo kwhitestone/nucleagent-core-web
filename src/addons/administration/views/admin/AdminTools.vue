@@ -156,9 +156,19 @@ async function submit(): Promise<void> {
     });
     if (disposed) return;
     if (selectedSkills.value.length) {
-      await getPlatformRuntime().http.patch(`/api/v1/addons/admin/tool/${createdTool.value.id}/skills`,
-        { add: selectedSkills.value, remove: [] },
-        { headers: { "If-Match": `"tool-${createdTool.value.id}-${createdTool.value.revision}"` } });
+      try {
+        await getPlatformRuntime().http.patch(`/api/v1/addons/admin/tool/${createdTool.value.id}/skills`,
+          { add: selectedSkills.value, remove: [] },
+          { headers: { "If-Match": `"tool-${createdTool.value.id}-${createdTool.value.revision}"` } });
+      } catch (cause: any) {
+        if (cause?.response?.status !== 412) throw cause;
+        const current = await getPlatformRuntime().http.get<{ data: Tool }>(`/api/v1/addons/tool/${createdTool.value.id}`);
+        const refreshed = current.data.data;
+        createdTool.value = refreshed;
+        await getPlatformRuntime().http.patch(`/api/v1/addons/admin/tool/${refreshed.id}/skills`,
+          { add: selectedSkills.value, remove: [] },
+          { headers: { "If-Match": `"tool-${refreshed.id}-${refreshed.revision}"` } });
+      }
     }
     if (disposed) return;
     toast.success(t("admin.tools.created"));

@@ -157,7 +157,8 @@ export interface SkillFileNode {
 }
 
 const SKILL_ADMIN_BASE = "/api/v1/addons/admin/skill";
-export const adminSkillPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Skill>(SKILL_ADMIN_BASE, params, signal);
+const SKILL_ADMIN_PAGE = `${SKILL_ADMIN_BASE}/page`;
+export const adminSkillPage = (params: ResourceFilter, signal?: AbortSignal) => resourcePage<Skill>(SKILL_ADMIN_PAGE, params, signal);
 
 export async function listAllSkills(): Promise<Skill[]> {
   const response = await http().get<Envelope<Skill[]>>(SKILL_ADMIN_BASE);

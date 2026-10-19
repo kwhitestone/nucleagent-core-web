@@ -37,8 +37,17 @@ async function submit() {
     }
     if (disposed) return;
     if (selected.value.length) {
-      await getPlatformRuntime().http.patch(`/api/v1/addons/admin/skill/${created.value.id}/tools`,
-        { add: selected.value, remove: [] }, { headers: { "If-Match": `"skill-${created.value.id}-${created.value.revision}"` } });
+      try {
+        await getPlatformRuntime().http.patch(`/api/v1/addons/admin/skill/${created.value.id}/tools`,
+          { add: selected.value, remove: [] }, { headers: { "If-Match": `"skill-${created.value.id}-${created.value.revision}"` } });
+      } catch (cause: any) {
+        if (cause?.response?.status !== 412) throw cause;
+        const current = await getPlatformRuntime().http.get<{ data: Skill }>(`/api/v1/addons/admin/skill/${created.value.id}`);
+        const refreshed = current.data.data;
+        created.value = refreshed;
+        await getPlatformRuntime().http.patch(`/api/v1/addons/admin/skill/${refreshed.id}/tools`,
+          { add: selected.value, remove: [] }, { headers: { "If-Match": `"skill-${refreshed.id}-${refreshed.revision}"` } });
+      }
     }
     if (!disposed) emit("created", created.value);
   } catch {

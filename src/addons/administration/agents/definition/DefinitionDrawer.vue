@@ -11,7 +11,7 @@ import ToolBindings from "../../../../components/agent-edit/ToolBindings.vue";
 import AgentPreview from "./AgentPreview.vue";
 import EditSidebar from "../../../../components/agent-edit/EditSidebar.vue";
 import { avatarGradient, avatarUrl, changeCount, dirtyGroups, groupPaths, groups, groupLabels, initial, type Group } from "./groups";
-import { DefinitionError, type Catalog, type CatalogTool, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
+import { DefinitionError, type Catalog, type DefinitionApi, type Detail, type Impact, type LifecycleAction, type Audit, type Instance } from "./api";
 import { DefinitionEditor, sameImpact } from "./state";
 import { definitionFields, genModelPaths, readPath, reconcileBindings, validateChanges } from "./draft";
 import { errorKey, text, type MessageKey } from "./messages";
@@ -43,7 +43,6 @@ const page = ref(0);
 const total = ref(0);
 const pageLoading = ref(false);
 const toolId = ref<number>();
-const toolCatalog = ref<CatalogTool[] | null>(null);
 let mounted = true;
 let readGeneration = 0;
 let pageGeneration = 0;
@@ -71,12 +70,6 @@ const availableSkills = computed(() => record.value.capabilities.readSkills
 // L6 tool_bindings: pending selection, else the stored one; a stored id missing from the catalog stays listed (flagged).
 const selectedTools = computed(() => editor.tools ?? record.value.toolBindings ?? []);
 const canPickTools = computed(() => writable.value && record.value.capabilities.writeToolBindings === true);
-const toolRows = computed(() => {
-  const list = toolCatalog.value ?? [];
-  const chosenSkills = selectedSkills.value;
-  return [...list.map(t => ({ id: t.id, name: t.name, missing: false, covered: t.skillIds.some(id => chosenSkills.includes(id)) })),
-    ...selectedTools.value.filter(id => !list.some(t => t.id === id)).map(id => ({ id, name: `#${id}`, missing: true, covered: false }))];
-});
 function selectTool(id: number, checked: boolean) {
   if (!canPickTools.value) return;
   editor.tools = checked ? [...new Set([...selectedTools.value, id])] : selectedTools.value.filter(x => x !== id);
@@ -330,19 +323,16 @@ onUnmounted(() => clearTimeout(toastTimer));
           <template v-if="record.capabilities.writeToolBindings === true && record.capabilities.readTools">
             <h4>{{ label('selectedTools') }}</h4>
             <p class="muted small">{{ label('selectedToolsNote') }}</p>
-            <ToolBindings :rows="toolRows" :selected="selectedTools" :editable="canPickTools"
+          <ToolBindings :rows="[]" :selected="selectedTools" :editable="canPickTools"
               :skill-ids="selectedSkills"
               :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
               data-testid="admin-tool-bindings" @toggle="selectTool" />
           </template>
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
-          <p v-if="!record.tools.length" class="muted">{{ label('emptyResources') }}</p>
-          <article v-for="tool in record.tools" :key="tool.id" class="resource">
-            <span class="tool-icon" aria-hidden="true"><Wrench :size="14" /></span>
-            <div><strong>{{ tool.name }}</strong><small>{{ tool.slug }} · {{ label('revision') }} {{ tool.revision }}</small></div>
-            <button v-if="record.capabilities.readTools" type="button" class="ghost" @click="toolId = tool.id">{{ label('edit') }}</button>
-          </article>
+          <ToolBindings v-if="record.capabilities.readTools" :rows="[]" :selected="selectedTools" :editable="canPickTools"
+            :skill-ids="selectedSkills" :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
+            @toggle="selectTool" />
         </section>
         <section id="group-visibility" class="form-card">
           <h3>{{ label('visibility') }}</h3>
