@@ -78,7 +78,8 @@ test("shared tool binding policy: missing removals, skill coverage and readonly"
     app.mount(root);
     for (let i = 0; i < 10; i++) await nextTick();
     const inputs = descendants(root).filter(n => n.tag === "input" && n.props.type === "checkbox").slice(1);
-    assert.deepEqual(inputs.map(n => n.props.checked !== undefined && n.props.checked !== false), [false, !omitCovered, true]);
+    // A usable tool a selected skill brings always shows ticked, whether or not it is also a manual pick.
+    assert.deepEqual(inputs.map(n => n.props.checked !== undefined && n.props.checked !== false), [false, true, true]);
     assert.deepEqual(inputs.map(n => n.props.disabled), [!editable, !editable || omitCovered, !editable]);
     for (const input of inputs) input.props.onChange({ target: { checked: false } });
     assert.deepEqual(changes, !editable ? [] : omitCovered ? [[1, false], [2, false]] : [[1, false], [3, false], [2, false]]);

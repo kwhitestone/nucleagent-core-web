@@ -21,7 +21,7 @@
     "vue-i18n": "^9.14.0",
     "vue-router": "^4.6.0",
     "zod": "^4.4.3",
-    "@prism-fusion/editor-ui": "file:vendor/editor-ui-439b537f00abc82a867d816a2e58353c8e38bd3fd4e27b457cf8bf2238a94d69.tgz"
+    "@prism-fusion/editor-ui": "file:vendor/editor-ui-8fe4a2071ada3daaaf5f73bf183e94dc34680cbd5e3a638c247797f4169ccbcd.tgz"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
