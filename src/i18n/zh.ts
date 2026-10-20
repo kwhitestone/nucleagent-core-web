@@ -648,7 +648,7 @@ export default {
       tools: "工具",
       bindingsHint: "只列出已启用、你可选的技能与工具；已随技能提供的工具无需再选",
       bindingsEmpty: "暂无可选项",
-      bindingUnavailable: "不可用，保存时请取消",
+      bindingUnavailable: "不可用",
       errSkillClosed: "所选技能不可用，请刷新后重选",
       errToolClosed: "所选工具不可用，请刷新后重选",
       errToolCovered: "该工具已随所选技能提供，请取消其一",

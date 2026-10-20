@@ -82,7 +82,7 @@ export const messages = {
   addSkill: ["添加技能", "Add skill"], searchSkills: ["搜索技能", "Search skills"], removeSkill: ["移除", "Remove"],
   noSkills: ["还没有绑定技能", "No skills bound yet"],
   selectedTools: ["选用工具", "Selected tools"], selectedToolsNote: ["只列出已启用、可选的工具；已随所选技能提供的工具无需再选。", "Only enabled, selectable tools; tools a selected skill brings need not be picked."],
-  toolCovered: ["已随技能提供", "Comes with a skill"], toolUnavailable: ["不可用，请取消", "Unavailable; untick it"], toolCatalogError: ["工具目录加载失败", "Tool catalog failed to load"], skillDisabled: ["已停用，不可新增", "Disabled; cannot be added"],
+  toolCovered: ["已随技能提供", "Comes with a skill"], toolUnavailable: ["不可用", "Unavailable"], toolCatalogError: ["工具目录加载失败", "Tool catalog failed to load"], skillDisabled: ["已停用，不可新增", "Disabled; cannot be added"],
   preview: ["预览", "Preview"], previewIm: ["IM 中的样子", "How it looks in IM"],
   previewNote: ["预览不调用模型，仅示意名片与语气位置。", "Preview does not call the model; it only shows the card and reply placement."],
   previewUser: ["你好，介绍一下你自己？", "Hi, could you introduce yourself?"],

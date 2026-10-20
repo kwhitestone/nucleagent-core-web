@@ -648,7 +648,7 @@ export default {
       tools: "Tools",
       bindingsHint: "Only enabled skills and tools you may pick are listed; tools a skill brings need not be picked",
       bindingsEmpty: "Nothing to pick",
-      bindingUnavailable: "unavailable, untick before saving",
+      bindingUnavailable: "unavailable",
       errSkillClosed: "A selected skill is unavailable; refresh and pick again",
       errToolClosed: "A selected tool is unavailable; refresh and pick again",
       errToolCovered: "That tool comes with a selected skill; untick one of them",
