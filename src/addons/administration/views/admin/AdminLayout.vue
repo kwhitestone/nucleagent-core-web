@@ -16,6 +16,7 @@ import {
   useEmbeddedAuthorization,
 } from "@/contracts/platform-runtime";
 import { isInShell } from "@/contracts/platform-runtime";
+import { CONVERSATION_VIEWER_PERMISSION } from "../../api/conversations";
 
 const route = useRoute();
 const router = useRouter();
@@ -32,7 +33,9 @@ const tabs = computed(() => filterEmbeddedAuthorizedItems([
   { to: "/admin/home-suggestions", label: t("admin.tabs.homeSuggestions"), permission: "core:admin:read" },
   { to: "/admin/users", label: t("admin.tabs.users"), permission: "core:admin:read" },
   { to: "/admin/executors", label: t("admin.tabs.executors"), permission: "core:admin:read" },
-], embedded, authorization.can));
+  // MUYU-163: both capabilities, exactly what the backend enforces.
+  { to: "/admin/conversations", label: t("admin.tabs.conversations"), permission: CONVERSATION_VIEWER_PERMISSION },
+].filter((tab) => tab.to !== "/admin/conversations" || authorization.can("core:admin:read")), embedded, authorization.can));
 
 watchEffect(() => {
   if (authorization.revalidating?.value) return;

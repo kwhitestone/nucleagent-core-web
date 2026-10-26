@@ -56,6 +56,16 @@ const administration: PluginModule = {
           component: () => import("./views/admin/AdminUsers.vue"),
         },
         {
+          path: "conversations",
+          name: "admin-conversations",
+          component: () => import("./views/admin/AdminConversations.vue"),
+        },
+        {
+          path: "conversations/:type(chat|im)/:id(\\d+)",
+          name: "admin-conversation-detail",
+          component: () => import("./views/admin/AdminConversationDetail.vue"),
+        },
+        {
           path: "executors",
           name: "admin-executors",
           component: () => import("./views/admin/AdminExecutors.vue"),
