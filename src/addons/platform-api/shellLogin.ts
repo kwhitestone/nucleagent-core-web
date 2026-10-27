@@ -52,6 +52,11 @@ export function shellLoginUrl(shellOrigin: string, shellPath: string): string {
 
 let leaving = false;
 
+/** True once redirectToShellLogin() has started leaving this page. */
+export function isLeavingForLogin(): boolean {
+  return leaving;
+}
+
 export function redirectToShellLogin(
   shellOrigin: string,
   shellPath: string,
