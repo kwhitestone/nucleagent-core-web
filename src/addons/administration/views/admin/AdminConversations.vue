@@ -3,56 +3,24 @@
  * 会话查看（只读）：按类型（AI 对话 / IM）、用户 UID、时间检索全体用户会话。
  * 每次查询后端都会鉴权并写审计；本页没有任何写操作入口。
  */
-import { onMounted, reactive, ref } from "vue";
+import { onBeforeUnmount, onMounted, toRefs } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
 import { toast } from "@/composables/useToast";
-import {
-  listConversations,
-  userLabel,
-  type ConversationFilters,
-  type ConversationRow,
-  type ConversationType,
-} from "../../api/conversations";
+import { listConversations, userLabel, type ConversationRow } from "../../api/conversations";
+import { createConversationListController } from "./conversationListController";
 
 const PAGE = 20;
 const { t } = useI18n();
-const filters = reactive<ConversationFilters>({ type: "chat", userId: "", from: "", to: "", includeDeleted: false });
-const rows = ref<ConversationRow[]>([]);
-const cursors = ref<string[]>([""]); // cursor that produced each visited page
-const pageIndex = ref(0);
-const nextCursor = ref("");
-const loading = ref(false);
 
 function errorText(error: unknown): string {
   return error instanceof ApiError ? error.message : t("common.operationFailed");
 }
 
-async function load(index: number): Promise<void> {
-  loading.value = true;
-  try {
-    const page = await listConversations(filters, cursors.value[index] ?? "", PAGE);
-    rows.value = page.items;
-    pageIndex.value = index;
-    nextCursor.value = page.nextCursor;
-    if (page.hasMore) cursors.value[index + 1] = page.nextCursor;
-  } catch (error) {
-    toast.error(errorText(error));
-  } finally {
-    loading.value = false;
-  }
-}
-
-function search(): void {
-  cursors.value = [""];
-  void load(0);
-}
-
-function switchType(type: ConversationType): void {
-  if (filters.type === type) return;
-  filters.type = type;
-  search();
-}
+// Only the latest query commits rows/cursors (see conversationListController).
+const list = createConversationListController(listConversations, PAGE, (error) => toast.error(errorText(error)));
+const { filters, rows, pageIndex, nextCursor, loading } = toRefs(list.state);
+const { load, search, switchType } = list;
 
 function formatTime(value?: string | null): string {
   return value ? new Date(value).toLocaleString() : "—";
@@ -64,7 +32,8 @@ function rowTitle(row: ConversationRow): string {
   return `${t("conversationsAdmin.dm")} · ${userLabel(row.peer, row.peerUserId)}`;
 }
 
-onMounted(search);
+onMounted(() => void search());
+onBeforeUnmount(list.dispose);
 </script>
 
 <template>
@@ -73,11 +42,11 @@ onMounted(search);
     <div class="type-switch" role="tablist">
       <button v-for="type in (['chat', 'im'] as const)" :key="type" type="button" role="tab"
         :aria-selected="filters.type === type" :class="{ active: filters.type === type }"
-        :data-testid="`conv-type-${type}`" @click="switchType(type)">
+        :data-testid="`conv-type-${type}`" @click="void switchType(type)">
         {{ t(`conversationsAdmin.type.${type}`) }}
       </button>
     </div>
-    <form class="filter-row" role="search" @submit.prevent="search">
+    <form class="filter-row" role="search" @submit.prevent="search()">
       <label>{{ t("conversationsAdmin.userId") }}
         <input v-model="filters.userId" inputmode="numeric" maxlength="12" data-testid="conv-user" />
       </label>
@@ -114,9 +83,9 @@ onMounted(search);
     </div>
 
     <div v-if="pageIndex > 0 || nextCursor" class="pager">
-      <button class="btn-ghost" type="button" :disabled="pageIndex === 0 || loading" @click="load(pageIndex - 1)">‹</button>
+      <button class="btn-ghost" type="button" :disabled="pageIndex === 0 || loading" @click="void load(pageIndex - 1)">‹</button>
       <span class="count-hint">{{ t("conversationsAdmin.page", { n: pageIndex + 1 }) }}</span>
-      <button class="btn-ghost" type="button" :disabled="!nextCursor || loading" data-testid="conv-next" @click="load(pageIndex + 1)">›</button>
+      <button class="btn-ghost" type="button" :disabled="!nextCursor || loading" data-testid="conv-next" @click="void load(pageIndex + 1)">›</button>
     </div>
   </div>
 </template>
