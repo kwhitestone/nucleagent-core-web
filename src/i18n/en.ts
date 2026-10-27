@@ -733,6 +733,8 @@ export default {
     from: "From",
     to: "To",
     includeDeleted: "Include conversations the user deleted",
+    timeRuleChat: "Time filter uses when the conversation was created: from (inclusive) to (exclusive).",
+    timeRuleIm: "Time filter keeps conversations with at least one message in the range: from (inclusive) to (exclusive), to the second.",
     empty: "No matching conversations",
     untitled: "(untitled)",
     group: "Group",

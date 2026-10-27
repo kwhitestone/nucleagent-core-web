@@ -61,6 +61,7 @@ onBeforeUnmount(list.dispose);
       </label>
       <button class="btn-primary" type="submit" data-testid="conv-search">{{ t("common.search") }}</button>
     </form>
+    <p class="section-hint" data-testid="conv-time-rule">{{ t(filters.type === "im" ? "conversationsAdmin.timeRuleIm" : "conversationsAdmin.timeRuleChat") }}</p>
 
     <p v-if="loading" class="empty-hint">{{ t("common.loading") }}</p>
     <p v-else-if="!rows.length" class="empty-hint">{{ t("conversationsAdmin.empty") }}</p>

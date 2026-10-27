@@ -733,6 +733,8 @@ export default {
     from: "开始时间",
     to: "结束时间",
     includeDeleted: "包含用户已删除的会话",
+    timeRuleChat: "时间筛选按会话创建时间：开始时间（含）至结束时间（不含）。",
+    timeRuleIm: "时间筛选按该时段内是否有过消息：开始时间（含）至结束时间（不含），精确到秒。",
     empty: "没有符合条件的会话",
     untitled: "（无标题）",
     group: "群聊",

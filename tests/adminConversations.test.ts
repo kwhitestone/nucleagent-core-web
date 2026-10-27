@@ -114,6 +114,13 @@ test("every viewer string exists in both locales", () => {
   assert.ok(messages.admin.tabs.conversations && english.admin.tabs.conversations);
 });
 
+test("the time filter rule is stated per type: chat by creation time, IM by any message in [from, to)", () => {
+  assert.match(messages.conversationsAdmin.timeRuleChat, /创建时间/);
+  assert.match(messages.conversationsAdmin.timeRuleIm, /有过消息/);
+  assert.match(english.conversationsAdmin.timeRuleIm, /at least one message/);
+  for (const rule of [messages.conversationsAdmin.timeRuleChat, messages.conversationsAdmin.timeRuleIm]) assert.match(rule, /含）.*不含）/);
+});
+
 async function renderDetail() {
   responses = {
     "/api/v1/addons/admin/conversations/chat/7": { code: 0, data: chatDetail },
