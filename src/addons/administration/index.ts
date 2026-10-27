@@ -61,7 +61,8 @@ const administration: PluginModule = {
           component: () => import("./views/admin/AdminConversations.vue"),
         },
         {
-          path: "conversations/:type(chat|im)/:id(\\d+)",
+          // [0-9] not \d: the plugin runtime's validatePath rejects any backslash.
+          path: "conversations/:type(chat|im)/:id([0-9]+)",
           name: "admin-conversation-detail",
           component: () => import("./views/admin/AdminConversationDetail.vue"),
         },

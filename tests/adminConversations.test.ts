@@ -101,9 +101,41 @@ test("routes register the list and a constrained detail path under the admin lay
   const admin = administration.routes.find((route: any) => route.path === "/admin");
   const paths = admin.children.map((child: any) => child.path);
   assert.ok(paths.includes("conversations"));
-  assert.ok(paths.includes("conversations/:type(chat|im)/:id(\\d+)"));
+  assert.ok(paths.includes("conversations/:type(chat|im)/:id([0-9]+)"));
   for (const existing of ["providers", "default-model", "skills", "tools", "agents", "home-suggestions", "users", "executors"]) {
     assert.ok(paths.includes(existing), `existing admin route ${existing} kept`);
+  }
+});
+
+// The string check above let `:id(\\d+)` ship: the vendored plugin runtime rejects `\` in
+// route paths, so main.ts mount threw and every environment showed the startup banner.
+// Install through the same host main.ts uses, so a path the runtime refuses fails here.
+test("administration installs through the real plugin host and the detail route matches only chat/im + digits", async () => {
+  const { createPluginHost } = await vite.ssrLoadModule("/src/vendor/prism-fusion-plugin-runtime/headless.ts");
+  // Same host routes as src/router/index.ts (that module builds a browser history at import).
+  const coreRoutes = [
+    { path: "/", name: "core-root", redirect: "/chat" },
+    { path: "/:pathMatch(.*)*", name: "core-fallback", redirect: "/chat" },
+  ];
+  const router = createRouter({ history: createMemoryHistory(), routes: coreRoutes });
+  const host = createPluginHost({ app: createSSRApp({ render: () => null }), router, coreRoutes, homePath: "/admin/users" });
+  // Route-less stand-ins for the declared dependencies (the real ones need a browser window).
+  const dependency = (id: string) => ({ name: id, manifest: { apiVersion: "prism-fusion/v2", kind: "frontend-addon", id, version: "0.0.0", requires: [], routeScopes: [] } });
+  host.register([dependency("platform-api"), dependency("model-catalog"), administration]);
+  await host.install();
+  try {
+    for (const type of ["chat", "im"]) {
+      const hit = router.resolve(`/admin/conversations/${type}/42`);
+      assert.equal(hit.name, "admin-conversation-detail");
+      assert.deepEqual({ ...hit.params }, { type, id: "42" });
+    }
+    for (const bad of ["/admin/conversations/chat/4x", "/admin/conversations/mail/42", "/admin/conversations/im/-1"]) {
+      assert.notEqual(router.resolve(bad).name, "admin-conversation-detail", bad);
+    }
+    assert.equal(router.resolve("/admin/conversations").name, "admin-conversations");
+    assert.equal(router.resolve("/admin/users").name, "admin-users");
+  } finally {
+    await host.uninstall();
   }
 });
 
