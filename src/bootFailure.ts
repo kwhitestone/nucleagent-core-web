@@ -1,12 +1,17 @@
+import { isNavigationFailure, NavigationFailureType } from "vue-router";
+
 /**
  * What boot.ts does when startup rejects.
  *
- * An anonymous visitor is sent to the shell login by the auth guard, which
- * returns false while window.location.assign() is already leaving; the first
- * navigation then aborts and router.isReady() rejects. That is the redirect
- * working, not a failed start: log nothing and show no alert banner (the
- * login interstitial is what the visitor should see). Any other failure, or a
- * runtime-config failure, is still logged and bannered.
+ * An anonymous visitor is sent to the shell login by the auth guard: it calls
+ * window.location.assign() and returns false, so the first navigation aborts
+ * and router.isReady() rejects with an ABORTED navigation failure. That one
+ * outcome is the redirect working, not a failed start, and is the only thing
+ * kept silent: the error must be a vue-router ABORTED failure AND the login
+ * redirect must actually have been handed to the browser. Every other error
+ * (a real mount failure, a throwing redirect, an abort with no redirect, a
+ * cancelled/duplicated navigation) and every runtime-config failure is still
+ * logged and bannered.
  */
 export type StartupFailureContext = {
   configLoaded: boolean;
@@ -15,8 +20,12 @@ export type StartupFailureContext = {
   log: (message: string, error: unknown) => void;
 };
 
+export function isExpectedLoginRedirectAbort(error: unknown, ctx: Pick<StartupFailureContext, "configLoaded" | "leavingForLogin">): boolean {
+  return ctx.configLoaded && ctx.leavingForLogin && isNavigationFailure(error, NavigationFailureType.aborted);
+}
+
 export function reportStartupFailure(error: unknown, ctx: StartupFailureContext): void {
-  if (ctx.configLoaded && ctx.leavingForLogin) return;
+  if (isExpectedLoginRedirectAbort(error, ctx)) return;
   // Runtime-config errors redact values (key names only). Log so a mount failure is no longer
   // indistinguishable from a config failure; the banner text stays generic.
   ctx.log(`NucleAgent Core startup failed (${ctx.configLoaded ? "app mount" : "runtime config"}):`, error);

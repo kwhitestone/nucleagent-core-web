@@ -51,10 +51,15 @@ export function shellLoginUrl(shellOrigin: string, shellPath: string): string {
 }
 
 let leaving = false;
+let redirected = false;
 
-/** True once redirectToShellLogin() has started leaving this page. */
+/**
+ * True only once redirectToShellLogin() has handed the browser the login URL
+ * (window.location.assign returned). A failure while building the URL or the
+ * interstitial, or a throwing assign(), leaves it false.
+ */
 export function isLeavingForLogin(): boolean {
-  return leaving;
+  return redirected;
 }
 
 export function redirectToShellLogin(
@@ -80,4 +85,5 @@ export function redirectToShellLogin(
   setTimeout(() => { card.hidden = false; }, SHOW_AFTER_MS);
   setTimeout(() => { link.hidden = false; }, LINK_AFTER_MS);
   window.location.assign(href);
+  redirected = true;
 }
