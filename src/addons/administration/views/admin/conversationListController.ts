@@ -41,7 +41,16 @@ export function createConversationListController(fetchPage: FetchConversationPag
     }
   }
 
+  /**
+   * A new filter starts from an empty first page: the previous filter's rows,
+   * page number and cursors are dropped before the request goes out, so a
+   * failure (or the wait) never shows them under the new filter. Paging
+   * within a filter (load(n)) keeps the shown page until the next one lands.
+   */
   function search(): Promise<void> {
+    state.rows = [];
+    state.pageIndex = 0;
+    state.nextCursor = "";
     state.cursors = [""];
     return load(0);
   }
