@@ -854,3 +854,40 @@ test("stream policy keeps a monotonic cursor and independent versions", () => {
   assert.equal(advanceMessageCursor("12", 8), "12");
   assert.equal(advanceMessageCursor(undefined, 8), "8");
 });
+
+// MUYU-181 conv 711 review P1-1: core's skill-tool gap row is a status message
+// without execution_phase; it must be visible in history and live, as a failed process step.
+test("skill tool gap status rows render in history snapshots and live subscriptions", async () => {
+  const gap = (id: number) => message({ id, conversationId: 711, senderType: "system", senderName: "agent.skill_tool_gap", msgType: "status",
+    content: "⚠️ 技能关联的 1 个工具本轮未挂载到执行会话：aihub-aict-7-0-de2ff9c4(aihub_unavailable)",
+    metadata: { step_id: "s711", skill_tool_gap_n: 1, skill_tool_gaps: [{ skillId: 3, skillSlug: "agentia-s18358", toolId: 9, toolSlug: "aihub-aict-7-0-de2ff9c4", reason: "aihub_unavailable" }] } });
+  const plain = message({ id: 7112, conversationId: 711, senderType: "system", senderName: "agent", msgType: "status", content: "✓ 0.3s" });
+  http.defaults.adapter = async (config: any) => ({ config, data: messageEnvelope(config, [gap(7111), plain]), headers: {}, status: 200, statusText: "OK" });
+  globalThis.fetch = (async () => new Response(
+    `id: 7113\nevent: message-created\ndata: ${JSON.stringify(gap(7113))}\n\n` +
+    `id: 7114\nevent: message-created\ndata: ${JSON.stringify({ ...plain, id: 7114 })}\n\n`,
+    { status: 200, headers: { "Content-Type": "text/event-stream" } },
+  )) as typeof fetch;
+  const adapter = createConversationAdapter(() => "711");
+  const snapshot = await adapter.loadSnapshot({ conversationKey: "711", signal: new AbortController().signal });
+  assert.deepEqual(snapshot.items.map((item: any) => item.id), ["msg-7111"], "gap row kept, plain status row still hidden");
+  const [historic] = snapshot.items;
+  assert.equal(historic.lane, "process");
+  assert.equal(historic.userReadable, true);
+  assert.equal(historic.title, "技能工具未挂载");
+  assert.equal(historic.status, "failed");
+  assert.match(historic.content, /aihub-aict-7-0-de2ff9c4\(aihub_unavailable\)/);
+  const live = [];
+  for await (const event of adapter.subscribe({ conversationKey: "711", cursor: snapshot.cursor, signal: new AbortController().signal })) live.push(event);
+  assert.deepEqual(live.map((event: any) => event.item?.id), ["msg-7113"]);
+  assert.equal(live[0].item.title, "技能工具未挂载");
+  assert.equal(live[0].item.status, "failed");
+  assert.equal(live[0].item.userReadable, true);
+  let state = reduceConversation(createConversationState("711"), { type: "event.received", event: {
+    protocolVersion: 2, type: "snapshot", conversationKey: "711", eventId: "snapshot-711",
+    cursor: snapshot.cursor, turnId: "main", streamId: "msg-7111", lane: "process",
+    revision: 1, seq: 1, timestamp: historic.timestamp, snapshot,
+  } });
+  state = reduceConversation(state, { type: "event.received", event: live[0] });
+  assert.ok(state.items["msg-7111"] && state.items["msg-7113"], "both gap rows survive the reducer");
+});

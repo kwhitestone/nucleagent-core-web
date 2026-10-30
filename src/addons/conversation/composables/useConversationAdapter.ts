@@ -191,6 +191,8 @@ function mapStatus(msg: Message): ConversationItem["status"] {
         return "complete";
     }
   }
+  // A missing skill tool is a failed step, never shown as a clean success.
+  if (isSkillToolGap(msg)) return "failed";
   if (msg.msgType === "tool_call") {
     if (metadata?.tool_status === "running") return "streaming";
     if (metadata?.tool_status === "failed") return "failed";
@@ -235,6 +237,7 @@ function processTitle(msg: Message, active: boolean): string {
   if (isExecutionPhase(msg)) {
     return executionPhaseLabel(messageTimingData(msg), "zh-CN") ?? msg.senderName;
   }
+  if (isSkillToolGap(msg)) return "技能工具未挂载";
   return (
     {
       webSearch: "联网搜索",
@@ -251,6 +254,13 @@ function processTitle(msg: Message, active: boolean): string {
       subagent_resume: "恢复子代理",
     } as Record<string, string>
   )[msg.senderName] ?? msg.senderName;
+}
+
+/** Core status row: a dispatched skill's linked tools this round's session did not mount (MUYU-181). */
+const SKILL_TOOL_GAP_SENDER = "agent.skill_tool_gap";
+
+function isSkillToolGap(msg: Message): boolean {
+  return msg.msgType === "status" && msg.senderName === SKILL_TOOL_GAP_SENDER;
 }
 
 function isExecutionPhase(msg: Message): boolean {
@@ -370,7 +380,7 @@ function shouldEmit(msg: Message): boolean {
     return (msg.content || "").trim() !== "" || metadata?.tool_status === "running";
   }
   // "✓ 0.3s" 之类的纯完成状态行没有信息量，折叠条目里只会堆噪音。
-  if (msg.msgType === "status") return isExecutionPhase(msg);
+  if (msg.msgType === "status") return isExecutionPhase(msg) || isSkillToolGap(msg);
   return ["text", "result", "error", "tool_call", "streaming", "plan"].includes(msg.msgType);
 }
 
