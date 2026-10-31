@@ -487,7 +487,7 @@ onMounted(() => {
 .desk-pill svg, .desk-send svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .desk-send {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: var(--r-full);
-  background: var(--teal-700) var(--grad-teal-indigo); color: var(--fg-inverse);
+  background: var(--bg-brand); color: var(--fg-inverse);
 }
 .desk-send svg { width: 18px; height: 18px; }
 .desk-send:disabled { opacity: 0.4; }

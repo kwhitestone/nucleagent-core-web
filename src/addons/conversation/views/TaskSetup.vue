@@ -565,7 +565,7 @@ async function launch(): Promise<void> {
 }
 .task-m-launch {
   width: 100%; height: 52px; border: 0; border-radius: var(--r-lg);
-  background: var(--teal-700) var(--grad-teal-indigo); color: var(--fg-inverse); font: inherit; font-size: 16px; font-weight: 700;
+  background: var(--bg-brand); color: var(--fg-inverse); font: inherit; font-size: 16px; font-weight: 700;
 }
 .task-m-launch:disabled { opacity: 0.5; }
 .task-m-why {
