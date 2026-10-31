@@ -52,12 +52,12 @@ function updateLimit(model: string, field: keyof ProviderModelLimitsForm, event:
 
 <style scoped>
 .model-limits { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--r-sm); }
-legend { padding: 0 4px; font-size: 12.5px; font-weight: 500; color: var(--text-secondary); }
+legend { padding: 0 4px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .limits-help { margin: 0 0 12px; font-size: 12px; line-height: 1.6; color: var(--text-tertiary); }
 .model-limits-row + .model-limits-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .limits-model { display: block; overflow-wrap: anywhere; margin-bottom: 8px; font: 12px var(--font-mono); color: var(--text-primary); }
 .limits-inputs { display: flex; flex-wrap: wrap; gap: 10px; }
 label { min-width: 0; flex: 1 1 150px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-secondary); }
-input { min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text-primary); font-family: var(--font-body); font-size: 13px; }
+input { min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text-primary); font-family: var(--font-body); font-size: 12px; }
 input:focus-visible { outline: 2px solid var(--teal-300); outline-offset: 1px; }
 </style>

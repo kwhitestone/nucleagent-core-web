@@ -63,13 +63,13 @@ defineEmits<{
 .tree-item {
   display: flex; align-items: center; gap: 6px; width: 100%;
   padding: 5px 8px; border: none; background: none; border-radius: var(--r-sm);
-  font-size: 12.5px; color: var(--text-secondary); cursor: pointer; text-align: left;
-  transition: all 0.15s var(--ease); white-space: nowrap; overflow: hidden;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer; text-align: left;
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); white-space: nowrap; overflow: hidden;
 }
 .tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tree-item.file.active { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 600; }
+.tree-item.file.active { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 500; }
 .tree-item.dir { color: var(--text-primary); font-weight: 500; }
-.tree-caret { width: 12px; flex-shrink: 0; font-size: 10px; color: var(--text-tertiary); }
+.tree-caret { width: 12px; flex-shrink: 0; font-size: 12px; color: var(--text-tertiary); }
 .tree-caret.placeholder { opacity: 0.4; }
 .tree-item-name { overflow: hidden; text-overflow: ellipsis; }
 </style>

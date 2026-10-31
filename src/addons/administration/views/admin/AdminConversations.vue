@@ -95,26 +95,26 @@ onBeforeUnmount(list.dispose);
 .conv-view { display: flex; flex-direction: column; gap: 14px; }
 .section-hint { font-size: 12px; color: var(--text-tertiary); }
 .type-switch { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); align-self: flex-start; }
-.type-switch button { padding: 6px 14px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 13px; }
-.type-switch button.active { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 600; }
+.type-switch button { padding: 6px 14px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; }
+.type-switch button.active { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 500; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
 .filter-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
 .filter-row label.check { flex-direction: row; align-items: center; }
-.filter-row input:not([type=checkbox]) { padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); font-size: 13px; }
-.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 13px; }
+.filter-row input:not([type=checkbox]) { padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); font-size: 12px; }
+.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 12px; }
 .conv-list { display: flex; flex-direction: column; gap: 8px; }
-.conv-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-xs); text-decoration: none; color: inherit; }
+.conv-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-xs); text-decoration: none; color: inherit; }
 .conv-card:hover { border-color: var(--border-strong); }
 .conv-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.conv-title { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conv-meta, .conv-time { font-size: 11.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.conv-title { font-size: 14px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-meta, .conv-time { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
 .conv-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg-hover); color: var(--text-secondary); }
-.badge.busy { background: #fef3c7; color: #b45309; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-hover); color: var(--text-secondary); }
+.badge.busy { background: var(--bg-warning); color: var(--fg-warning); }
 .badge.off { background: var(--slate-100); color: var(--text-tertiary); }
 .pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.count-hint { font-size: 12.5px; color: var(--text-tertiary); }
-.btn-primary { padding: 8px 16px; border: none; border-radius: var(--r-md); background: var(--grad-teal-indigo); color: white; font-size: 13px; font-weight: 600; cursor: pointer; }
+.count-hint { font-size: 12px; color: var(--text-tertiary); }
+.btn-primary { padding: 8px 16px; border: none; border-radius: var(--r-md); background: var(--grad-teal-indigo); color: white; font-size: 12px; font-weight: 500; cursor: pointer; }
 .btn-ghost { padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
 .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

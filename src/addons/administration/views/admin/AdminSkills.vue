@@ -296,11 +296,11 @@ onUnmounted(() => {
 .list-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .list-search { flex: 1; min-width: 140px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-primary); }
 @media (max-width: 600px) { .skill-card { flex-direction: column; align-items: flex-start; } .tree-pane { width: 140px; } }
-.count-hint { font-size: 12.5px; color: var(--text-tertiary); }
+.count-hint { font-size: 12px; color: var(--text-tertiary); }
 
 .hidden-file { display: none; }
 
-.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 13px; }
+.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 12px; }
 
 .skill-list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -308,8 +308,8 @@ onUnmounted(() => {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
   padding: 14px 16px;
   background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-xs);
-  transition: all 0.25s var(--ease);
+  border-radius: var(--r-card); box-shadow: var(--shadow-xs);
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
 }
 .skill-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .skill-card.inactive { opacity: 0.6; }
@@ -317,21 +317,21 @@ onUnmounted(() => {
 .skill-main { min-width: 0; flex: 1; }
 .skill-name, .skill-slug { overflow-wrap: anywhere; }
 .skill-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.skill-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.skill-slug { font-size: 11.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.skill-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.skill-slug { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
 
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
-.badge.on { background: #d1fae5; color: #047857; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+.badge.on { background: var(--bg-success); color: var(--fg-success); }
 .badge.off { background: var(--slate-100); color: var(--text-tertiary); }
 
 .version-chip {
-  font-size: 11px; padding: 2px 8px; border-radius: var(--r-sm);
+  font-size: 12px; padding: 2px 8px; border-radius: var(--r-sm);
   background: var(--grad-brand-soft); color: var(--indigo-600);
   font-family: var(--font-mono);
 }
 
 .skill-desc {
-  font-size: 12.5px; color: var(--text-secondary); margin-top: 4px;
+  font-size: 12px; color: var(--text-secondary); margin-top: 4px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -340,7 +340,7 @@ onUnmounted(() => {
 /* 抽屉 */
 .drawer-mask {
   position: fixed; inset: 0; background: rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(3px); z-index: 60;
+  backdrop-filter: none; z-index: 60;
   display: flex; justify-content: flex-end;
   animation: fade-in 0.2s var(--ease-out) both;
 }
@@ -376,13 +376,13 @@ onUnmounted(() => {
 }
 .content-pre {
   flex: 1; overflow: auto; margin: 0; padding: 14px;
-  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
   color: var(--text-primary); white-space: pre-wrap; word-break: break-word;
 }
 
 .icon-btn {
   width: 30px; height: 30px; border: none; border-radius: var(--r-md); background: transparent;
-  color: var(--text-tertiary); cursor: pointer; font-size: 14px; transition: all 0.15s var(--ease);
+  color: var(--text-tertiary); cursor: pointer; font-size: 14px; transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
 }
 .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -390,17 +390,17 @@ onUnmounted(() => {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 16px; border: none; border-radius: var(--r-md);
   background: var(--grad-teal-indigo); background-size: 200% 200%;
-  color: white; font-size: 13px; font-weight: 600; cursor: pointer;
-  box-shadow: var(--shadow-sm); transition: all 0.25s var(--ease); white-space: nowrap;
+  color: white; font-size: 12px; font-weight: 500; cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); white-space: nowrap;
 }
-.btn-primary:hover:not(:disabled) { background-position: 100% 0; transform: translateY(-1px); }
+.btn-primary:hover:not(:disabled) { background-position: 100% 0; transform: none; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-ghost {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--bg-card); color: var(--text-secondary); font-size: 12.5px; cursor: pointer;
-  transition: all 0.2s var(--ease); white-space: nowrap;
+  background: var(--bg-card); color: var(--text-secondary); font-size: 12px; cursor: pointer;
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); white-space: nowrap;
 }
 .btn-ghost:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .btn-ghost.danger:hover { border-color: var(--rose-400); color: var(--rose-500); }

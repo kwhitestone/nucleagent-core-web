@@ -493,17 +493,17 @@ async function clearAll(): Promise<void> {
   padding: 16px 18px;
   background: var(--grad-brand-soft);
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-card);
   box-shadow: var(--shadow-xs);
 }
-.effective-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.effective-title { font-size: 12px; font-weight: 500; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 .effective-value { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.effective-model { font-size: 18px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
-.effective-provider { font-size: 13px; color: var(--text-secondary); }
-.effective-value.muted { font-size: 13px; color: var(--text-tertiary); }
+.effective-model { font-size: 16px; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
+.effective-provider { font-size: 12px; color: var(--text-secondary); }
+.effective-value.muted { font-size: 12px; color: var(--text-tertiary); }
 
 .source-badge {
-  font-size: 11px; padding: 2px 10px; border-radius: 999px; font-weight: 600;
+  font-size: 12px; padding: 2px 10px; border-radius: 999px; font-weight: 500;
   background: var(--bg-card); color: var(--indigo-600); border: 1px solid var(--border);
 }
 .source-badge.fallback { color: var(--amber-600); }
@@ -514,7 +514,7 @@ async function clearAll(): Promise<void> {
   display: flex; flex-direction: column; gap: 14px;
 }
 .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.section-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+.section-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
 .section-hint { font-size: 12px; color: var(--text-tertiary); max-width: 560px; }
 .section-actions { display: flex; gap: 8px; }
 
@@ -522,19 +522,19 @@ async function clearAll(): Promise<void> {
 .mode-row { display: flex; gap: 4px; padding: 3px; background: var(--bg-subtle); border-radius: var(--r-md); width: fit-content; }
 .mode-tab {
   padding: 6px 14px; border: none; border-radius: var(--r-sm); background: transparent;
-  font-size: 12.5px; font-weight: 500; color: var(--text-secondary); cursor: pointer;
-  transition: all 0.2s var(--ease);
+  font-size: 12px; font-weight: 500; color: var(--text-secondary); cursor: pointer;
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
 }
 .mode-tab:hover { color: var(--text-primary); }
-.mode-tab.active { background: var(--bg-card); color: var(--indigo-600); font-weight: 600; box-shadow: var(--shadow-xs); }
+.mode-tab.active { background: var(--bg-card); color: var(--indigo-600); font-weight: 500; box-shadow: var(--shadow-xs); }
 
 .mode-default-row .field-inline { display: flex; align-items: center; gap: 10px; }
 
 /* 组卡片 */
 .group-list { display: flex; flex-direction: column; gap: 10px; }
 .group-card {
-  border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden;
-  transition: all 0.2s var(--ease);
+  border: 1px solid var(--border); border-radius: var(--r-card); overflow: hidden;
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
 }
 .group-card:hover { border-color: var(--border-strong); }
 .group-card.inactive { opacity: 0.65; }
@@ -545,27 +545,27 @@ async function clearAll(): Promise<void> {
   cursor: pointer; padding: 2px 4px; border-radius: var(--r-sm);
 }
 .group-name-btn:hover { background: var(--bg-hover); }
-.group-name { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
-.group-slug { font-size: 11.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.group-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.group-slug { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
 
 .group-badges { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
 .mode-chip {
-  font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; padding: 2px 8px; border-radius: 999px;
   background: var(--bg-hover); color: var(--text-tertiary);
 }
-.mode-chip.on { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 600; }
-.mode-chip.clickable { cursor: pointer; border: none; transition: all 0.15s var(--ease); }
+.mode-chip.on { background: var(--grad-brand-soft); color: var(--indigo-600); font-weight: 500; }
+.mode-chip.clickable { cursor: pointer; border: none; transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); }
 .mode-chip.clickable:hover { color: var(--text-primary); }
 
 .badge.off {
-  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; padding: 2px 8px; border-radius: 999px;
   background: var(--slate-100); color: var(--text-tertiary);
 }
 
 .group-actions { display: flex; gap: 2px; }
 .icon-btn {
   width: 26px; height: 26px; border: none; border-radius: var(--r-sm); background: transparent;
-  color: var(--text-tertiary); cursor: pointer; font-size: 13px; transition: all 0.15s var(--ease);
+  color: var(--text-tertiary); cursor: pointer; font-size: 12px; transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
 }
 .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .icon-btn.danger:hover { background: rgba(244, 63, 94, 0.1); color: var(--rose-500); }
@@ -574,16 +574,16 @@ async function clearAll(): Promise<void> {
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.field label, .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.field label, .field-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 4px; }
 .field input, .field-inline select, .v1-select {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--bg-card); color: var(--text-primary); font-size: 13px;
-  transition: border-color 0.2s var(--ease);
+  background: var(--bg-card); color: var(--text-primary); font-size: 12px;
+  transition: border-color var(--mo-dur-base) var(--ease);
 }
 .field-inline select, .v1-select { width: auto; min-width: 260px; }
 .field input:focus, .field-inline select:focus, .v1-select:focus { outline: none; border-color: var(--teal-500); }
 
-.switch-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+.switch-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
 .switch-row.small { font-size: 12px; }
 .switch { accent-color: var(--teal-500); }
 
@@ -595,12 +595,12 @@ async function clearAll(): Promise<void> {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-md); flex-wrap: wrap;
 }
-.profile-model { flex: 1; min-width: 220px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-card); font-size: 12.5px; color: var(--text-primary); }
-.profile-name { width: 140px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-card); font-size: 12.5px; color: var(--text-primary); }
+.profile-model { flex: 1; min-width: 220px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-card); font-size: 12px; color: var(--text-primary); }
+.profile-name { width: 140px; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-card); font-size: 12px; color: var(--text-primary); }
 .default-pick { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-secondary); cursor: pointer; white-space: nowrap; }
 .default-pick input { accent-color: var(--teal-500); }
 
-.empty-hint { color: var(--text-tertiary); text-align: center; padding: 24px 0; font-size: 13px; }
+.empty-hint { color: var(--text-tertiary); text-align: center; padding: 24px 0; font-size: 12px; }
 .empty-hint.small { padding: 8px 0; font-size: 12px; }
 
 /* 按钮体系对齐 Providers.vue */
@@ -608,17 +608,17 @@ async function clearAll(): Promise<void> {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 16px; border: none; border-radius: var(--r-md);
   background: var(--grad-teal-indigo); background-size: 200% 200%;
-  color: white; font-size: 13px; font-weight: 600; cursor: pointer;
-  box-shadow: var(--shadow-sm); transition: all 0.25s var(--ease); white-space: nowrap;
+  color: white; font-size: 12px; font-weight: 500; cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); white-space: nowrap;
 }
-.btn-primary:hover:not(:disabled) { background-position: 100% 0; transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-primary:hover:not(:disabled) { background-position: 100% 0; transform: none; box-shadow: var(--shadow-md); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-ghost {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 13px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--bg-card); color: var(--text-secondary); font-size: 12.5px; cursor: pointer;
-  transition: all 0.2s var(--ease); white-space: nowrap;
+  background: var(--bg-card); color: var(--text-secondary); font-size: 12px; cursor: pointer;
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state); white-space: nowrap;
 }
 .btn-ghost:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .btn-ghost.small { padding: 5px 10px; font-size: 12px; }

@@ -46,10 +46,10 @@ h2 { margin: 0 0 6px; font-size: 16px; color: var(--text-primary); }
 .executor-admin__toolbar p, .executor-admin__footer { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 .executor-admin__toolbar button { padding: 7px 13px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card); color: var(--text-secondary); font-size: 12px; cursor: pointer; white-space: nowrap; }
 .executor-admin__toolbar button:disabled { opacity: .5; cursor: not-allowed; }
-.executor-empty { padding: 40px 20px; text-align: center; color: var(--text-tertiary); font-size: 13px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); }
+.executor-empty { padding: 40px 20px; text-align: center; color: var(--text-tertiary); font-size: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); }
 .executor-notice { display: flex; flex-direction: column; gap: 4px; padding: 12px 15px; margin: 0; border: 1px solid var(--border); border-radius: var(--r-md); font-size: 12px; overflow-wrap: anywhere; }
 .executor-notice.error { color: var(--rose-500); background: var(--bg-card); border-color: var(--rose-400); }
 .executor-notice.success { color: var(--teal-700); background: var(--teal-50); }
-.executor-admin__footer { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-tertiary); }
+.executor-admin__footer { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-tertiary); }
 .executor-admin__footer p { margin: 0; }
 </style>

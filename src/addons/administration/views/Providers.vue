@@ -85,7 +85,7 @@ onMounted(async () => {
 
 .providers-header { margin-bottom: 16px; }
 
-.page-title { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.page-title { font-size: var(--page-title-size, 20px); font-weight: var(--page-title-weight); color: var(--text-primary); margin-bottom: 4px; line-height: var(--page-title-line-height); }
 
 .providers-empty { color: var(--text-tertiary); text-align: center; padding: 40px 0; font-size: 14px; }
 
@@ -94,26 +94,26 @@ onMounted(async () => {
 .provider-card {
   padding: 16px 18px;
   background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: var(--r-lg); box-shadow: var(--shadow-xs);
+  border-radius: var(--r-card); box-shadow: var(--shadow-xs);
 }
 
 .provider-main { min-width: 0; }
 .provider-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
-.provider-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.provider-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
 
-.provider-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
-.provider-badge.on { background: #d1fae5; color: #047857; }
+.provider-badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+.provider-badge.on { background: var(--bg-success); color: var(--fg-success); }
 
-.provider-note { font-size: 12.5px; color: var(--text-secondary); margin: 6px 0 10px; }
+.provider-note { font-size: 12px; color: var(--text-secondary); margin: 6px 0 10px; }
 .provider-models-title { font-size: 12px; color: var(--text-tertiary); }
 .provider-sync { margin-left: 4px; }
 
 .provider-models { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .model-chip {
-  font-size: 11px; padding: 2px 7px; border-radius: var(--r-sm);
+  font-size: 12px; padding: 2px 7px; border-radius: var(--r-sm);
   background: var(--bg-hover); color: var(--text-secondary); font-family: var(--font-mono);
 }
 .provider-type-counts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; font-size: 12px; color: var(--text-tertiary); }
-.model-type { margin-left: 5px; padding: 0 4px; border-radius: 3px; font-family: var(--font-body); background: var(--bg-card); color: var(--text-tertiary); }
-.model-type:not(.t-chat) { color: #b45309; }
+.model-type { margin-left: 5px; padding: 0 4px; border-radius: 0px; font-family: var(--font-body); background: var(--bg-card); color: var(--text-tertiary); }
+.model-type:not(.t-chat) { color: var(--fg-warning); }
 </style>

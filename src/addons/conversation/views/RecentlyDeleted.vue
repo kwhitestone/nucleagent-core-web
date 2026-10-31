@@ -70,9 +70,9 @@ onMounted(load);
 <style scoped>
 .rdel { max-width: 720px; margin: 0 auto; padding: 24px 20px; }
 .rdel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.rdel-head h1 { margin: 0; font-size: 18px; }
-.rdel-back { color: var(--text-secondary); font-size: 13px; }
-.rdel-status { color: var(--text-secondary); font-size: 13.5px; padding: 32px 0; text-align: center; }
+.rdel-head h1 { margin: 0; font-size: var(--page-title-size, 20px); font-weight: var(--page-title-weight); line-height: var(--page-title-line-height); }
+.rdel-back { color: var(--text-secondary); font-size: 12px; }
+.rdel-status { color: var(--text-secondary); font-size: 14px; padding: 32px 0; text-align: center; }
 .rdel-status button { margin-left: 8px; }
 .rdel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .rdel-row {

@@ -60,7 +60,7 @@ function isActive(to: string): boolean {
 </script>
 
 <template>
-  <div class="admin-view">
+  <div class="admin-view" data-ui-style="d">
     <div class="admin-header">
       <div>
         <h1 class="page-title">{{ t("admin.title") }}</h1>
@@ -111,8 +111,8 @@ function isActive(to: string): boolean {
   flex-wrap: wrap;
 }
 
-.page-title { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
-.page-subtitle { font-size: 13px; color: var(--text-secondary); }
+.page-title { font-size: var(--page-title-size, 20px); font-weight: var(--page-title-weight); color: var(--text-primary); margin-bottom: 4px; line-height: var(--page-title-line-height); }
+.page-subtitle { font-size: 12px; color: var(--text-secondary); }
 
 .admin-tabs {
   display: flex;
@@ -128,11 +128,11 @@ function isActive(to: string): boolean {
 .admin-tab {
   padding: 7px 14px;
   border-radius: var(--r-md);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: all 0.2s var(--ease);
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
   white-space: nowrap;
 }
 
@@ -141,7 +141,7 @@ function isActive(to: string): boolean {
 .admin-tab.active {
   background: var(--grad-brand-soft);
   color: var(--indigo-600);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .admin-body { flex: 1; min-height: 0; }
@@ -169,7 +169,7 @@ function isActive(to: string): boolean {
   .admin-desktop-notice {
     display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 4px 4px 4px 12px;
     border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-subtle);
-    color: var(--text-secondary); font-size: 13px;
+    color: var(--text-secondary); font-size: 12px;
   }
   .admin-desktop-notice button {
     margin-left: auto; flex: none; width: 44px; height: 44px; border: 0; background: transparent;

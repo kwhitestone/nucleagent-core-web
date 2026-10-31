@@ -65,14 +65,14 @@ function reset() {
 
 <style scoped>
 .agent-avatar-picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
-.avatar-image { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; overflow: hidden; border-radius: 6px; background: var(--bg-subtle); color: var(--text-primary); }
+.avatar-image { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; overflow: hidden; border-radius: 8px; background: var(--bg-subtle); color: var(--text-primary); }
 .avatar-image img { width: 100%; height: 100%; object-fit: cover; }
-.avatar-pick { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; min-height: 44px; position: relative; cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+.avatar-pick { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; min-height: 44px; position: relative; cursor: pointer; color: var(--text-secondary); font-size: 12px; }
 .avatar-pick span { overflow-wrap: anywhere; }
 .avatar-pick svg { flex-shrink: 0; }
 .avatar-pick input { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; }
 .avatar-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .avatar-pick[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
-button { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
+button { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
 .avatar-error { width: 100%; margin: 0; color: var(--rose-500); font-size: 12px; overflow-wrap: anywhere; }
 </style>

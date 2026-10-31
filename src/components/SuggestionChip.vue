@@ -29,9 +29,9 @@ const icon = computed(() => iconFor(props.card.icon));
   text-align: left; padding: 14px 16px;
   font: inherit; color: inherit;
   background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
   border: 1px solid var(--border); border-radius: var(--r-lg);
-  cursor: pointer; transition: all 0.3s var(--ease);
+  cursor: pointer; transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
   display: flex; flex-direction: column; gap: 4px;
   position: relative; overflow: hidden;
   animation: fade-in-up 0.4s var(--ease-out) both;
@@ -40,10 +40,10 @@ const icon = computed(() => iconFor(props.card.icon));
 .suggestion-chip::before {
   content: ''; position: absolute; inset: 0;
   background: var(--grad-brand-soft);
-  opacity: 0; transition: opacity 0.3s var(--ease); border-radius: inherit;
+  opacity: 0; transition: opacity var(--mo-dur-base) var(--ease); border-radius: inherit;
 }
 
-.suggestion-chip:hover { border-color: var(--teal-300); box-shadow: var(--shadow-md); transform: translateY(-3px) scale(1.02); }
+.suggestion-chip:hover { border-color: var(--teal-300); box-shadow: var(--shadow-md); transform: none; }
 .suggestion-chip:hover::before { opacity: 0.5; }
 .suggestion-chip:focus-visible { outline: 2px solid var(--teal-500); outline-offset: 2px; }
 .suggestion-chip > * { position: relative; z-index: 1; }
@@ -51,11 +51,11 @@ const icon = computed(() => iconFor(props.card.icon));
 .suggestion-chip .chip-icon {
   width: 30px; height: 30px; border-radius: var(--r-sm);
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 4px; transition: transform 0.3s var(--ease-spring);
+  margin-bottom: 4px; transition: transform var(--mo-dur-base) var(--ease-spring);
 }
 
-.suggestion-chip:hover .chip-icon { transform: scale(1.15) rotate(-5deg); }
+.suggestion-chip:hover .chip-icon { transform: none; }
 .suggestion-chip .chip-icon svg { width: 16px; height: 16px; }
-.suggestion-chip .chip-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.suggestion-chip .chip-desc { font-size: 11.5px; color: var(--text-tertiary); }
+.suggestion-chip .chip-title { font-size: 12px; font-weight: 500; color: var(--text-primary); }
+.suggestion-chip .chip-desc { font-size: 12px; color: var(--text-tertiary); }
 </style>

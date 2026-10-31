@@ -360,20 +360,20 @@ onMounted(() => {
   width: 350px; height: 350px;
   background: radial-gradient(circle, rgba(20, 184, 166, 0.18), transparent 60%);
   top: 10%; left: 15%;
-  animation: float 8s var(--ease) infinite;
+  animation: none;
 }
 
 .home-view::after {
   width: 300px; height: 300px;
   background: radial-gradient(circle, rgba(139, 92, 246, 0.15), transparent 60%);
   bottom: 5%; right: 15%;
-  animation: float 10s var(--ease) infinite reverse;
+  animation: none;
 }
 
 .home-hero { max-width: 640px; width: 100%; position: relative; z-index: 1; }
 
 .home-greeting {
-  font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
   background: var(--grad-teal-indigo);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   margin-bottom: 16px;
@@ -382,7 +382,7 @@ onMounted(() => {
 
 .home-title {
   font-family: var(--font-display);
-  font-size: 52px; line-height: 1.1; letter-spacing: -0.5px;
+  font-size: 48px; line-height: 1.1; letter-spacing: -0.5px;
   color: var(--text-primary); margin-bottom: 12px;
   animation: fade-in-up 0.5s var(--ease-out) 0.1s both;
 }
@@ -391,18 +391,18 @@ onMounted(() => {
   font-style: italic;
   background: var(--grad-aurora); background-size: 200% 200%;
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  animation: gradient-flow 4s var(--ease) infinite;
+  animation: none;
 }
 
 .home-subtitle {
-  font-size: 15px; color: var(--text-secondary);
+  font-size: 14px; color: var(--text-secondary);
   margin-bottom: 36px; line-height: 1.6;
   animation: fade-in-up 0.5s var(--ease-out) 0.2s both;
 }
 
 .home-composer {
   background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
   border: 1.5px solid var(--border); border-radius: var(--r-xl);
   padding: 6px; box-shadow: var(--shadow-md);
   /* 两行式：textarea 独占整行（可输入空间最大化），操作行在下方。
@@ -410,7 +410,7 @@ onMounted(() => {
      挤成窄条——模型/后端选择放不下时体验更差。 */
   display: flex; flex-direction: column; gap: 0;
   margin-bottom: 32px;
-  transition: all 0.3s var(--ease);
+  transition: color var(--mo-t-state), background-color var(--mo-t-state), border-color var(--mo-t-state), box-shadow var(--mo-t-state), opacity var(--mo-t-state), transform var(--mo-t-state);
   animation: scale-in 0.5s var(--ease-spring) 0.3s both;
 }
 
@@ -423,7 +423,7 @@ onMounted(() => {
 .home-composer textarea {
   width: 100%; border: none; outline: none; resize: none; background: transparent;
   display: block;
-  font-family: var(--font-body); font-size: 14.5px; color: var(--text-primary);
+  font-family: var(--font-body); font-size: 14px; color: var(--text-primary);
   padding: 12px 14px 6px; max-height: 200px; line-height: 1.5;
 }
 
@@ -438,7 +438,7 @@ onMounted(() => {
 .broadcast-toggle { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; padding: 4px; cursor: pointer; }
 .broadcast-toggle input { accent-color: var(--indigo-500); }
 @media (max-width: 540px) { .composer-actions { flex-wrap: wrap; } }
-.suggestion-empty { max-width: 640px; margin: 0; font-size: 13px; color: var(--text-tertiary); }
+.suggestion-empty { max-width: 640px; margin: 0; font-size: 12px; color: var(--text-tertiary); }
 
 /* .composer-btn 系列已移到 styles/global.css —— Conversation.vue 也在用它，
  * 放在这里只有先访问过 /chat 才生效（详见 global.css 里的说明）。 */
@@ -446,21 +446,21 @@ onMounted(() => {
 /* ---- Task desk below 1024px (board §11) ---- */
 .desk { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
 .desk-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 12px; }
-.desk-title { margin: 0; font-size: 24px; font-weight: 750; line-height: 1.25; color: var(--text-primary); }
-.desk-lede { margin: 4px 0 16px; font-size: 15px; color: var(--text-secondary); }
-.desk-glabel { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.desk-title { margin: 0; font-size: 20px; font-weight: 750; line-height: 1.25; color: var(--text-primary); }
+.desk-lede { margin: 4px 0 16px; font-size: 14px; color: var(--text-secondary); }
+.desk-glabel { margin: 0 0 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .desk-list { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
 .desk-row {
   display: grid; gap: 4px; width: 100%; min-height: 64px; padding: 10px 16px;
   border: 0; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
 }
 .desk-row + .desk-row { border-top: 1px solid var(--border); }
-.desk-row-title { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.desk-row-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.desk-row-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desk-row-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); min-width: 0; }
 .desk-row-meta time { margin-left: auto; color: var(--text-tertiary); flex: none; }
 .desk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate-400); flex: none; }
 .desk-row[data-status="executing"] .desk-dot { background: var(--teal-500); }
-.desk-row[data-status="blocked"] .desk-dot { background: var(--amber-500, #f59e0b); }
+.desk-row[data-status="blocked"] .desk-dot { background: var(--amber-500, var(--fg-warning)); }
 .desk-row[data-status="blocked"] .desk-row-meta span { color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); font-weight: 650; }
 .desk-row[data-status="completed"] .desk-dot { background: var(--emerald-500); }
 .desk-row[data-status="failed"] .desk-dot { background: var(--rose-500); }
@@ -481,13 +481,13 @@ onMounted(() => {
 .desk-pill {
   flex: 1; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--bg-subtle);
-  color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 600;
+  color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 500;
 }
 .desk-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .desk-pill svg, .desk-send svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .desk-send {
   width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: var(--r-full);
-  background: var(--teal-700) var(--grad-teal-indigo); color: #fff;
+  background: var(--teal-700) var(--grad-teal-indigo); color: var(--fg-inverse);
 }
 .desk-send svg { width: 18px; height: 18px; }
 .desk-send:disabled { opacity: 0.4; }

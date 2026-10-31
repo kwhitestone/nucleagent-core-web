@@ -120,7 +120,7 @@ onBeforeUnmount(() => { epoch++; writeController?.abort(); });
 </template>
 
 <style scoped>
-.relations { width: 100%; border-top: 1px solid var(--border); padding-top: 12px; color: var(--text-primary); font-size: 13px; }
+.relations { width: 100%; border-top: 1px solid var(--border); padding-top: 12px; color: var(--text-primary); font-size: 12px; }
 .relation-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .relation-toolbar > input { min-width: 120px; flex: 1; }
 button, input[type=search] { min-height: 36px; padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-sm); color: inherit; }

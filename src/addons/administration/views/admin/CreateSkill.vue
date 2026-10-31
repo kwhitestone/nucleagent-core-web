@@ -90,9 +90,9 @@ onMounted(() => { void tools.load(); dialog.value?.querySelector<HTMLInputElemen
 .create-mask { position: fixed; inset: 0; z-index: 80; background: rgba(15,23,42,.35); display: grid; place-items: center; padding: 16px; }
 .create-dialog { width: min(620px, 100%); max-height: 90dvh; overflow: auto; padding: 20px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-lg); display: grid; gap: 16px; }
 header, footer { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
-h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; }
+h2 { font-size: 16px; margin: 0; } h3 { font-size: 14px; }
 fieldset { display: grid; gap: 12px; border: 0; padding: 0; margin: 0; min-width: 0; }
-label { display: grid; gap: 6px; font-size: 13px; }
+label { display: grid; gap: 6px; font-size: 12px; }
 input:not([type=checkbox]), textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; color: inherit; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-sm); font: inherit; }
 .check { display: flex; gap: 8px; align-items: center; min-height: 40px; overflow-wrap: anywhere; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }

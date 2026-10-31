@@ -75,15 +75,15 @@ function time(value: string): string {
 </template>
 
 <style scoped>
-.executor-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-xs); overflow: hidden; }
+.executor-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-xs); overflow: hidden; }
 .executor-card__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 20px 20px 12px; }
 .executor-card__identity { min-width: 0; }
-h3 { margin: 0 0 6px; font-size: 15px; color: var(--text-primary); overflow-wrap: anywhere; }
-.instance-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); overflow-wrap: anywhere; margin: 0 0 5px; }
+h3 { margin: 0 0 6px; font-size: 14px; color: var(--text-primary); overflow-wrap: anywhere; }
+.instance-id { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); overflow-wrap: anywhere; margin: 0 0 5px; }
 .muted { color: var(--text-secondary); font-size: 12px; margin: 0; }
-.online-badge { display: inline-block; font-size: 11px; color: var(--teal-600); background: var(--teal-50); padding: 3px 7px; border-radius: var(--r-sm); margin-left: 7px; vertical-align: middle; font-weight: 500; }
+.online-badge { display: inline-block; font-size: 12px; color: var(--teal-600); background: var(--teal-50); padding: 3px 7px; border-radius: var(--r-sm); margin-left: 7px; vertical-align: middle; font-weight: 500; }
 .executor-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 12px 20px 20px; margin: 0; }
-.executor-summary dt { font-size: 11px; color: var(--text-tertiary); margin-bottom: 6px; }
+.executor-summary dt { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
 .executor-summary dd { margin: 0; font-size: 12px; color: var(--text-primary); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .backend-scroll { overflow-x: auto; }
 .backend-table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 12px; text-align: left; font-variant-numeric: tabular-nums; }
@@ -91,16 +91,16 @@ th { font-weight: 500; color: var(--text-secondary); background: var(--bg-subtle
 td { border-top: 1px solid var(--border); padding: 13px 15px; color: var(--text-primary); vertical-align: top; }
 th:first-child, td:first-child { padding-left: 20px; }
 th:last-child, td:last-child { padding-right: 20px; text-align: right; }
-small { display: block; font-size: 10px; color: var(--text-tertiary); margin-top: 4px; white-space: nowrap; }
-.backend-state { display: block; font-size: 11px; color: var(--teal-600); margin-top: 5px; }
+small { display: block; font-size: 12px; color: var(--text-tertiary); margin-top: 4px; white-space: nowrap; }
+.backend-state { display: block; font-size: 12px; color: var(--teal-600); margin-top: 5px; }
 .backend-state.degraded, .backend-error { color: var(--rose-500); }
 .backend-state.unavailable { color: var(--text-tertiary); }
-.backend-error { display: block; font-size: 10px; margin-top: 4px; max-width: 180px; overflow-wrap: anywhere; }
-.executor-card__footer { display: flex; justify-content: space-between; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); color: var(--text-tertiary); font-size: 11px; }
+.backend-error { display: block; font-size: 12px; margin-top: 4px; max-width: 180px; overflow-wrap: anywhere; }
+.executor-card__footer { display: flex; justify-content: space-between; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); color: var(--text-tertiary); font-size: 12px; }
 .legacy-hint, .empty-backends { padding: 16px 20px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; margin: 0; }
-.runtime-hint { margin: 0; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; line-height: 1.7; }
+.runtime-hint { margin: 0; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
 .process-details { border-top: 1px solid var(--border); padding: 4px 20px; }
-details { font-size: 11px; color: var(--text-secondary); padding: 9px 0; }
+details { font-size: 12px; color: var(--text-secondary); padding: 9px 0; }
 summary { cursor: pointer; }
 ul { list-style: none; padding: 0; margin: 10px 0 0; }
 li { display: flex; gap: 16px; flex-wrap: wrap; padding: 5px 0; }

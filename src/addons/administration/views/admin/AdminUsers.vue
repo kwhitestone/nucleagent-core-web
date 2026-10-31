@@ -95,33 +95,33 @@ async function toggle(user: AdminUser): Promise<void> {
 .search-row { display: flex; gap: 8px; }
 .search-row input {
   flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r-md);
-  background: var(--bg-card); color: var(--text-primary); font-size: 13px;
+  background: var(--bg-card); color: var(--text-primary); font-size: 12px;
 }
 .search-row input:focus { outline: none; border-color: var(--teal-500); }
 .section-hint { font-size: 12px; color: var(--text-tertiary); }
-.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 13px; }
-.count-hint { font-size: 12.5px; color: var(--text-tertiary); }
+.empty-hint { color: var(--text-tertiary); text-align: center; padding: 32px 0; font-size: 12px; }
+.count-hint { font-size: 12px; color: var(--text-tertiary); }
 .user-list { display: flex; flex-direction: column; gap: 8px; }
 .user-card {
   display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 16px;
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-xs);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-card); box-shadow: var(--shadow-xs);
 }
 .user-card.inactive { opacity: 0.6; }
 .user-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.user-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-.user-meta { font-size: 11.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
-.type-chip { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--bg-hover); color: var(--text-secondary); }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
-.badge.on { background: #d1fae5; color: #047857; }
+.user-name { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+.user-meta { font-size: 12px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.type-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-hover); color: var(--text-secondary); }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+.badge.on { background: var(--bg-success); color: var(--fg-success); }
 .badge.off { background: var(--slate-100); color: var(--text-tertiary); }
 .pager { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .btn-primary {
   padding: 8px 16px; border: none; border-radius: var(--r-md); background: var(--grad-teal-indigo);
-  color: white; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  color: white; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
 }
 .btn-ghost {
   padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-card);
-  color: var(--text-secondary); font-size: 12.5px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  color: var(--text-secondary); font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
 }
 .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-ghost:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); }

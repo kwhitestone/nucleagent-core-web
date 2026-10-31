@@ -39,12 +39,12 @@ const number = (event: Event) => Number((event.target as HTMLInputElement).value
 <style scoped>
 .runtime-editor { background: var(--bg-card); border: 1px solid var(--indigo-400); border-radius: var(--r-lg); padding: 20px; box-shadow: var(--shadow-sm); }
 header { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
-h3 { margin: 0 0 6px; color: var(--text-primary); font-size: 15px; }
+h3 { margin: 0 0 6px; color: var(--text-primary); font-size: 14px; }
 header p, header > span, footer p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 header > span { white-space: nowrap; }
 fieldset { margin: 0; padding: 0; border: none; min-width: 0; }
 .concurrency-field { display: flex; align-items: center; gap: 16px; margin-bottom: 15px; font-size: 12px; color: var(--text-primary); }
-input { width: 100px; max-width: 100%; border: 1px solid var(--border); border-radius: var(--r-md); padding: 7px 9px; color: var(--text-primary); background: var(--bg-card); font-size: 13px; }
+input { width: 100px; max-width: 100%; border: 1px solid var(--border); border-radius: var(--r-md); padding: 7px 9px; color: var(--text-primary); background: var(--bg-card); font-size: 12px; }
 input:focus { outline: 2px solid var(--teal-200); outline-offset: 1px; border-color: var(--indigo-400); }
 input:disabled { background: var(--bg-subtle); color: var(--text-tertiary); }
 .editor-table-scroll { overflow-x: auto; }
@@ -52,7 +52,7 @@ table { width: 100%; min-width: 580px; border-collapse: collapse; font-size: 12p
 th { color: var(--text-secondary); font-weight: 500; padding: 9px 10px; border-bottom: 1px solid var(--border); }
 td { padding: 12px 10px; color: var(--text-primary); border-bottom: 1px solid var(--border); }
 th:first-child, td:first-child { padding-left: 0; }
-small, .input-label { display: block; color: var(--text-tertiary); font-size: 10px; margin: 4px 0; }
+small, .input-label { display: block; color: var(--text-tertiary); font-size: 12px; margin: 4px 0; }
 .fixed-value { color: var(--text-secondary); font-size: 12px; }
 .editor-warning { font-size: 12px; color: var(--amber-600); line-height: 1.6; margin: 12px 0; }
 .reload-button { border: none; background: transparent; color: var(--indigo-600); cursor: pointer; text-decoration: underline; }
