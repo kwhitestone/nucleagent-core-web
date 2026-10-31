@@ -446,7 +446,7 @@ onMounted(() => {
 /* ---- Task desk below 1024px (board §11) ---- */
 .desk { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
 .desk-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 16px 12px; }
-.desk-title { margin: 0; font-size: 20px; font-weight: 750; line-height: 1.25; color: var(--text-primary); }
+.desk-title { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.25; color: var(--text-primary); }
 .desk-lede { margin: 4px 0 16px; font-size: 14px; color: var(--text-secondary); }
 .desk-glabel { margin: 0 0 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .desk-list { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
@@ -461,7 +461,7 @@ onMounted(() => {
 .desk-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--slate-400); flex: none; }
 .desk-row[data-status="executing"] .desk-dot { background: var(--teal-500); }
 .desk-row[data-status="blocked"] .desk-dot { background: var(--amber-500, var(--fg-warning)); }
-.desk-row[data-status="blocked"] .desk-row-meta span { color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); font-weight: 650; }
+.desk-row[data-status="blocked"] .desk-row-meta span { color: color-mix(in srgb, var(--amber-600) 75%, var(--slate-900)); font-weight: 500; }
 .desk-row[data-status="completed"] .desk-dot { background: var(--emerald-500); }
 .desk-row[data-status="failed"] .desk-dot { background: var(--rose-500); }
 .desk-row:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; }
