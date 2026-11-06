@@ -394,10 +394,10 @@ export interface ToolCallItem {
 }
 
 type ToolCallPage = { data: ToolCallItem[]; hasMore: boolean };
-// Pages showing running calls are not kept: their state is about to change.
+// Pages with running or not-yet-judged (unknown: result may still land) calls are not kept.
 const toolCallCache = createToolCallCache<ToolCallPage>(
   { owner: () => getPlatformRuntime().getAccessToken(), version: () => getPlatformRuntime().getSessionVersion() },
-  (page) => !page.data.some((row) => row.status === "running"),
+  (page) => !page.data.some((row) => row.status === "running" || row.status === "unknown"),
 );
 if (typeof window !== "undefined") window.addEventListener(SESSION_CHANGE_EVENT, () => toolCallCache.clear());
 
