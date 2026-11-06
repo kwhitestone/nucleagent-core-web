@@ -64,7 +64,8 @@ export function typeCoverage(tools: readonly TypedTool[], rows: readonly ToolCal
   const typeBySlug = new Map(tools.map((t) => [t.slug, toolType(t)]));
   return TOOL_TYPES.map((type) => {
     const ofType = tools.filter((t) => typeBySlug.get(t.slug) === type);
-    const ok = rows.filter((r) => r.status === "completed" && typeBySlug.get(slugOf(r.tool)) === type);
+    // A transport-completed call whose answer carries an error reason (e.g. upstream 403) is not a verified call.
+    const ok = rows.filter((r) => r.status === "completed" && !r.error && typeBySlug.get(slugOf(r.tool)) === type);
     const okSlugs = new Set(ok.map((r) => slugOf(r.tool)));
     return { type, total: ofType.length, calledOk: okSlugs.size, represented: ok.length > 0, representative: ok[0] };
   });

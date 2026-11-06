@@ -52,3 +52,10 @@ test("type coverage separates 'represented' from 'every tool called'", () => {
   assert.equal(failOnly.dj.represented, false);
   assert.equal(failOnly.dj.calledOk, 0);
 });
+
+test("a completed call that returned a business error does not verify its type", () => {
+  const wf = { ...row(10, 877, "nucleagent.agentia-t2687", "completed"), error: "unexpected status 403 Forbidden" };
+  const cov = Object.fromEntries(typeCoverage(tools, [wf]).map((c) => [c.type, c]));
+  assert.equal(cov.workflow.represented, false);
+  assert.equal(cov.workflow.calledOk, 0);
+});
