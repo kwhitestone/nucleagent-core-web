@@ -58,7 +58,7 @@ function statusOf(error: unknown): number | undefined {
 }
 
 /** First page for the current filter. A newer call aborts the older one, so stale pages never land. */
-async function load(): Promise<void> {
+async function load(fresh = false): Promise<void> {
   clearTimeout(refreshTimer);
   controller?.abort();
   const id = taskId.value;
@@ -72,7 +72,7 @@ async function load(): Promise<void> {
   const own = (controller = new AbortController());
   if (!rows.value.length) state.value = "loading";
   try {
-    const res = await listToolCalls({ taskId: id, limit: PAGE }, own.signal);
+    const res = await listToolCalls({ taskId: id, limit: PAGE }, own.signal, fresh);
     if (own.signal.aborted) return;
     rows.value = res.data;
     hasMore.value = res.hasMore;
@@ -91,7 +91,7 @@ function scheduleRefresh(): void {
   if (!hasRunning.value || refreshes.value >= REFRESH_LIMIT) return;
   refreshTimer = setTimeout(() => {
     refreshes.value++;
-    void load();
+    void load(true);
   }, REFRESH_MS);
 }
 
@@ -122,7 +122,7 @@ function clearFilter(): void {
 }
 function manualRefresh(): void {
   refreshes.value = 0;
-  void load();
+  void load(true);
 }
 
 watch(() => route.query.taskId, () => {

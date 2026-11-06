@@ -1,4 +1,5 @@
-import { ApiError, getPlatformRuntime } from "@/contracts/platform-runtime";
+import { ApiError, getPlatformRuntime, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { createToolCallCache } from "../../administration/views/admin/toolCallCache";
 import { conversationNavigation } from "../composables/conversationNavigation";
 import type {
   AttachmentRef,
@@ -65,6 +66,7 @@ export async function listConversations(
 export async function createConversation(
   payload: CreateConversationRequest,
 ): Promise<Conversation> {
+  toolCallCache.clear();
   const response = await http().post<Envelope<Conversation>>(BASE, payload);
   return response.data?.data as Conversation;
 }
@@ -102,6 +104,7 @@ export async function followUp(
   model?: ModelChoice,
   executionBackend?: ExecutionBackendId | string,
 ): Promise<Conversation> {
+  toolCallCache.clear();
   // 无附件/未切换模型时不带对应字段，请求体与改动前逐字节一致。
   const body: Record<string, unknown> = { input };
   if (attachments?.length) body.attachments = attachments;
@@ -126,6 +129,7 @@ export async function respondClarify(
   requestId: string,
   answer: string,
 ): Promise<void> {
+  toolCallCache.clear();
   await http().post(`${BASE}/${conversationId}/clarify`, { requestId, answer });
 }
 
@@ -134,16 +138,19 @@ export async function respondClarify(
  * 对话置 cancelled）。对话未在执行时后端返回 404。
  */
 export async function cancelConversation(conversationId: number | string): Promise<void> {
+  toolCallCache.clear();
   await http().post(`${BASE}/${conversationId}/cancel`);
 }
 
 /** DELETE /conversation/:id — hide my conversation (soft delete; whole compare group). */
 export async function deleteConversation(conversationId: number | string): Promise<void> {
+  toolCallCache.clear();
   await http().delete(`${BASE}/${conversationId}`);
 }
 
 /** POST /conversation/:id/restore — undo / restore from "recently deleted" (30 days). */
 export async function restoreConversation(conversationId: number | string): Promise<void> {
+  toolCallCache.clear();
   await http().post(`${BASE}/${conversationId}/restore`);
 }
 
@@ -328,14 +335,14 @@ export async function* streamMessages(
         const trimmed = part.trim();
         if (!trimmed) continue;
         const event = parseFrame(trimmed);
-        if (event) yield event;
+        if (event) { toolCallCache.clear(); yield event; }
       }
     }
     // Flush any trailing frame that lacked a final terminator.
     const trimmed = buffer.trim();
     if (trimmed) {
       const event = parseFrame(trimmed);
-      if (event) yield event;
+      if (event) { toolCallCache.clear(); yield event; }
     }
   } finally {
     disarmWatchdog();
@@ -386,14 +393,30 @@ export interface ToolCallItem {
   createdAt: string;
 }
 
-/** GET /conversation/tool-calls — the caller's own calls, server-filtered and id-cursor paged. */
+type ToolCallPage = { data: ToolCallItem[]; hasMore: boolean };
+// Pages showing running calls are not kept: their state is about to change.
+const toolCallCache = createToolCallCache<ToolCallPage>(
+  { owner: () => getPlatformRuntime().getAccessToken(), version: () => getPlatformRuntime().getSessionVersion() },
+  (page) => !page.data.some((row) => row.status === "running"),
+);
+if (typeof window !== "undefined") window.addEventListener(SESSION_CHANGE_EVENT, () => toolCallCache.clear());
+
+/**
+ * GET /conversation/tool-calls — the caller's own calls, server-filtered and id-cursor paged.
+ * Identical loads within 15 s share one request; fresh=true (manual refresh/polling) bypasses.
+ * The shared request is not tied to one caller's signal; callers drop late results via their own signal.
+ */
 export async function listToolCalls(
   params: { taskId?: string; beforeId?: number; limit?: number },
   signal?: AbortSignal,
-): Promise<{ data: ToolCallItem[]; hasMore: boolean }> {
-  const response = await http().get<Envelope<ToolCallItem[]> & { hasMore?: boolean }>(`${BASE}/tool-calls`, {
-    params: { taskId: params.taskId || undefined, beforeId: params.beforeId, limit: params.limit },
-    signal,
-  });
-  return { data: response.data?.data ?? [], hasMore: response.data?.hasMore ?? false };
+  fresh = false,
+): Promise<ToolCallPage> {
+  const page = await toolCallCache.get([params.taskId || "", params.beforeId ?? 0, params.limit ?? 0], async () => {
+    const response = await http().get<Envelope<ToolCallItem[]> & { hasMore?: boolean }>(`${BASE}/tool-calls`, {
+      params: { taskId: params.taskId || undefined, beforeId: params.beforeId, limit: params.limit },
+    });
+    return { data: response.data?.data ?? [], hasMore: response.data?.hasMore ?? false };
+  }, fresh);
+  if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+  return page;
 }
