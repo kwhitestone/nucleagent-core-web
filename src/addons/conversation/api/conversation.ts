@@ -366,3 +366,31 @@ export async function openToolLink(conversationId: number | string, url: string)
   const response = await http().post<{ url?: string }>(`${BASE}/${conversationId}/tool-link`, { url });
   return response.data?.url ?? "";
 }
+
+/** One redacted tool-call row from GET /conversation/tool-calls (taskId = conversation id). */
+export interface ToolCallItem {
+  id: number;
+  taskId: number;
+  taskTitle: string;
+  tool: string;
+  status: "completed" | "failed" | "running" | "unknown";
+  callId: string;
+  stepId?: string;
+  durationMs?: number;
+  input?: string;
+  summary?: string;
+  error?: string;
+  createdAt: string;
+}
+
+/** GET /conversation/tool-calls — the caller's own calls, server-filtered and id-cursor paged. */
+export async function listToolCalls(
+  params: { taskId?: string; beforeId?: number; limit?: number },
+  signal?: AbortSignal,
+): Promise<{ data: ToolCallItem[]; hasMore: boolean }> {
+  const response = await http().get<Envelope<ToolCallItem[]> & { hasMore?: boolean }>(`${BASE}/tool-calls`, {
+    params: { taskId: params.taskId || undefined, beforeId: params.beforeId, limit: params.limit },
+    signal,
+  });
+  return { data: response.data?.data ?? [], hasMore: response.data?.hasMore ?? false };
+}
