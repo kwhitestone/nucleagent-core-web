@@ -196,6 +196,7 @@ onBeforeUnmount(() => {
             <span class="badge">{{ typeLabel(row) }}</span>
             <strong>{{ label(row) }}</strong>
             <span class="badge" :class="row.status === 'completed' ? 'ok' : row.status === 'failed' ? 'bad' : ''">{{ t(`toolCalls.status.${row.status}`) }}</span>
+            <span v-if="row.transportStatus && row.transportStatus !== row.status" class="muted">{{ t("toolCalls.transport", { s: t(`toolCalls.status.${row.transportStatus}`) }) }}</span>
             <span class="muted">{{ fmtDur(row.durationMs) }}</span>
             <time>{{ fmtTime(row.createdAt) }}</time>
           </header>

@@ -750,6 +750,7 @@ export default {
     representedYes: "代表已验 · 覆盖 {n} 项",
     representedNo: "未验",
     col: { input: "输入", type: "类型", total: "工具数", represented: "代表验收", calledOk: "已实调成功", representative: "代表记录", ids: "调用 ID", conversation: "原会话", error: "错误原因", summary: "结果摘要", fee: "费用" },
+    transport: "传输：{s}",
     status: { completed: "成功", failed: "失败", running: "进行中", unknown: "未知" },
     types: { dj: "DJ 知识库", identity: "身份/本人数据", train: "列车 12306", aihub: "AIHub", workflow: "工作流应用", api: "外部 API", mcp: "一般 MCP", other: "其他" },
   },

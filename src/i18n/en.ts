@@ -750,6 +750,7 @@ export default {
     representedYes: "Represented · covers {n}",
     representedNo: "Not verified",
     col: { input: "Input", type: "Type", total: "Tools", represented: "Representative", calledOk: "Called OK", representative: "Record", ids: "Call ID", conversation: "Conversation", error: "Error", summary: "Result", fee: "Fee" },
+    transport: "Transport: {s}",
     status: { completed: "Completed", failed: "Failed", running: "Running", unknown: "Unknown" },
     types: { dj: "DJ knowledge base", identity: "Identity / own data", train: "Train 12306", aihub: "AIHub", workflow: "Workflow app", api: "External API", mcp: "General MCP", other: "Other" },
   },

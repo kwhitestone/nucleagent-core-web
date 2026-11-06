@@ -59,3 +59,16 @@ test("a completed call that returned a business error does not verify its type",
   assert.equal(cov.workflow.represented, false);
   assert.equal(cov.workflow.calledOk, 0);
 });
+
+test("only a business-completed call verifies its type (Core status = business result)", () => {
+  // conv877: transport completed, tool body status:error → Core returns status failed.
+  const biz403 = { ...row(11, 877, "nucleagent.agentia-t2687", "failed"), transportStatus: "completed" as const, error: "[错误] Error code: 403" };
+  const noAnswer = { ...row(12, 875, "nucleagent.agentia-t2687", "unknown"), transportStatus: "completed" as const };
+  let cov = Object.fromEntries(typeCoverage(tools, [biz403, noAnswer]).map((c) => [c.type, c]));
+  assert.equal(cov.workflow.represented, false);
+  assert.equal(cov.workflow.calledOk, 0);
+  const good = { ...row(13, 872, "nucleagent.agentia-t2687", "completed"), transportStatus: "completed" as const };
+  cov = Object.fromEntries(typeCoverage(tools, [biz403, good]).map((c) => [c.type, c]));
+  assert.equal(cov.workflow.represented, true);
+  assert.equal(cov.workflow.representative?.id, 13);
+});

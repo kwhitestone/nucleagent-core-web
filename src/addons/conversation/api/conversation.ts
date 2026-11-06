@@ -373,7 +373,10 @@ export interface ToolCallItem {
   taskId: number;
   taskTitle: string;
   tool: string;
+  /** Business result (the tool's own status/isError); a completed transport with an error body is "failed". */
   status: "completed" | "failed" | "running" | "unknown";
+  /** Executor lifecycle (did the call return). Absent on older Core. */
+  transportStatus?: "completed" | "failed" | "running" | "unknown";
   callId: string;
   stepId?: string;
   durationMs?: number;
