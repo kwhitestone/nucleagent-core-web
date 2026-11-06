@@ -14,3 +14,8 @@ export function assertSafeDownloadUrl(raw: string): string {
   }
   return raw;
 }
+
+/** MUYU-181: a link whose query carries a sealed tool-link ticket must be opened through Core. */
+export function isSealedToolLink(raw: string): boolean {
+  return /^https?:\/\//i.test(raw) && /[?&][^=&#]+=nlk\./.test(raw);
+}

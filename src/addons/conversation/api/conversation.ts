@@ -357,3 +357,12 @@ export async function listPrivateDevices(): Promise<PrivateDevice[]> {
 export async function confirmPrivateDevice(id: string, userCode: string): Promise<void> {
   await http().post("/api/v1/addons/executor-devices/bind/confirm", { id, userCode });
 }
+
+/**
+ * MUYU-181: POST /conversation/:id/tool-link — tool-result links carry sealed tickets
+ * (`nlk.`) instead of credentials; only the conversation owner gets the real link back.
+ */
+export async function openToolLink(conversationId: number | string, url: string): Promise<string> {
+  const response = await http().post<{ url?: string }>(`${BASE}/${conversationId}/tool-link`, { url });
+  return response.data?.url ?? "";
+}
