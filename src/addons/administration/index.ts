@@ -67,6 +67,11 @@ const administration: PluginModule = {
           component: () => import("./views/admin/AdminConversationDetail.vue"),
         },
         {
+          path: "tool-calls",
+          name: "admin-tool-calls",
+          component: () => import("./views/admin/AdminToolCalls.vue"),
+        },
+        {
           path: "executors",
           name: "admin-executors",
           component: () => import("./views/admin/AdminExecutors.vue"),
