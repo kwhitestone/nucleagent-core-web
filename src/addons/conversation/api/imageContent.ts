@@ -29,11 +29,11 @@ export async function fetchImageContent(
   try {
     assertCurrent();
     const response = await fetch(`${base.replace(/\/$/, "")}/api/v1/files/${encodeURIComponent(fileId)}/content`, {
-      headers: { Authorization: `Bearer ${token}`, "X-Namespace": "core" },
+      headers: { Authorization: token, "X-Namespace": "core" },
       signal: controller.signal, redirect: "error", cache: "no-store", credentials: "omit",
     });
     assertCurrent();
-    if (response.status === 401) session.handleUnauthorizedResponse(`Bearer ${token}`);
+    if (response.status === 401) session.handleUnauthorizedResponse(token);
     if (!response.ok) throw new Error("Image download failed");
     const mime = response.headers.get("Content-Type") || "";
     const extension = extensions[mime];

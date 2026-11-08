@@ -22,7 +22,7 @@ function response(headers: Record<string, string> = {}) {
 test("images use authenticated Storage bytes and server filename, not signed CS URLs", async (t) => {
   t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
     assert.equal(url, "https://storage.fixture/api/v1/files/old%2Fid/content");
-    assert.equal(new Headers(init.headers).get("Authorization"), "Bearer fixture-token");
+    assert.equal(new Headers(init.headers).get("Authorization"), "fixture-token");
     assert.equal(new Headers(init.headers).get("X-Namespace"), "core");
     assert.equal(init.redirect, "error");
     assert.equal(init.cache, "no-store");
@@ -73,7 +73,10 @@ test("invalid MIME, missing filename and mismatched length fail closed", async (
 
 test("UTF-8 filename is preserved and unauthorized errors notify only current session", async (t) => {
   let rejected = 0;
-  const session = { ...runtime(), handleUnauthorizedResponse() { rejected++; } };
+  const session = { ...runtime(), handleUnauthorizedResponse(authorization?: string) {
+    assert.equal(authorization, this.token);
+    rejected++;
+  } };
   const mock = t.mock.method(globalThis, "fetch", async () => response({
     "Content-Disposition": "attachment; filename*=utf-8''%E5%9B%BE%E7%89%87.jpg",
   }));
