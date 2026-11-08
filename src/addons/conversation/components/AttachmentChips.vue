@@ -11,7 +11,7 @@
 import { useI18n } from "vue-i18n";
 import { inject } from "vue";
 import { RefreshCw } from "@lucide/vue";
-import { getDownloadUrl } from "@/addons/conversation/api/storage";
+import { getDownloadUrl, getImageContent } from "@/addons/conversation/api/storage";
 import { toast } from "@/composables/useToast";
 import type { MessageAttachment } from "@/addons/conversation/api/types";
 import ImageAttachmentPreview from "./ImageAttachmentPreview.vue";
@@ -33,11 +33,28 @@ const revalidate = inject(revalidateAttachments, () => {});
 const available = (att: MessageAttachment) => props.removable || att.verification === "verified";
 
 /**
- * 点击下载时现取签名 URL（有效期 1800s），避免复用已经失效的缩略图地址。
+ * Images use verified Storage bytes and filenames; generic downloads keep
+ * their existing signed-provider contract.
  */
 async function download(att: MessageAttachment): Promise<void> {
   if (!available(att)) return;
   try {
+    if (isImageAttachment(att)) {
+      const { blob, filename } = await getImageContent(att.fileId);
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      }
+      return;
+    }
     const url = await getDownloadUrl(att.fileId);
     let objectUrl = "";
     try {
@@ -58,7 +75,8 @@ async function download(att: MessageAttachment): Promise<void> {
     } finally {
       if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
     toast.error(t("common.attachmentDownloadFailed"));
   }
 }

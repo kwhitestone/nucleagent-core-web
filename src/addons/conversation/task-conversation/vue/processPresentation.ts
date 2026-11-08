@@ -7,6 +7,46 @@ import {
 import type { ConversationItem, ConversationLocale, ConversationStatus } from "../core/types.ts";
 import { isExecutionPhaseData, queuePositionText } from "./executionPhasePresentation.ts";
 
+export function processGroupStatus(group: readonly ConversationItem[]): ConversationItem["status"] {
+  if (group.some((item) => item.status === "pending" || item.status === "streaming")) return "streaming";
+  if (group.some((item) => item.status === "failed")) return "failed";
+  if (group.some((item) => item.status === "cancelled")) return "cancelled";
+  return "complete";
+}
+
+export function processGroupSummary(
+  group: readonly ConversationItem[], locale: ConversationLocale, hasImage = false,
+): string {
+  const status = processGroupStatus(group);
+  let label = locale === "zh-CN"
+    ? status === "streaming" ? "进行中" : status === "failed" ? "存在失败" : status === "cancelled" ? "已停止" : "已完成"
+    : status === "streaming" ? "In progress" : status === "failed" ? "Failed" : status === "cancelled" ? "Stopped" : "Completed";
+  if (hasImage) {
+    const failed = group.filter((item) => item.status === "failed").length;
+    if (status === "failed") {
+      label = locale === "zh-CN" ? `${failed} 个步骤失败` : `${failed} failed ${failed === 1 ? "step" : "steps"}`;
+    }
+    label = `${locale === "zh-CN" ? "图片已生成" : "Image generated"} · ${label}`;
+  }
+  return `${locale === "zh-CN" ? `${group.length} 个步骤` : `${group.length} ${group.length === 1 ? "step" : "steps"}`} · ${label}`;
+}
+
+/** Only the server's archived AIHub result proves generation, not user uploads
+ * or model prose. Recompute per snapshot; no audit or cached status is changed. */
+export function imageResultUsers(items: readonly ConversationItem[]): ReadonlySet<string> {
+  const users = new Set<string>();
+  let userId: string | undefined;
+  for (const item of items) {
+    if (item.role === "user" && item.data?.clarifyResponse !== true) userId = item.id;
+    if (userId && item.role === "assistant" && item.kind === "result" && item.status === "complete" &&
+      /^aihub-[a-f0-9]{12}$/.test(String(item.data?.runStepId ?? "")) &&
+      item.attachments?.some((attachment) => ["image/png", "image/jpeg", "image/gif"].includes(attachment.mimeType ?? ""))) {
+      users.add(userId);
+    }
+  }
+  return users;
+}
+
 /** Heartbeats carry redundant prose timers. The elapsed slots own all timing. */
 export function processItemForDisplay(item: ConversationItem, locale: ConversationLocale): ConversationItem {
   if (item.data?.executionPhase === "execution_queue") {

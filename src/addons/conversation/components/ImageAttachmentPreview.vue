@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { getDownloadUrl } from "@/addons/conversation/api/storage";
+import { getImageContent } from "@/addons/conversation/api/storage";
+import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import type { MessageAttachment } from "@/addons/conversation/api/types";
 import { formatAttachmentSize } from "./attachmentPresentation";
 
@@ -24,19 +25,35 @@ let requestVersion = 0;
 let imageRefreshes = 0;
 let previousBodyOverflow = "";
 let visibilityObserver: IntersectionObserver | null = null;
+let downloadController: AbortController | null = null;
+
+function clearImage(): void {
+  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
+  imageUrl.value = "";
+}
+
+function resetSession(): void {
+  requestVersion += 1;
+  downloadController?.abort();
+  clearImage();
+  previewOpen.value = false;
+}
 
 async function loadImage(force = false): Promise<void> {
   if (imageUrl.value && !force) return;
+  downloadController?.abort();
+  downloadController = new AbortController();
+  clearImage();
   const version = ++requestVersion;
   loadState.value = "loading";
   try {
-    const url = await getDownloadUrl(props.attachment.fileId);
+    const { blob } = await getImageContent(props.attachment.fileId, downloadController.signal);
     if (version !== requestVersion) return;
-    imageUrl.value = url;
+    imageUrl.value = URL.createObjectURL(blob);
     loadState.value = "ready";
   } catch {
     if (version !== requestVersion) return;
-    imageUrl.value = "";
+    clearImage();
     loadState.value = "error";
   }
 }
@@ -63,11 +80,11 @@ function retryPreview(): void {
 function handleImageError(): void {
   if (imageRefreshes < 1) {
     imageRefreshes += 1;
-    imageUrl.value = "";
+    clearImage();
     void loadImage(true);
     return;
   }
-  imageUrl.value = "";
+  clearImage();
   loadState.value = "error";
 }
 
@@ -121,9 +138,15 @@ watch(previewOpen, (open) => {
   }
 });
 
-onMounted(loadWhenNearViewport);
+onMounted(() => {
+  window.addEventListener(SESSION_CHANGE_EVENT, resetSession);
+  loadWhenNearViewport();
+});
 onBeforeUnmount(() => {
   requestVersion += 1;
+  downloadController?.abort();
+  clearImage();
+  window.removeEventListener(SESSION_CHANGE_EVENT, resetSession);
   visibilityObserver?.disconnect();
   visibilityObserver = null;
   if (typeof document !== "undefined" && previewOpen.value) {

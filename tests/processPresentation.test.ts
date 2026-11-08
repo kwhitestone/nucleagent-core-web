@@ -16,6 +16,9 @@ import {
   orderTurnItemsForDisplay,
   processPreview,
   processItemForDisplay,
+  processGroupStatus,
+  processGroupSummary,
+  imageResultUsers,
   processDurationMs,
   preferredActiveProcessItemId,
   processStepEndedAt,
@@ -25,6 +28,60 @@ import {
 } from "../src/addons/conversation/task-conversation/vue/processPresentation.ts";
 import type { ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
 import { conversationMessages } from "../src/addons/conversation/task-conversation/vue/messages.ts";
+
+const outcomeItem = (status: ConversationItem["status"], id: string = status): ConversationItem => ({
+  id, turnId: "turn", streamId: id, lane: "process", role: "assistant", kind: "tool_call",
+  content: "unchanged audit", status, revision: 1, seq: 1, timestamp: "2026-11-08T00:00:00Z",
+});
+
+test("only archived image results belong to the current user exchange", () => {
+  const user = { ...outcomeItem("complete", "user"), role: "user" as const, lane: "answer" as const };
+  const image = {
+    ...outcomeItem("complete", "image"), kind: "result", lane: "answer" as const,
+    data: { runStepId: "aihub-abcdef012345" },
+    attachments: [{ id: "file", name: "picture.jpg", mimeType: "image/jpeg" }],
+  };
+  assert.deepEqual([...imageResultUsers([user, image])], ["user"]);
+  assert.deepEqual([...imageResultUsers([user, image, { ...user, id: "later-user" }, outcomeItem("failed")])], ["user"]);
+  for (const replacement of [
+    { ...image, role: "user" as const },
+    { ...image, data: {} },
+    { ...image, status: "failed" as const },
+    { ...image, attachments: [] },
+    { ...image, attachments: [{ id: "svg", name: "a.svg", mimeType: "image/svg+xml" }] },
+  ]) assert.equal(imageResultUsers([user, replacement]).size, 0);
+  assert.equal(imageResultUsers([]).size, 0);
+  assert.deepEqual([...imageResultUsers(JSON.parse(JSON.stringify([user, image])))], ["user"]);
+});
+
+test("generated image and a failed additional step both remain visible", () => {
+  const group = Object.freeze([Object.freeze(outcomeItem("complete")), Object.freeze(outcomeItem("failed"))]);
+  const before = JSON.stringify(group);
+  assert.equal(processGroupSummary(group, "en-US", true), "2 steps · Image generated · 1 failed step");
+  assert.equal(processGroupSummary(group, "zh-CN", true), "2 个步骤 · 图片已生成 · 1 个步骤失败");
+  assert.equal(processGroupStatus(group), "failed");
+  assert.equal(JSON.stringify(group), before);
+});
+
+test("required failure, cancellation and an active terminal step keep their status", () => {
+  const failed = [outcomeItem("failed")];
+  assert.equal(processGroupStatus(failed), "failed");
+  assert.equal(processGroupSummary(failed, "en-US"), "1 step · Failed");
+  assert.equal(processGroupSummary([outcomeItem("complete")], "en-US"), "1 step · Completed");
+  assert.equal(processGroupSummary([outcomeItem("cancelled")], "en-US", true), "1 step · Image generated · Stopped");
+  assert.equal(processGroupStatus([outcomeItem("failed"), outcomeItem("pending")]), "streaming");
+  assert.equal(processGroupSummary([outcomeItem("streaming")], "en-US", true), "1 step · Image generated · In progress");
+});
+
+test("reloaded projection stays mixed and a later failure cannot rewrite its old audit", () => {
+  const old = [outcomeItem("complete"), outcomeItem("failed")];
+  const summary = processGroupSummary(old, "en-US", true);
+  assert.equal(processGroupSummary(JSON.parse(JSON.stringify(old)), "en-US", true), summary);
+  processGroupSummary([outcomeItem("failed", "new")], "en-US", false);
+  assert.equal(processGroupSummary(old, "en-US", true), summary);
+  assert.equal(old[0].status, "complete");
+  assert.equal(old[1].content, "unchanged audit");
+});
 
 test("tool detail labels follow the selected locale", () => {
   assert.equal(conversationMessages["zh-CN"].toolSearchQuery, "搜索：");

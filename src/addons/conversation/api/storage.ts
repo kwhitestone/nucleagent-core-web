@@ -3,13 +3,14 @@ import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import type { MessageAttachment } from "./types";
 import { buildUploadRequestBody } from "./uploadPayload";
 import { assertSafeDownloadUrl } from "./downloadUrlPolicy";
+import { fetchImageContent } from "./imageContent";
 import { configValue } from "@/runtimeConfig";
 
 /**
  * nucleagent-storage (:26610) client — presign → 直传 → register 三步上传。
  *
- * 关键设计：**字节不经 core，也不经本模块中转**。storage 只签凭证，浏览器按
- * 凭证直传目标后端（Local 用裸 PUT，CS 用 multipart POST）。
+ * Uploads go directly to the provider. Raster image downloads use Storage's
+ * authenticated content endpoint for verified bytes, MIME and filenames.
  *
  * 为什么不复用 api/http.ts 的实例：
  *   - 那个实例固定 `Content-Type: application/json`（http.ts:23-25），
@@ -222,4 +223,8 @@ export async function getDownloadUrl(fileId: string): Promise<string> {
   } catch {
     throw new UploadError("获取下载地址失败");
   }
+}
+
+export function getImageContent(fileId: string, signal?: AbortSignal) {
+  return fetchImageContent(STORAGE_BASE, fileId, getPlatformRuntime(), signal);
 }

@@ -41,6 +41,7 @@ import {
   hasProcessItemDetails,
   indexProcessGroupLeaders,
   indexProcessGroupUsers,
+  imageResultUsers,
   isProcessExpanded as resolveProcessExpanded,
   isThinkingProcessItem,
   orderTurnItemsForDisplay,
@@ -48,6 +49,8 @@ import {
   preferredActiveProcessItemId,
   processPlan as resolveProcessPlan,
   processItemForDisplay,
+  processGroupStatus as resolveProcessGroupStatus,
+  processGroupSummary as resolveProcessGroupSummary,
   processStepEndedAt,
   processPreview as resolveProcessPreview,
   processToolDetails as resolveProcessToolDetails,
@@ -259,6 +262,9 @@ const processGroupLeaderByItemId = computed(() => {
 const processGroupUserByLeaderId = computed(() => new Map(
   displayTurns.value.flatMap((turn) => [...indexProcessGroupUsers(turn.items)]),
 ));
+const usersWithGeneratedImages = computed(() => new Set(
+  displayTurns.value.flatMap((turn) => [...imageResultUsers(turn.items)]),
+));
 const processGroupTiming = (leaderId: string) => {
   const userId = processGroupUserByLeaderId.value.get(leaderId);
   return userId ? runTimings.value.get(userId) : undefined;
@@ -463,46 +469,14 @@ const isProcessGroupExpanded = (leaderId: string): boolean =>
 
 const processGroupStatus = (
   leaderId: string,
-): ConversationItem["status"] => {
-  const group = processGroupItems(leaderId);
-  if (
-    group.some(
-      (item) => item.status === "pending" || item.status === "streaming",
-    )
-  )
-    return "streaming";
-  if (group.some((item) => item.status === "failed")) return "failed";
-  if (group.some((item) => item.status === "cancelled")) return "cancelled";
-  return "complete";
-};
+): ConversationItem["status"] => resolveProcessGroupStatus(processGroupItems(leaderId));
 
 const processGroupSummary = (leaderId: string): string => {
-  const group = processGroupItems(leaderId);
-  const count = group.length;
-  const status = processGroupStatus(leaderId);
-  const parts =
-    props.locale === "zh-CN"
-      ? [
-          `${count} 个步骤`,
-          status === "streaming"
-            ? "进行中"
-            : status === "failed"
-              ? "存在失败"
-              : status === "cancelled"
-                ? "已停止"
-                : "已完成",
-        ]
-      : [
-          `${count} ${count === 1 ? "step" : "steps"}`,
-          status === "streaming"
-            ? "In progress"
-            : status === "failed"
-              ? "Failed"
-              : status === "cancelled"
-                ? "Stopped"
-                : "Completed",
-        ];
-  return parts.join(" · ");
+  const userId = processGroupUserByLeaderId.value.get(leaderId);
+  return resolveProcessGroupSummary(
+    processGroupItems(leaderId), props.locale,
+    userId !== undefined && usersWithGeneratedImages.value.has(userId),
+  );
 };
 
 const isProcessStepExpanded = (item: ConversationItem): boolean =>
