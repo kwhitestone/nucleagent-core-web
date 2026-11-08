@@ -86,3 +86,77 @@ test("UTF-8 filename is preserved and unauthorized errors notify only current se
   await assert.rejects(fetchImageContent("https://storage.fixture", "image", session));
   assert.equal(rejected, 1);
 });
+
+for (const interruption of ["none", "account", "cancel"] as const) {
+  test(`streamed image ${interruption}: late bytes respect the captured session and cancellation`, { timeout: 5_000 }, async (t) => {
+    const session = runtime();
+    const controller = new AbortController();
+    const waiting = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let reads = 0;
+    let requests = 0;
+    let cancelled = false;
+    let requestSignal: AbortSignal | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(stream) {
+        if (reads === 2) {
+          stream.close();
+          return;
+        }
+        if (reads++ === 0) {
+          stream.enqueue(new Uint8Array([255]));
+          return;
+        }
+        waiting.resolve();
+        await release.promise;
+        stream.enqueue(new Uint8Array([216, 255]));
+      },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 });
+    t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+      requests++;
+      requestSignal = init.signal!;
+      return new Response(body, { headers: response().headers });
+    });
+    const pending = fetchImageContent("https://storage.fixture", "image", session, controller.signal);
+    await waiting.promise;
+    if (interruption === "account") {
+      session.version++;
+      session.token = "other";
+    } else if (interruption === "cancel") {
+      controller.abort();
+    }
+    release.resolve();
+    if (interruption === "none") {
+      const result = await pending;
+      assert.deepEqual(new Uint8Array(await result.blob.arrayBuffer()), new Uint8Array([255, 216, 255]));
+      assert.equal(result.filename, "artifact-1.jpg");
+      assert.equal(requestSignal?.aborted, false);
+    } else {
+      await assert.rejects(pending, { name: "AbortError" });
+      assert.equal(requestSignal?.aborted, true);
+    }
+    assert.equal(body.locked, false);
+    assert.equal(requests, 1);
+    assert.equal(cancelled, interruption !== "none");
+  });
+}
+
+test("late unauthorized image response cannot invalidate the replacement account", { timeout: 5_000 }, async (t) => {
+  const waiting = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let unauthorized = 0;
+  const session = { ...runtime(), handleUnauthorizedResponse() { unauthorized++; } };
+  t.mock.method(globalThis, "fetch", async () => {
+    waiting.resolve();
+    await release.promise;
+    return new Response("", { status: 401 });
+  });
+  const pending = fetchImageContent("https://storage.fixture", "image", session);
+  await waiting.promise;
+  session.token = "replacement";
+  session.version++;
+  release.resolve();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(unauthorized, 0);
+});
