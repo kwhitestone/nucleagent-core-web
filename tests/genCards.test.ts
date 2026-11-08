@@ -183,13 +183,24 @@ describe("GenResultCard", () => {
     assert.equal(state.active.value, null);
   });
 
-  test("copy prompt writes to the clipboard", async () => {
-    const { state } = await bindings(Result, base);
-    let written = "";
-    Object.defineProperty(globalThis, "navigator", { value: { clipboard: { writeText: async (s: string) => { written = s; } } }, configurable: true });
+  test("copy prompt writes the canonical Unicode and whitespace exactly once", async (t) => {
+    const prompt = " \t原文 e\u0301 ≠ é\n第二行　保留空白\r\n ";
+    const { state } = await bindings(Result, { ...base, prompt });
+    const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    t.after(() => {
+      if (original) Object.defineProperty(globalThis, "navigator", original);
+      else Reflect.deleteProperty(globalThis, "navigator");
+    });
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const writeText = t.mock.fn(async (_s: string) => {});
+    Object.defineProperty(globalThis, "navigator", { value: { clipboard: { writeText } }, configurable: true });
     await state.copyPrompt();
-    assert.equal(written, "一只橘猫，水彩风格");
+    assert.equal(writeText.mock.callCount(), 1);
+    assert.deepEqual(writeText.mock.calls[0].arguments, [" \t原文 e\u0301 ≠ é\n第二行　保留空白\r\n "]);
     assert.equal(state.copied.value, true);
+    t.mock.timers.tick(1500);
+    assert.equal(state.copied.value, false);
+    assert.equal(writeText.mock.callCount(), 1);
   });
   test("UI-IMPL-6 video kind renders the native player, never autoplays, with video badges", async () => {
     const html = await render(Result, { ...base, kind: "video", items: [{ url: "/u/v.mp4", name: "video-1.mp4" }],
