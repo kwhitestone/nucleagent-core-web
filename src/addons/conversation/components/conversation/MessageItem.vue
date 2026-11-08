@@ -7,8 +7,11 @@
  * 用户 = indigo→violet 渐变实底白字，右对齐，头像贴右；
  * 助手 = 半透明白轻量底，左对齐，头像贴左。
  */
-import { computed } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { Copy } from "@lucide/vue";
+import { sessionRequestSignal } from "@/addons/platform-api/session/embeddedSession";
+import { revalidating } from "@/addons/platform-api/session/embeddedAuthorization";
 import type { ConversationItem } from "@/addons/conversation/task-conversation/core";
 import ConversationContent from "@/addons/conversation/task-conversation/vue/ConversationContent.vue";
 import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vue";
@@ -21,6 +24,31 @@ const { t } = useI18n();
 defineEmits<{ respond: [value: unknown] }>();
 
 const isUser = computed(() => props.role === "user" || props.item.role === "user");
+const copying = ref(false);
+const copyState = ref<"" | "copied" | "error">("");
+const hasBody = computed(() => typeof props.item.content === "string" && props.item.content.length > 0);
+watch(() => [props.item.id, props.item.content], () => { copyState.value = ""; });
+let active = true;
+onScopeDispose(() => { active = false; });
+
+async function copyBody() {
+  if (!active || !hasBody.value || copying.value || revalidating.value) return;
+  const signal = sessionRequestSignal("business");
+  const content = props.item.content;
+  const id = props.item.id;
+  copying.value = true;
+  copyState.value = "";
+  const current = () => active && !signal.aborted && !revalidating.value &&
+    props.item.id === id && props.item.content === content;
+  try {
+    await navigator.clipboard.writeText(content);
+    if (current()) copyState.value = "copied";
+  } catch {
+    if (current()) copyState.value = "error";
+  } finally {
+    if (active) copying.value = false;
+  }
+}
 
 /** clarify 交互请求（adapter 标记了 interactionId）。 */
 const isClarify = computed(() => typeof props.item.data?.interactionId === "string");
@@ -50,6 +78,16 @@ const time = computed(() => {
       <div class="msg-header">
         <span class="msg-author">{{ isUser ? t('conversation.you') : t('home.greeting') }}</span>
         <span v-if="time" class="msg-time">{{ time }}</span>
+        <button
+          v-if="hasBody"
+          type="button"
+          class="msg-copy"
+          :aria-label="t('common.copy')"
+          :title="t('common.copy')"
+          :disabled="copying || revalidating"
+          @click="copyBody"
+        ><Copy :size="14" aria-hidden="true" /></button>
+        <span v-if="hasBody" class="msg-copy-status" role="status">{{ copyState === 'copied' ? t('common.copied') : copyState === 'error' ? t('common.operationFailed') : '' }}</span>
       </div>
       <div class="msg-bubble">
         <ConversationContent :item="item" />
@@ -99,6 +137,17 @@ const time = computed(() => {
 .msg.user .msg-header { justify-content: flex-end; }
 .msg-author { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .msg-time { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.msg-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: 0 0 28px;
+  border: 0; border-radius: 4px; background: transparent;
+  color: var(--text-secondary); cursor: pointer;
+}
+.msg-copy:hover { background: var(--bg-hover); }
+.msg-copy:focus-visible { outline: 2px solid var(--indigo-500); outline-offset: 2px; }
+.msg-copy:disabled { opacity: 0.5; cursor: default; }
+.msg-copy-status { font-size: 11px; color: var(--text-secondary); }
+.msg-header { flex-wrap: wrap; }
 
 /* 单层气泡 */
 .msg-bubble { font-size: 14px; line-height: 1.7; border-radius: 14px; }
