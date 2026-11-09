@@ -6,6 +6,7 @@ import { renderToString } from "@vue/server-renderer";
 import { createSSRApp, h, type Component } from "vue";
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
+import DOMPurify from "dompurify";
 
 let vite: ViteDevServer;
 let MessageItem: Component;
@@ -340,4 +341,56 @@ test("UI-IMPL-3: media messages without errorCode still form a valid snapshot", 
   assert.equal(parsed.items.length, 2);
   assert.deepEqual(parsed.items[0].data?.media, { kind: "image", aspect: "1:1", count: 1, taskIds: [3] });
   assert.equal("errorCode" in (parsed.items[1].data ?? {}), false);
+});
+
+test("persisted895: verified generic image delivery preserves failed steps in the actual component", async () => {
+  // Sanitized retained message13236: no prompt, command, account or provider claim.
+  const step = "fe3426a9-1d87-477a-9834-97e9c1b80676";
+  const rows = [
+    { id: 13109, conversationId: 895, senderType: "user", msgType: "text", content: "Request",
+      createdAt: "2026-11-09T17:00:00Z" },
+    ...Array.from({ length: 12 }, (_, index) => ({
+      id: 13118 + index, conversationId: 895, senderType: "tool", msgType: "tool_call", content: "Step failed",
+      metadata: { step_id: step, tool_call_id: `failed-${index}`, tool_status: "failed", duration_ms: 1000 },
+      createdAt: "2026-11-09T17:01:00Z",
+    })),
+    { id: 13236, conversationId: 895, senderType: "agent", msgType: "result", content: "Result",
+      metadata: { step_id: step, attachments: [{
+        fileId: "0942c578-c671-4f8d-ae78-d746d357384a", name: "attachment.png",
+        mimeType: "image/png", kind: "image", size: 386415, verification: "verified",
+      }] }, createdAt: "2026-11-09T18:18:39.529Z" },
+  ];
+  http.defaults.adapter = async (config: any) => ({
+    config, data: { code: 0, data: /\/messages$/.test(config.url) ? rows.map(row => ({ ...row, senderName: row.senderType })) :
+      { id: 895, status: "completed", createdAt: rows[0].createdAt, updatedAt: rows.at(-1)!.createdAt } },
+    headers: {}, status: 200, statusText: "OK",
+  });
+  const adapter = createConversationAdapter(() => "895");
+  const { default: TaskConversation } = await vite.ssrLoadModule(
+    "/src/addons/conversation/task-conversation/vue/TaskConversation.vue");
+  let controller: any;
+  const errors: Error[] = [];
+  const component = { ...TaskConversation, async setup(props: any, context: any) {
+    const bindings = TaskConversation.setup(props, context);
+    controller = bindings.controller;
+    await controller.initialize();
+    assert.deepEqual(errors, []);
+    return bindings;
+  } };
+  const app = createSSRApp(component, { conversationKey: "895", adapter, onError: (error: Error) => { errors.push(error); } });
+  installI18n(app);
+  const originalSanitize = DOMPurify.sanitize;
+  // SSR has no browser DOM; this fixture contains only plain text, not Markdown/HTML.
+  DOMPurify.sanitize = ((text: string) => text.replace(/<[^>]*>/g, "")) as typeof DOMPurify.sanitize;
+  try {
+    const html = await renderToString(app);
+    assert.match(html, /attachment\.png/);
+    assert.match(html, /12 个步骤/);
+    assert.equal(Object.values(controller.state.value.items).filter((item: any) => item.status === "failed").length, 12);
+    assert.deepEqual({
+      IMAGEDELIVEREDVISIBLE: /已交付图片/.test(html),
+      FAILEDCOUNTPRESERVED: /12 个步骤失败/.test(html),
+    }, { IMAGEDELIVEREDVISIBLE: true, FAILEDCOUNTPRESERVED: true });
+    assert.doesNotMatch(html, /图片已生成|Image generated/);
+  } finally { controller?.dispose(); DOMPurify.sanitize = originalSanitize; }
 });

@@ -15,7 +15,7 @@ export function processGroupStatus(group: readonly ConversationItem[]): Conversa
 }
 
 export function processGroupSummary(
-  group: readonly ConversationItem[], locale: ConversationLocale, hasImage = false,
+  group: readonly ConversationItem[], locale: ConversationLocale, hasImage: boolean | "delivered" = false,
 ): string {
   const status = processGroupStatus(group);
   let label = locale === "zh-CN"
@@ -26,7 +26,10 @@ export function processGroupSummary(
     if (status === "failed") {
       label = locale === "zh-CN" ? `${failed} 个步骤失败` : `${failed} failed ${failed === 1 ? "step" : "steps"}`;
     }
-    label = `${locale === "zh-CN" ? "图片已生成" : "Image generated"} · ${label}`;
+    const imageLabel = hasImage === "delivered"
+      ? locale === "zh-CN" ? "已交付图片" : "Image delivered"
+      : locale === "zh-CN" ? "图片已生成" : "Image generated";
+    label = `${imageLabel} · ${label}`;
   }
   return `${locale === "zh-CN" ? `${group.length} 个步骤` : `${group.length} ${group.length === 1 ? "step" : "steps"}`} · ${label}`;
 }
@@ -41,6 +44,28 @@ export function imageResultUsers(items: readonly ConversationItem[]): ReadonlySe
     if (userId && item.role === "assistant" && item.kind === "result" && item.status === "complete" &&
       /^aihub-[a-f0-9]{12}$/.test(String(item.data?.runStepId ?? "")) &&
       item.attachments?.some((attachment) => ["image/png", "image/jpeg", "image/gif"].includes(attachment.mimeType ?? ""))) {
+      users.add(userId);
+    }
+  }
+  return users;
+}
+
+/** Verified attachments prove delivery, not which provider generated their bytes. */
+export function deliveredImageUsers(items: readonly ConversationItem[]): ReadonlySet<string> {
+  const users = new Set<string>();
+  let userId: string | undefined;
+  const steps = new Set<string>();
+  for (const item of items) {
+    if (item.role === "user" && item.data?.clarifyResponse !== true) {
+      userId = item.id;
+      steps.clear();
+    }
+    const step = item.data?.runStepId;
+    if (userId && item.role !== "user" && item.lane === "process" && typeof step === "string" && step) steps.add(step);
+    if (userId && item.role === "assistant" && item.kind === "result" && item.status === "complete" &&
+      typeof step === "string" && steps.has(step) &&
+      item.attachments?.some((attachment) => attachment.metadata?.verification === "verified" &&
+        ["image/png", "image/jpeg", "image/gif"].includes(attachment.mimeType ?? ""))) {
       users.add(userId);
     }
   }

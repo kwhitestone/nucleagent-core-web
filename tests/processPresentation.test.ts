@@ -19,6 +19,7 @@ import {
   processGroupStatus,
   processGroupSummary,
   imageResultUsers,
+  deliveredImageUsers,
   processDurationMs,
   preferredActiveProcessItemId,
   processStepEndedAt,
@@ -32,6 +33,35 @@ import { conversationMessages } from "../src/addons/conversation/task-conversati
 const outcomeItem = (status: ConversationItem["status"], id: string = status): ConversationItem => ({
   id, turnId: "turn", streamId: id, lane: "process", role: "assistant", kind: "tool_call",
   content: "unchanged audit", status, revision: 1, seq: 1, timestamp: "2026-11-08T00:00:00Z",
+});
+
+test("generic delivered images require verified attachments in the owning process exchange", () => {
+  const user = { ...outcomeItem("complete", "user"), role: "user" as const, lane: "answer" as const };
+  const failed = { ...outcomeItem("failed"), data: { runStepId: "native-step" } };
+  const image = { ...outcomeItem("complete", "result"), kind: "result", lane: "answer" as const,
+    data: { runStepId: "native-step" },
+    attachments: [{ id: "png", name: "attachment.png", mimeType: "image/png", metadata: { verification: "verified" } }] };
+  const items = [user, failed, image];
+  const before = JSON.stringify(items);
+  assert.deepEqual([...deliveredImageUsers(items)], ["user"]);
+  assert.equal(imageResultUsers(items).size, 0, "delivery must not manufacture AIHub provenance");
+  assert.equal(processGroupSummary([failed], "en-US", "delivered"), "1 step · Image delivered · 1 failed step");
+  assert.equal(processGroupStatus([failed]), "failed");
+  assert.equal(JSON.stringify(items), before);
+  for (const replacement of [
+    { ...image, role: "user" as const },
+    { ...image, status: "streaming" as const },
+    { ...image, data: { runStepId: "stale-step" } },
+    { ...image, attachments: [] },
+    { ...image, data: { runStepId: "native-step", provider_succeeded: true }, attachments: [] },
+    ...[{}, { verification: "unavailable" }].map(metadata => ({
+      ...image, attachments: [{ ...image.attachments[0], metadata }],
+    })),
+    { ...image, attachments: [{ ...image.attachments[0], mimeType: "text/plain" }] },
+  ]) assert.equal(deliveredImageUsers([user, failed, replacement]).size, 0);
+  assert.equal(deliveredImageUsers([user, failed, { ...user, id: "other" }, image]).size, 0);
+  assert.equal(deliveredImageUsers([user, image]).size, 0);
+  assert.equal(deliveredImageUsers([]).size, 0, "removed/tombstoned results leave no cached signal");
 });
 
 test("only archived image results belong to the current user exchange", () => {

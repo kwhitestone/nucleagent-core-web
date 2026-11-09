@@ -42,6 +42,7 @@ import {
   indexProcessGroupLeaders,
   indexProcessGroupUsers,
   imageResultUsers,
+  deliveredImageUsers,
   isProcessExpanded as resolveProcessExpanded,
   isThinkingProcessItem,
   orderTurnItemsForDisplay,
@@ -265,6 +266,9 @@ const processGroupUserByLeaderId = computed(() => new Map(
 const usersWithGeneratedImages = computed(() => new Set(
   displayTurns.value.flatMap((turn) => [...imageResultUsers(turn.items)]),
 ));
+const usersWithDeliveredImages = computed(() => new Set(
+  displayTurns.value.flatMap((turn) => [...deliveredImageUsers(turn.items)]),
+));
 const processGroupTiming = (leaderId: string) => {
   const userId = processGroupUserByLeaderId.value.get(leaderId);
   return userId ? runTimings.value.get(userId) : undefined;
@@ -475,7 +479,8 @@ const processGroupSummary = (leaderId: string): string => {
   const userId = processGroupUserByLeaderId.value.get(leaderId);
   return resolveProcessGroupSummary(
     processGroupItems(leaderId), props.locale,
-    userId !== undefined && usersWithGeneratedImages.value.has(userId),
+    userId !== undefined && (usersWithGeneratedImages.value.has(userId) ||
+      (usersWithDeliveredImages.value.has(userId) ? "delivered" : false)),
   );
 };
 
