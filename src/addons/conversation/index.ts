@@ -1,9 +1,15 @@
 import type { PluginModule } from "@prism-fusion/plugin-runtime";
+import type { Component } from "vue";
 
 import router from "@/router";
 import { authenticatedRoute } from "@/contracts/platform-runtime";
 import { installShellBridge } from "./composables/useShellBridge";
 import { bindDeleteRouter } from "./composables/useConversationDelete";
+import { chatUi } from "@/chat-react/chatUi";
+
+// MUYU-365: the React island only loads when the switch says so; default stays the Vue view.
+const chatView = (vue: () => Promise<{ default: Component }>) => () =>
+  chatUi() === "react" ? import("./views/ChatHost.vue") : vue();
 
 let removeShellBridge: (() => void) | undefined;
 
@@ -22,7 +28,7 @@ const conversation: PluginModule = {
     {
       path: "/chat",
       name: "chat",
-      component: authenticatedRoute(() => import("./views/Home.vue")),
+      component: authenticatedRoute(chatView(() => import("./views/Home.vue"))),
       meta: { requiresAuth: true },
     },
     // 创作 merged into 任务: old links and bookmarks land on the task form.
@@ -69,7 +75,7 @@ const conversation: PluginModule = {
     {
       path: "/c/:id",
       name: "conversation",
-      component: authenticatedRoute(() => import("./views/Conversation.vue")),
+      component: authenticatedRoute(chatView(() => import("./views/Conversation.vue"))),
       meta: { requiresAuth: true },
       props: (route) => ({ id: route.params.id as string }),
     },

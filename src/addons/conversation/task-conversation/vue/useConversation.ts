@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, shallowRef } from "vue";
+import { computed, getCurrentInstance, onBeforeUnmount, shallowRef } from "vue";
 
 import {
   CONVERSATION_PROTOCOL_VERSION,
@@ -609,7 +609,8 @@ export const useConversation = (options: ConversationControllerOptions) => {
     snapshotStatus.value = "loading";
     state.value = createConversationState(options.conversationKey());
   };
-  onBeforeUnmount(dispose);
+  // The React chat island owns the controller inside an effectScope and calls dispose itself.
+  if (getCurrentInstance()) onBeforeUnmount(dispose);
 
   return {
     state,
