@@ -95,3 +95,15 @@ test("fetch is same-origin, credential-free, uncached, bounded and has no 404/ba
   await assert.rejects(fetchRuntimeConfig(config.VITE_CORE_WEB_URL,
     (async () => new Response("<html>SPA fallback</html>")) as typeof fetch), /runtime-config/);
 });
+
+test("CHAT_UI_DEFAULT (MUYU-365) is optional: absent/empty → unset (old), only old|react accepted, never echoed", () => {
+  const base = runtimeFixture();
+  assert.equal("CHAT_UI_DEFAULT" in parseRuntimeConfig(base, base.VITE_CORE_WEB_URL), false);
+  assert.equal("CHAT_UI_DEFAULT" in parseRuntimeConfig({ ...base, CHAT_UI_DEFAULT: "" }, base.VITE_CORE_WEB_URL), false);
+  assert.equal(parseRuntimeConfig({ ...base, CHAT_UI_DEFAULT: "old" }, base.VITE_CORE_WEB_URL).CHAT_UI_DEFAULT, "old");
+  assert.equal(parseRuntimeConfig({ ...base, CHAT_UI_DEFAULT: "react" }, base.VITE_CORE_WEB_URL).CHAT_UI_DEFAULT, "react");
+  for (const value of ["vue", "React", "private-fixture", 1, null]) {
+    assert.throws(() => parseRuntimeConfig({ ...base, CHAT_UI_DEFAULT: value }, base.VITE_CORE_WEB_URL),
+      (error: Error) => /CHAT_UI_DEFAULT/.test(error.message) && !error.message.includes("private-fixture"));
+  }
+});

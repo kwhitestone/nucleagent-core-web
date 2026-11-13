@@ -73,6 +73,12 @@ for var in $runtime_keys; do
     json="$json$separator\"$var\":\"$value\""
     separator=,
 done
+# MUYU-365 optional chat UI default per environment; only serialized when set.
+case "${CHAT_UI_DEFAULT-}" in
+    '') ;;
+    old|react) json="$json,\"CHAT_UI_DEFAULT\":\"$CHAT_UI_DEFAULT\"" ;;
+    *) printf '%s\n' 'CHAT_UI_DEFAULT must be old or react.' >&2; exit 1 ;;
+esac
 mkdir -p /etc/nucleagent
 printf '%s}\n' "$json" > /etc/nucleagent/runtime-config.json
 chmod 0644 /etc/nucleagent/runtime-config.json

@@ -58,6 +58,14 @@ test("switch: default vue; query beats storage; junk values ignored", () => {
   assert.equal(chatUi("?chatUi=react", store(null)), "react");
   assert.equal(chatUi("?chatUi=svelte", store("nope")), "vue");
   assert.equal(chatUi("", { getItem: () => { throw new Error("blocked"); } }), "vue");
+  // Priority: URL > localStorage > runtime-config CHAT_UI_DEFAULT > old (vue).
+  const env = () => "react" as const;
+  assert.equal(chatUi("", store(null), env), "react");
+  assert.equal(chatUi("", store("vue"), env), "vue");
+  assert.equal(chatUi("?chatUi=vue", store(null), env), "vue");
+  assert.equal(chatUi("", store(null), () => undefined), "vue");
+  // Default fallback reads the loaded runtime config (fixture has no key → old).
+  assert.equal(chatUi("", store(null)), "vue");
 });
 
 test("adapter: user items split turns; process → one data-process part, answer → text; hidden lanes dropped", () => {

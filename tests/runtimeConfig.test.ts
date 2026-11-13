@@ -52,6 +52,17 @@ test("startup injects only public runtime keys, never process credentials", () =
   }
 });
 
+test("startup serializes CHAT_UI_DEFAULT only when set to old|react", () => {
+  assert.equal("CHAT_UI_DEFAULT" in render({}).runtime, false);
+  assert.equal(render({ CHAT_UI_DEFAULT: "react" }).runtime.CHAT_UI_DEFAULT, "react");
+  assert.equal(render({ CHAT_UI_DEFAULT: "old" }).runtime.CHAT_UI_DEFAULT, "old");
+  for (const value of ["vue", 'react","x":"y', "react\n"]) {
+    const rejected = render({ CHAT_UI_DEFAULT: value });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /CHAT_UI_DEFAULT/);
+  }
+});
+
 test("runtime CSP defaults to the shell and preserves nginx variables", () => {
   const result = render({});
   assert.equal(result.status, 0, result.stderr);

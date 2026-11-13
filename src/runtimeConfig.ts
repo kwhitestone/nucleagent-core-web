@@ -8,6 +8,7 @@ export const RUNTIME_CONFIG_KEYS = [
   "VITE_AUTH_BACKEND_URL",
   "VITE_EMBED_HOST_ORIGINS",
   "VITE_SHELL_ALLOWED_ORIGINS",
+  "CHAT_UI_DEFAULT",
 ] as const;
 export type RuntimeConfigKey = (typeof RUNTIME_CONFIG_KEYS)[number];
 export type RuntimeConfig = Readonly<Record<RuntimeConfigKey, string>>;
@@ -48,7 +49,13 @@ export function parseRuntimeConfig(body: unknown, pageOrigin: string): RuntimeCo
   };
   const out = {} as Record<RuntimeConfigKey, string>;
   for (const key of RUNTIME_CONFIG_KEYS) {
-    if (key === "VITE_SHELL_ALLOWED_ORIGINS") {
+    if (key === "CHAT_UI_DEFAULT") {
+      // MUYU-365 per-environment chat UI default; optional, absent/empty = the old Vue view (configValue "").
+      const value = input[key];
+      if (value === undefined || value === "") continue;
+      if (value !== "old" && value !== "react") throw new Error(`runtime-config.json: invalid ${key}`);
+      out[key] = value;
+    } else if (key === "VITE_SHELL_ALLOWED_ORIGINS") {
       const value = input[key] === undefined ? "" : input[key];
       const invalid = () => new Error(`runtime-config.json: invalid ${key} origin`);
       if (typeof value !== "string") throw invalid();
@@ -90,5 +97,5 @@ export function loadRuntimeConfig(pageOrigin = location.origin, fetchImpl: typeo
 
 export function configValue(key: RuntimeConfigKey): string {
   if (!current) throw new Error("runtime-config.json: not initialized");
-  return current[key];
+  return current[key] ?? "";
 }
