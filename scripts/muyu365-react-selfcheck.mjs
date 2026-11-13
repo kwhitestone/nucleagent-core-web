@@ -55,6 +55,7 @@ try {
     "图片卡 + 错误": { state: snapshot([
       user("u1", 0, "画一只猫"),
       item("m1", 2, { content: "提示词：「一只猫」", data: { media: { kind: "image", taskId: 1 } } }),
+      item("m2", 2, { content: "提示词：「猫跳舞」", data: { media: { kind: "video", taskId: 2 } } }),
       user("u2", 3, "再来一张"),
       item("e1", 4, { lane: "system", role: "system", status: "failed", content: "模型服务暂时不可用，请稍后重试" }),
     ], "failed") },
@@ -84,8 +85,10 @@ try {
                 h("button", { className: running ? "mc-btn" : "mc-btn mc-btn--primary", type: "button" }, t("common.send")),
                 running && h("button", { className: "mc-btn mc-btn--primary", type: "button" }, t("chatReact.stop"))))))));
   }
+  // Mock of the shell's floating 「◇ 成果」 trigger (nucleagent-web CoreRemoteHost.vue: top 18px / right 22px), to check overlap.
+  const SHELL_BUTTON = `<div style="position:absolute;top:18px;right:22px;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgb(0 0 0/10%);font:500 13px sans-serif;color:#334155;opacity:.92">◇ 成果（壳按钮模拟）</div>`;
   const pages = Object.entries(SCENES).map(([title, scene]) =>
-    `<section><h1 style="font:500 13px sans-serif;margin:8px 16px;color:#64748b">${title}</h1><div style="height:720px;border:1px solid #e2e8f0">${renderToStaticMarkup(h(Scene, { scene }))}</div></section>`).join("");
+    `<section><h1 style="font:500 13px sans-serif;margin:8px 16px;color:#64748b">${title}</h1><div style="position:relative;height:720px;border:1px solid #e2e8f0">${renderToStaticMarkup(h(Scene, { scene }))}${SHELL_BUTTON}</div></section>`).join("");
   const css = ["src/styles/aurora.css", "src/chat-react/chat.css"].map((f) => readFileSync(f, "utf8")).join("\n");
   writeFileSync(out, `<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>${css}\nhtml,body{margin:0;height:100%}</style></head>` +
     `<body>${pages}</body></html>`);

@@ -584,30 +584,89 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 
 deploy 仓的 `.env.example`、`docker-compose.yml`、`scripts/dev.sh` 不涉及 core-web 的 runtime-config 键表，本地开发不设这个变量即可。TEST 环境（不在 5/8 里）的下发通道没有在 deploy 仓里找到，按现有 TEST 的配置方式手工加环境变量。上面这些都只是读出来的结果，**没有改 deploy 仓**。
 
-## 17. assistant-ui 覆盖度审计（第 5 棒，2026-11-13，初稿）
+## 17. assistant-ui 覆盖度审计（第 5 棒定稿，2026-11-13）
 
-依据：本地 `node_modules/@assistant-ui/react@0.15.36`、`@assistant-ui/core@0.3.35`（MIT）的 d.ts；`@assistant-ui/react-markdown@0.14.26` 用 `npm view` 读取（MIT，依赖 react-markdown ^10.1.0、classnames、@radix-ui/react-primitive、micromark-util-html-tag-name、@types/hast）。官网文档未读取（NOT_VERIFIED），以下只以包内声明为准。
+依据：本地 `node_modules/@assistant-ui/react@0.15.36`、`@assistant-ui/core@0.3.35`（MIT）的 d.ts 与源码；`src/chat-react/ChatApp.tsx`、`auiPrimitives.ts`、`externalStore.ts`、`threadMessages.ts` @ 第 5 棒提交。官网文档未读（NOT_VERIFIED）。
 
-| 能力（aui 出处） | 第 4 棒现状 | 第 5 棒计划 | 对应旧 Vue 功能 |
+| 能力（aui 出处） | 第 4 棒 | 第 5 棒终态 | 未用 / 偏差原因 |
 |---|---|---|---|
-| ThreadPrimitive.Root/Viewport/Messages | 已用 | 保留 | 消息列表 |
-| ThreadPrimitive.ScrollToBottom（+Viewport autoScroll） | 未用 | 改用 | “回到底部”按钮、跟随流式滚动 |
-| ThreadPrimitive.Empty | 未用（AuiIf 自判） | 改用 | 首页空态 |
-| ThreadPrimitive.Suggestions/Suggestion + SuggestionPrimitive.Title/Description/Trigger | 未用 | 改用，数据来自 `fetchHomeSuggestions`（经 ExternalStoreAdapter.suggestions） | 首页建议卡 |
-| ThreadPrimitive.LoadEarlier | 未用 | 评估：Core 有向上分页游标则接，否则不接 | 历史消息上翻 |
-| MessagePrimitive.Parts `components.Text` | 已用但正文为自写 `renderMarkdown`+`dangerouslySetInnerHTML` | 改为 `@assistant-ui/react-markdown` 的 MarkdownTextPrimitive；净化沿用 task-conversation/markdown.ts 规则 | Markdown 正文 |
-| `components.Reasoning` / `ReasoningGroup` / `ChainOfThought`（与 tools 互斥） | 未用，自写 `<details>` | 改用 `ChainOfThought`（ChainOfThoughtPrimitive.Root/AccordionTrigger/Parts）承载 process 条目+工具调用，标题“执行过程 N 个步骤 · 总耗时” | 执行过程折叠 |
-| `components.tools` / `ToolGroup` / makeAssistantToolUI | 未用（工具卡缺失） | Core 工具条目映射为 `tool-call` 部件；通用卡片（名称、状态、入参/结果折叠） | 工具调用卡 |
-| `components.Image` / `File` / `data` | 未用 | 图片/视频产物：Image 部件 + `data` 自定义部件 | 成果图片/视频卡 |
-| MessagePartPrimitive.InProgress、useSmooth | 未用 | 流式文本用 aui smooth（Markdown 组件 `smooth` 选项） | 流式平滑（旧 Vue StreamSmoothState） |
-| ActionBarPrimitive.Copy/Reload/Edit/Feedback*/Speak/ExportMarkdown | 未用，复制自写 | Copy 用 aui（文本仍取原文、沿用安全反馈）；Reload=重发上一问（adapter.onReload）；Edit/Feedback/Speak/Export 不接（Core 无对应接口） | 复制、重新生成 |
-| BranchPickerPrimitive | 未用 | 不用：Core 会话线性，无分支 | 无 |
-| ThreadListPrimitive + ExternalStoreAdapter.adapters.threadList（threads/onSwitchToThread/onSwitchToNewThread/onRename/onArchive/onDelete） | 未用 | 壳模式下侧栏由壳持有（useShellBridge）不接；独立运行时可接，见 §18 结论 | 历史会话侧栏 |
-| ComposerPrimitive.Input/Send/Cancel/Queue/Attachments/AddAttachment | 已用 | 保留 | 输入框、停止、排队、附件 |
-| ComposerPrimitive.AttachmentDropzone | 未用 | 改用（拖拽上传，复用 AttachmentAdapter） | 拖拽上传 |
-| ComposerPrimitive.Dictate（WebSpeechDictationAdapter） | 未用 | 不用：旧 Vue 无听写，浏览器语音服务未经评估 | 无 |
-| AttachmentPrimitive.Root/Name/Remove/unstable_Thumb | 部分（自写渲染） | 改用 | 附件芯片 |
-| MessagePrimitive.Error / ErrorPrimitive | 未用 | 改用显示流错误 | 发送/流失败提示 |
-| @assistant-ui/react-ui 0.2.1、@assistant-ui/styles 0.3.7 | 未用 | 待读包源码后定；倾向不用（主题须对齐目鱼 Vue 视觉，且增大包体） | — |
+| ThreadPrimitive.Root / Viewport / Messages | 已用 | 已用 | — |
+| ThreadPrimitive.ViewportFooter + ScrollToBottom | 未用 | **已用**（“↓ 回到底部”） | — |
+| ThreadPrimitive.Empty | 未用（AuiIf 自判） | **已用** | — |
+| ThreadPrimitive.Suggestions + SuggestionPrimitive.Title/Description/Trigger | 未用 | **已用**，数据 = Core 首页建议卡（`suggestions.ts`，经 adapter.suggestions） | 图片/视频卡在 Vue 里跳 /generate，React 不显示 |
+| ThreadPrimitive.LoadEarlier（adapter.hasEarlier/onLoadEarlier） | 未用 | **已用**，接 conversationController.loadOlder | — |
+| MessagePrimitive.GroupedParts（groupBy） | 未用（Parts） | **已用**：执行过程头 + 每步 reasoning/tool-call 合成一个折叠 | — |
+| 正文 Markdown | 自写 renderMarkdown | 先改 `@assistant-ui/react-markdown`（852eea6 之前），**后为体积退回**：aui 文本部件 + `useMessagePartText`/`useSmooth`（aui 流式平滑），渲染用共享 `task-conversation/markdown.ts`（markdown-it + DOMPurify，与 Vue 同策略） | react-markdown+remark-gfm 闭包约 52 KiB gzip，岛超 180 线；见 §19.2 |
+| `tool-call` 部件 | 未用 | **已用**：Core tool_call → tool-call（名称、状态、查询、来源、结果折叠），自写 ToolCard | 无 makeAssistantToolUI 按工具名定制：Core 只发结果不发 args（数据缺口） |
+| `reasoning` 部件 | 未用 | **已用**（每个过程步骤） | ChainOfThoughtPrimitive 未用：GroupedParts 已能分组，CoT 与 tools 组件互斥 |
+| `data` 部件（data-process / data-media / data-files） | 部分 | **已用**：过程头、图片/视频卡（每次渲染取新签名链接）、产出文件芯片 | Image/File 部件未用：媒体链接需按 taskId 现取签名 URL，不适合静态 image 部件 |
+| ActionBarPrimitive.Root + Copy（useActionBarCopy） | 部分 | **已用**（复制原文，沿用 copyRawBody 安全反馈） | — |
+| ActionBarPrimitive.Reload（adapter.onReload） | 未用 | **已用**，语义 = 重发该回复对应的提问 | Core 无“重跑/分支”接口，生成的是新一轮而不是替换（见下） |
+| ActionBarPrimitive.Edit / Feedback / Speak / ExportMarkdown | 未用 | 未用 | Core 无编辑、反馈、TTS、导出接口 |
+| BranchPickerPrimitive | 未用 | 未用 | Core 会话线性，无分支 |
+| ComposerPrimitive.Input/Send/Cancel/Queue/Attachments/AddAttachment | 已用 | 已用 | — |
+| ComposerPrimitive.AttachmentDropzone | 未用 | **已用**（拖拽上传，复用 AttachmentAdapter） | — |
+| AttachmentPrimitive.Root/Name/Remove + MessagePrimitive.Attachments | 部分 | **已用**（输入框芯片 + 已发消息芯片） | unstable_Thumb 未用；已发附件无下载/预览（Vue AttachmentChips 有） |
+| ComposerPrimitive.Dictate | 未用 | 未用 | 旧 Vue 无听写 |
+| MessagePrimitive.Error / ErrorPrimitive | 未用 | 未用：失败消息由 metadata.custom.failed → `data-failed` 红色气泡 | Core 失败是一条 system 消息而不是 aui 的 incomplete 状态，用 ErrorPrimitive 需改映射；本棒未做 |
+| ThreadListPrimitive + adapters.threadList | 未用 | 未用 | 见下 |
+| @assistant-ui/react-ui / styles | 未用 | 未用 | 视觉须对齐 Vue，且增体积 |
 
-数据层：第 4 棒 React 岛经 `useCoreConversation.ts` 镜像 Vue `useConversation`（effectScope）。第 5 棒目标为 React 端 store，复用 api 层、SSE 解码器、v2 reducer 等纯 TS。
+**仍不是 aui 骨架的部分**
+
+- **历史会话侧栏**：壳（nucleagent-web）持有，经 useShellBridge 与 Core 同步；React 岛只占对话区。ThreadList 若接会与壳侧栏重复，且不改壳不能去掉壳侧栏，所以不接。
+- **会话创建、路由、鉴权**：ChatHost.vue（Vue）持有，React 收 navigate/create/t 回调。
+- **重新生成语义**：aui Reload 原意是替换最后一条回复（分支），Core 只能追加新一轮；界面上是“再问一次”，旧回复保留。没有 BranchPicker。
+- **工具卡**：Core 只给工具名、状态、结果文本、查询/来源，没有 args 和结构化输出，所以只有通用卡，无按工具定制的 UI。
+- **模型/执行器选择**：两个原生 select（modelGroups.ts），不是 aui 组件（aui 无对应原语）。
+- **Markdown 渲染**：markdown-it + DOMPurify 输出 HTML（dangerouslySetInnerHTML），不是 react 元素树；流式平滑仍是 aui useSmooth。
+- **单条可替换排队**：自写 singleSlotQueue 接 aui ComposerPrimitive.Queue 管道（aui 自带 createMessageQueue 不是单槽语义）。
+- **数据层**：框架无关的 conversationController（ea870b6），不是 aui 的 LocalRuntime；React 经 ExternalStoreRuntime 接入。
+
+## 18. 与旧 Vue 并排对比（第 5 棒）
+
+方法：React 侧用 `node scripts/muyu365-react-selfcheck.mjs <out.html>`（react-dom/server + mock 数据，无网络无令牌；jsdom 只为 DOMPurify 提供 DOM），Windows Chrome headless（`--headless=new`）截图 1100×755 每状态，另截 760 宽检查窄屏。页面右上叠了一个**模拟**的壳「◇ 成果」按钮（top 18px / right 22px，取自壳 CoreRemoteHost.vue）以检查遮挡；真实壳内未截图。
+Vue 侧**未重新截图**：Vue 视图依赖 Pinia/路由/i18n/SFC，不能用同一 SSR 脚本静态渲染；对比用的是第 3 棒在 TEST 壳内截的 `docs/muyu365-evidence/vue-conversation.png`、`vue-empty.png`（真实环境，状态与 mock 不完全相同：只有“过程折叠 + 正文”和空态）。流式、工具卡、媒体、错误、排队状态**没有同状态 Vue 截图**，下表这些行只对照 Vue 源码样式，不是截图对比。
+
+截图（`docs/muyu365-evidence/leg5/`）：`react-empty-suggestions.png`、`react-process-tools-attachments.png`、`react-streaming-queued.png`、`react-media-error.png`（图片+视频卡停在“生成中…”，因为无网络不取签名链接）、`react-narrow-760.png`。均为 mock 文本，无账号名、令牌、他人任务标题。
+
+| 项 | 结论 | 依据 |
+|---|---|---|
+| 「成果」悬浮按钮遮挡头像/复制图标 | **在模拟按钮下已不遮挡**（1100 与 760 宽）：`.mc-viewport` 顶部留白 64px，第一行头部在按钮下方 | 截图；壳内真机未验证 |
+| 用户气泡配色 | 已对齐：同一 `linear-gradient(160deg, indigo-500, violet-500)` + 白字 + `16 16 5 16` 圆角；取样 React (38,92,205) vs Vue (56,85,199)，差异来自渐变取样位置 | chat.css:142 vs MessageItem.vue:143，像素取样 |
+| 助手气泡 | 已对齐：80% 白底、1px 边、`5 16 16 16` 圆角、slate-700 字 | 同上 |
+| 字号/行高 | 已对齐：正文 14px/1.7，作者 12px，时间 11px；作者字重 React 500、Vue 600（React 岛规定只用 400/500/700） | 源码 |
+| 执行过程折叠 | **有差距**：Vue 折叠条在气泡**外**、独占一行、带 ⌄ 和蓝色圆点、标题蓝色；React 折叠在助手气泡**内**、无圆点、标题黑色 | 截图对比 vue-conversation.png |
+| 头像 | 已对齐（品牌蓝方块“你”/立方体图标）；Vue 正在流式的助手头像变浅，React 未做 | 截图 |
+| 间距 | 有差距：React 内容列最大宽 760px 居中；Vue 撑满（截图约 1260px 宽）。消息间距 React 20px | 截图 |
+| 输入框 | **有差距**：React 附件为文字“附件”、模型为原生 select、发送为文字按钮；Vue 为 ＋/回形针图标、「＋生成图片」「＋生成视频」胶囊、模型胶囊下拉、纸飞机图标发送，禁用时浅蓝 | 截图 |
+| 空态 | 有差距：React 居中标题“今天想完成什么？”+ 建议卡；Vue 左上标题+副标题+“最近任务” | 截图对比 vue-empty.png |
+| 错误气泡 | 已加红色：浅红底、红边、红字（`data-failed`） | react-media-error.png；Vue 同状态无截图 |
+| 工具卡 / 媒体卡 / 附件芯片 / 排队条 | React 已有；**无 Vue 同状态截图，未对比** | — |
+| 窄屏 760 | 布局不破，按钮不遮挡 | react-narrow-760.png |
+
+没有做到“与旧 Vue 一致”，上表“有差距”的 5 项是下一步的视觉工作。
+
+## 19. 第 5 棒体积与许可证
+
+### 19.1 新增依赖许可证
+第 5 棒前半段曾加 `@assistant-ui/react-markdown@0.14.26` + `remark-gfm@4.0.1`：相对 1360ed9 的 lock 差异 99 个包，全为生产依赖，MIT 98 / ISC 1，每个包都有 LICENSE 文件，lock 字段与包内 package.json 一致（方法同 §15.1 的 lic 脚本）。**这两个依赖已在 852eea6 移除**，生产依赖 lock 与 ea870b6 完全一致。
+本棒唯一新增：`jsdom@29.1.1`（**devDependencies**，MIT），只给单测与自检脚本做 DOMPurify 的 DOM，不进浏览器包。其传递依赖未逐个核对（dev 闭包，不进生产包）。
+
+### 19.2 体积（gzip，KB = 1024 B；基线 = c0a82a7 在 /tmp 临时 worktree 构建的 dist）
+
+| 指标 | 削减前（0a714da） | 削减后（852eea6） | 要求 |
+|---|---|---|---|
+| 默认 `/chat` 增量 | +453 B | +427 B | ≤ 1 KiB ✔ |
+| 默认 `/c/:id` 增量 | +819 B | +963 B | ≤ 1 KiB ✔（余量 61 B） |
+| 默认 entry 增量 | +486 B | +481 B | — |
+| React 岛额外 | 230.33 KB | 176.89 KB | ≤ 180 ✔ |
+
+大头定位（esbuild metafile）：`@assistant-ui/react-markdown` + `remark-gfm` 闭包 52.8 KB gzip（react-markdown 单独 39.1，remark-gfm 16.3）；最大是 micromark-core-commonmark、property-information、mdast-util-to-markdown、mdast-util-from-markdown、mdast-util-to-hast。没有 syntax-highlighter 类依赖被引入。
+削减做法：正文改用 Vue 已在默认包里的 markdown-it + DOMPurify（`task-conversation/markdown.ts`），React 岛与默认路径共用该 chunk；保留 aui 文本部件与 useSmooth 流式平滑。
+`/c/:id` 增量变大 144 B，原因是共享后 markdown 模块所在 chunk 被拆分。试过并否决：`experimentalMinChunkSize` 1000/2500/5000（+1124 / +2038 / +2781 B）、markdown 独立 manualChunk（+1406 B）、markdown 动态 import（+1413 B）。最终把 `fetchHomeSuggestions` 在岛内复写一份（`suggestions.ts`），避免拆出 homeSuggestions chunk（−100 B 左右），达到 +963 B。
+
+体验代价（相对 aui react-markdown）：
+- 失去 react-markdown 的 React 元素树和 `components` 覆写（代码块头、按语言定制、memo 化逐块渲染）；现为整段 HTML 重渲染。
+- GFM 能力按 markdown-it 默认：表格、删除线有；脚注、自动链接字面量规则与 remark-gfm 不同；任务列表用 ☐/☑ 文本（与 Vue 相同）。
+- 好处：Vue 与 React 用同一净化策略，不会漂移；`javascript:` 链接按 markdown-it validateLink 保留为纯文本（与 Vue 一致）。
