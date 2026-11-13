@@ -2,7 +2,8 @@
 // MUYU-365 visual self-check: renders the React island (real MessageRow + Composer + Welcome) with mock
 // data (react-dom/server, no network, no tokens) into one static HTML page per scene, styled by
 // aurora.css + chat.css. Usage: node scripts/muyu365-react-selfcheck.mjs <outDir>
-// Then screenshot each <scene>.html (e.g. Chrome --headless=new --window-size=1100,755; *-520 at 520 wide).
+// Then screenshot each <scene>.html at the size in scenes.json (Chrome --headless=new --window-size=W,H
+// --disable-lcd-text: without it, ClearType colour fringes make dense CJK glyphs such as 聊 look blue/orange).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createServer } from "vite";
@@ -23,13 +24,13 @@ try {
   const { createElement: h, useMemo } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
   const aui = await import("@assistant-ui/react");
-  const { MessageRow, Welcome, Composer } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx");
+  const { MessageRow, Welcome, Composer, addCodeCopyButtons } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx");
   const { ThreadPrimitive } = await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts");
   const { externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts");
   const { createSingleSlot } = await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts");
   const reducer = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
 
-  const at = (s) => `2026-11-13T06:00:${String(s).padStart(2, "0")}Z`;
+  const at = (s) => new Date(Date.UTC(2026, 10, 13, 6, 0, s)).toISOString();
   const item = (id, s, over) => ({ id, turnId: "t1", streamId: id, lane: "answer", role: "assistant", kind: "text", content: "", status: "complete", revision: 1, seq: s, timestamp: at(s), ...over });
   const proc = (id, s, title, content, over) => item(id, s, { lane: "process", kind: "status", title, content, userReadable: true, ...over });
   const tool = (id, s, title, content, over) => proc(id, s, title, content, { kind: "tool_call", ...over });
@@ -42,10 +43,11 @@ try {
     "| 项目 | 状态 | 负责人 |\n| --- | --- | --- |\n| 附件预览 | 进行中 | 前端组 |\n| 执行过程 | 已完成 | 前端组 |\n\n" +
     "> 下周优先处理附件预览。\n\n```ts\nexport const ready = (n: number) => n > 0;\n```\n\n详见 [发布说明](https://example.com/notes)。";
   const PROCESS = [
-    proc("p1", 1, "排队等待", "已进入执行队列"),
-    proc("p2", 3, "Agent 初始化", "工作区已就绪"),
-    tool("p3", 5, "联网搜索", "找到 2 条结果", { data: { toolCallId: "c1", toolDetails: { query: "assistant-ui ExternalStoreRuntime", sources: [{ title: "assistant-ui docs", url: "https://www.assistant-ui.com/docs" }] } } }),
-    tool("p4", 8, "命令执行", "exit 1: timeout after 30s", { status: "failed", data: { toolCallId: "c2" } }),
+    // Self-consistent timings: each step lasts until the next starts, total = sum of steps = 2 + 2 + 3 + 30 = 37.0 s.
+    proc("p1", 0, "排队等待", "已进入执行队列"),
+    proc("p2", 2, "Agent 初始化", "工作区已就绪"),
+    tool("p3", 4, "联网搜索", "找到 2 条结果", { data: { toolCallId: "c1", toolDetails: { query: "assistant-ui ExternalStoreRuntime", sources: [{ title: "assistant-ui docs", url: "https://www.assistant-ui.com/docs" }] } } }),
+    tool("p4", 7, "命令执行", "exit 1: timeout after 30s", { status: "failed", data: { toolCallId: "c2" } }),
   ];
   const GROUPS = [
     { kind: "chat", options: ["deepseek-v3", "qwen-max"].map((m) => ({ value: `chat:p:${m}`, label: m, hint: "示例供应商", choice: { kind: "chat", model: { providerId: "p", model: m } } })) },
@@ -57,7 +59,7 @@ try {
   const conversation = snapshot([
     user("u1", 0, "帮我总结一下这份周报的要点", { attachments: [{ id: "f1", name: "周报-第46周.pdf", mimeType: "application/pdf", size: 182345, metadata: verified }] }),
     ...PROCESS,
-    item("a1", 14, { kind: "result", content: MD, attachments: [{ id: "f2", name: "本周要点-整理稿.md", size: 2310, metadata: verified }, { id: "f3", name: "数据.xlsx", size: 48211, metadata: verified }] }),
+    item("a1", 37, { kind: "result", content: MD, attachments: [{ id: "f2", name: "本周要点-整理稿.md", size: 2310, metadata: verified }, { id: "f3", name: "数据.xlsx", size: 48211, metadata: verified }] }),
   ], "completed");
   const running = snapshot([
     user("u1", 0, "继续写下周计划"),
@@ -75,8 +77,9 @@ try {
     "conversation-top-760": { state: conversation, scroll: "top", width: 760 },
     "conversation-markdown": { state: conversation, height: 1000 },
     "process-expanded-failed": { state: conversation, open: true, scroll: "process" },
-    "streaming-running": { state: running, open: true },
-    "streaming-queued": { state: running, queued: "再补一条：加上 E2E 测试" },
+    // "now" 4 s into the run: 已用 4.0 秒, consistent with the step timestamps (0–3 s).
+    "streaming-running": { state: running, open: true, now: 4 },
+    "streaming-queued": { state: running, now: 4, queued: "再补一条：加上 E2E 测试" },
     "composer-typed": { state: conversation, text: "把表格改成按负责人分组，\n并补一列截止日期" },
     "composer-model-menu": { state: conversation, menu: true },
     "media-error": { height: 1000, state: snapshot([
@@ -107,7 +110,7 @@ try {
   function Scene({ scene }) {
     const slot = scene.queued ? createSingleSlot(async () => {}, () => true, () => {}) : undefined;
     slot?.hold({ role: "user", content: [{ type: "text", text: scene.queued }], attachments: [] });
-    const store = externalStore(scene.state, { send: async () => {}, stop: async () => {} }, { locale: "zh-CN", nowMs: Date.parse(at(30)) }, undefined, slot);
+    const store = externalStore(scene.state, { send: async () => {}, stop: async () => {} }, { locale: "zh-CN", nowMs: Date.parse(at(scene.now ?? 60)) }, undefined, slot);
     const runtime = aui.useExternalStoreRuntime({ ...store, suggestions: scene.suggestions ?? [] });
     return h(aui.AssistantRuntimeProvider, { runtime },
       h(Prefill, { text: scene.text }),
@@ -122,6 +125,13 @@ try {
   // about 120×36): inline-styled here, never in chat.css or the island DOM.
   const SHELL_BUTTON = `<div style="position:fixed;top:18px;right:22px;width:120px;height:36px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgb(15 23 42/8%);font:500 14px sans-serif;color:#3b4fc4">◇ 成果</div>`;
   const css = ["src/styles/aurora.css", "src/chat-react/chat.css"].map((f) => readFileSync(f, "utf8")).join("\n");
+  // The island adds code-block headers in an effect, which static rendering skips; run the same function here.
+  const decorate = (html) => {
+    const box = new JSDOM("").window.document.createElement("div");
+    box.innerHTML = html;
+    box.querySelectorAll(".mc-md").forEach((md) => addCodeCopyButtons(md, t("common.copy")));
+    return box.innerHTML;
+  };
   for (const [name, scene] of Object.entries(SCENES)) {
     const hooks = [
       scene.open && "document.querySelectorAll('details.mc-process').forEach(d=>d.open=true);",
@@ -134,7 +144,7 @@ try {
         : "const v=document.querySelector('.mc-viewport');v.scrollTop=v.scrollHeight;",
     ].filter(Boolean).join("");
     writeFileSync(join(outDir, `${name}.html`), `<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>${css}\nhtml,body{margin:0;height:100%}</style></head>` +
-      `<body>${renderToStaticMarkup(h(Scene, { scene }))}${SHELL_BUTTON}<script>${hooks}</script></body></html>`);
+      `<body>${decorate(renderToStaticMarkup(h(Scene, { scene })))}${SHELL_BUTTON}<script>${hooks}</script></body></html>`);
   }
   writeFileSync(join(outDir, "scenes.json"), JSON.stringify(Object.fromEntries(Object.entries(SCENES).map(([k, s]) => [k, `${s.width ?? 1100},${s.height ?? 755}`]))));
   console.log(`wrote ${Object.keys(SCENES).length} scenes to ${outDir}`);

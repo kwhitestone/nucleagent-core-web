@@ -143,12 +143,14 @@
    header icon/summary and the failed step; the done steps fold into one "N 步成功" row (data-hide-done). */
 .mc-process {
   margin: 0 0 12px;
+  border: 1px solid transparent;
   border-radius: 10px;
+  overflow: hidden;
   color: var(--fg-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
-.mc-process[open] { background: var(--bg-card); box-shadow: inset 0 0 0 1px var(--border-divider); }
+.mc-process[open] { background: var(--bg-card); border-color: var(--border-divider); }
 .mc-process-head {
   display: flex;
   align-items: center;
