@@ -180,7 +180,7 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
   assert.equal("timing" in parts[2], false, "a running step has no duration yet");
   assert.equal("result" in parts[2], false, "a running tool has no result yet (aui shows it as running)");
   assert.deepEqual([parts[3].toolCallId, parts[3].isError], ["s3", true]);
-  assert.deepEqual(parts[5].data, [{ id: "f9", name: "report.pdf" }]);
+  assert.deepEqual(parts[5].data, [{ id: "f9", name: "report.pdf", verified: false }]);
   assert.deepEqual(parts[6].data, { media: { kind: "image", taskId: 7 }, prompt: "提示词：「猫」", failed: false });
 });
 
@@ -481,7 +481,8 @@ test("attachments: onNew forwards refs to the controller; history shows them on 
     attachments: [{ id: "f-1", type: "file", name: "r.pdf", contentType: "application/pdf", status: { type: "complete" }, content: [] }] } as never);
   assert.deepEqual(calls, [["see file", [{ id: "f-1", name: "r.pdf", mimeType: "application/pdf" }]]]);
   const [user] = toThreadMessages(stateOf([item("u1", { role: "user", content: "q", attachments: [{ id: "f-9", name: "x.png", mimeType: "image/png", size: 3 }] })]));
-  assert.deepEqual(user.attachments, [{ id: "f-9", type: "image", name: "x.png", contentType: "image/png", status: { type: "complete" }, content: [] }]);
+  assert.deepEqual(user.attachments, [{ id: "f-9", type: "image", name: "x.png", contentType: "image/png", status: { type: "complete" }, content: [],
+    chip: { id: "f-9", name: "x.png", mimeType: "image/png", size: 3, verified: false } }]);
 });
 
 test("sealedLink: sealed tool links open via Core in a fresh no-opener tab; others and unsafe results are not opened", async (t) => {

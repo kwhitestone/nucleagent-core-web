@@ -160,3 +160,19 @@ test("code blocks: copy buttons are added after sanitizing (idempotent, text-onl
   assert.equal(box.querySelectorAll("img").length, 0, "label is text, never HTML");
   assert.equal(box.querySelectorAll("pre code")[1].textContent, "<b>two</b>\n", "copied text = the code element only");
 });
+
+test("file chips: kind by MIME then extension; verified → download button with size; unverified → status only", async () => {
+  const { fileKind, toFileChip } = await vite.ssrLoadModule("/src/chat-react/attachments.ts") as typeof import("../src/chat-react/attachments.ts");
+  assert.deepEqual(["a.PNG", "b.pdf", "c.docx", "d.csv", "e.ts", "f.zip", "g.mp4", "h.bin", "noext"].map((n) => fileKind(n)),
+    ["image", "pdf", "doc", "sheet", "code", "archive", "media", "file", "file"]);
+  assert.equal(fileKind("photo", "image/jpeg"), "image");
+  assert.deepEqual(toFileChip({ id: "1", name: "r.pdf", size: 2048, metadata: { verification: "verified" } }), { id: "1", name: "r.pdf", size: 2048, verified: true });
+  const ok = renderToString(React.createElement(app.FileChipView, { file: { id: "1", name: "周报.pdf", size: 182345, verified: true }, t }));
+  assert.match(ok, /^<button type="button" class="mc-chip mc-chip--link" title="common.attachmentDownload 周报.pdf"/);
+  assert.match(ok, /class="mc-chip-name">周报.pdf<.*class="mc-chip-meta">178.1 KB</s);
+  assert.match(ok, /<svg/);
+  const pending = renderToString(React.createElement(app.FileChipView, { file: { id: "2", name: "x.md", verified: false }, t }));
+  assert.match(pending, /^<span class="mc-chip" data-verified="false"/);
+  assert.doesNotMatch(pending, /<button/);
+  assert.match(pending, /common.attachmentVerificationFailed/);
+});

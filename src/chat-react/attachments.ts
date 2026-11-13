@@ -1,5 +1,5 @@
 import type { AttachmentAdapter, PendingAttachment } from "@assistant-ui/react";
-import { MAX_UPLOAD_BYTES, UploadError, uploadFile } from "../addons/conversation/api/storage.ts";
+import { MAX_UPLOAD_BYTES, UploadError, getDownloadUrl, getImageContent, uploadFile } from "../addons/conversation/api/storage.ts";
 import type { MessageAttachment } from "../addons/conversation/api/types.ts";
 import type { ConversationAttachment } from "../addons/conversation/task-conversation/core/types.ts";
 
@@ -64,3 +64,60 @@ export function storageAttachmentAdapter(onError: (file: File, message: string) 
 /** Composer attachments (already uploaded) → the controller's ConversationAttachment refs. */
 export const toConversationAttachments = (attachments: readonly { id: string; name: string; contentType?: string }[] | undefined): ConversationAttachment[] =>
   (attachments ?? []).map((a) => ({ id: a.id, name: a.name, ...(a.contentType ? { mimeType: a.contentType } : {}) }));
+
+/** Chip data for a stored file (sent attachment or produced file); `verified` = Storage confirmed it (download allowed). */
+export interface FileChip { id: string; name: string; mimeType?: string; size?: number; verified: boolean }
+
+export const toFileChip = (a: ConversationAttachment): FileChip => ({
+  id: a.id, name: a.name, ...(a.mimeType ? { mimeType: a.mimeType } : {}), ...(a.size ? { size: a.size } : {}),
+  verified: a.metadata?.verification === "verified",
+});
+
+const KINDS: [RegExp, string][] = [
+  [/\.(png|jpe?g|gif|webp|bmp|svg|heic)$/, "image"],
+  [/\.pdf$/, "pdf"],
+  [/\.(docx?|rtf|odt|txt|md|pptx?|key)$/, "doc"],
+  [/\.(xlsx?|csv|tsv|ods|numbers)$/, "sheet"],
+  [/\.(js|ts|tsx|jsx|py|go|java|c|cpp|h|rs|rb|php|sh|json|ya?ml|xml|html|css|sql)$/, "code"],
+  [/\.(zip|rar|7z|tar|gz|tgz|bz2)$/, "archive"],
+  [/\.(mp4|mov|webm|avi|mkv|mp3|wav|m4a|flac)$/, "media"],
+];
+/** Icon kind for a file chip: the MIME image type wins, then the extension, else a plain file. */
+export function fileKind(name: string, mimeType?: string): string {
+  if (mimeType?.toLowerCase().startsWith("image/")) return "image";
+  const lower = name.toLowerCase();
+  return KINDS.find(([re]) => re.test(lower))?.[1] ?? "file";
+}
+
+function save(href: string, filename: string) {
+  const anchor = Object.assign(document.createElement("a"), { href, download: filename, style: "display:none" });
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+/**
+ * Same download path as AttachmentChips.vue: images from verified Storage bytes, other files through
+ * the validated signed URL (blob download, or a new no-opener tab when the CDN has no CORS).
+ * shortcut: a copy of AttachmentChips.vue's download(); share one module if either side changes.
+ */
+export async function downloadFile(file: FileChip): Promise<void> {
+  if (fileKind(file.name, file.mimeType) === "image") {
+    const { blob, filename } = await getImageContent(file.id);
+    const url = URL.createObjectURL(blob);
+    try { save(url, filename); } finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
+    return;
+  }
+  const url = await getDownloadUrl(file.id);
+  let objectUrl = "";
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`download returned ${response.status}`);
+    objectUrl = URL.createObjectURL(await response.blob());
+    save(objectUrl, file.name || "attachment");
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } finally {
+    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+}

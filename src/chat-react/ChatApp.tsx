@@ -20,16 +20,17 @@ import { createConversationState, MAX_ATTACHMENTS, type ConversationLocale } fro
 import { openSealedLinkOnClick } from "./sealedLink";
 import { copyRawBody, formatMessageTime } from "@/addons/conversation/components/conversation/messageCopy";
 import { toast } from "@/composables/useToast";
+import { formatAttachmentSize } from "@/addons/conversation/components/attachmentPresentation";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { composerActions, moveFocus } from "./composerState";
 import {
-  AlertMark, AssistantMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
+  AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
-import { storageAttachmentAdapter } from "./attachments";
+import { downloadFile, fileKind, storageAttachmentAdapter, type FileChip } from "./attachments";
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import "./chat.css";
@@ -276,10 +277,13 @@ function ComposerAttachmentChips({ t }: { t: Translate }) {
       <ComposerPrimitive.Attachments>
         {({ attachment }) => (
           <AttachmentPrimitive.Root className="mc-chip" data-status={attachment.status.type}>
-            <AttachmentPrimitive.Name />
-            {attachment.status.type === "running" && <span className="mc-chip-meta">{Math.round(("progress" in attachment.status ? attachment.status.progress : 0) * 100)}%</span>}
+            <span className="mc-chip-icon"><FileMark kind={fileKind(attachment.name, attachment.contentType)} /></span>
+            <span className="mc-chip-name" title={attachment.name}><AttachmentPrimitive.Name /></span>
+            {attachment.status.type === "running"
+              ? <span className="mc-chip-meta">{Math.round(("progress" in attachment.status ? attachment.status.progress : 0) * 100)}%</span>
+              : attachment.file?.size ? <span className="mc-chip-meta">{formatAttachmentSize(attachment.file.size)}</span> : null}
             {attachment.status.type === "incomplete" && <span className="mc-chip-meta" role="status">{t("common.attachmentUploadFailed")}</span>}
-            <AttachmentPrimitive.Remove className="mc-chip-remove" aria-label={t("common.delete")}>×</AttachmentPrimitive.Remove>
+            <AttachmentPrimitive.Remove className="mc-chip-remove" aria-label={t("common.attachmentRemove")} title={t("common.attachmentRemove")}><CrossMark size={12} /></AttachmentPrimitive.Remove>
           </AttachmentPrimitive.Root>
         )}
       </ComposerPrimitive.Attachments>
@@ -287,11 +291,37 @@ function ComposerAttachmentChips({ t }: { t: Translate }) {
   );
 }
 
-/** Sent attachments on a user message (names only; shortcut: no download/preview yet, AttachmentChips.vue still owns that). */
-const MessageAttachmentChips = () => (
+/**
+ * A stored file (sent attachment or produced file): type icon, truncated name, size; verified files
+ * download through the same Storage path as AttachmentChips.vue. Unverified ones show the state only
+ * (shortcut: no 重新核验 button; the Vue view's revalidate hook is not wired into the island).
+ */
+export function FileChipView({ file, t }: { file: FileChip; t: Translate }) {
+  const [busy, setBusy] = useState(false);
+  const icon = <span className="mc-chip-icon"><FileMark kind={fileKind(file.name, file.mimeType)} /></span>;
+  const size = file.size ? <span className="mc-chip-meta">{formatAttachmentSize(file.size)}</span> : null;
+  if (!file.verified) {
+    return <span className="mc-chip" data-verified="false" title={file.name}>{icon}<span className="mc-chip-name">{file.name}</span>{size}<span className="mc-chip-meta" role="status">{t("common.attachmentVerificationFailed")}</span></span>;
+  }
+  const download = () => {
+    setBusy(true);
+    downloadFile(file).catch(() => toast.error(t("common.attachmentDownloadFailed"))).finally(() => setBusy(false));
+  };
+  return (
+    <button type="button" className="mc-chip mc-chip--link" title={`${t("common.attachmentDownload")} ${file.name}`} aria-busy={busy || undefined} disabled={busy} onClick={download}>
+      {icon}<span className="mc-chip-name">{file.name}</span>{size}
+    </button>
+  );
+}
+
+/** Sent attachments on a user message (chip data from threadMessages.ts). */
+const MessageAttachmentChips = ({ t }: { t: Translate }) => (
   <div className="mc-chips mc-chips--sent">
     <MessagePrimitive.Attachments>
-      {({ attachment }) => <AttachmentPrimitive.Root className="mc-chip" data-kind={attachment.type}><AttachmentPrimitive.Name /></AttachmentPrimitive.Root>}
+      {({ attachment }) => {
+        const chip = (attachment as { chip?: FileChip }).chip ?? { id: attachment.id, name: attachment.name, verified: false };
+        return <AttachmentPrimitive.Root className="mc-chip-slot"><FileChipView file={chip} t={t} /></AttachmentPrimitive.Root>;
+      }}
     </MessagePrimitive.Attachments>
   </div>
 );
@@ -455,7 +485,7 @@ function Parts({ t }: { t: Translate }) {
             }
             if (part.name === "media") return <MediaCard data={part.data as MediaPartData} t={t} />;
             if (part.name === "files") {
-              return <div className="mc-chips mc-chips--sent">{(part.data as { id: string; name: string }[]).map((f) => <span key={f.id} className="mc-chip">{f.name}</span>)}</div>;
+              return <div className="mc-chips mc-chips--sent">{(part.data as unknown as FileChip[]).map((f) => <FileChipView key={f.id} file={f} t={t} />)}</div>;
             }
             return <></>;
           default:
@@ -488,7 +518,7 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
       </div>
       <div className="mc-bubble">
         <Parts t={t} />
-        {isUser && <MessageAttachmentChips />}
+        {isUser && <MessageAttachmentChips t={t} />}
       </div>
       <ActionBarPrimitive.Root className="mc-actions" hideWhenRunning autohide="never">
         <CopyAction t={t} />

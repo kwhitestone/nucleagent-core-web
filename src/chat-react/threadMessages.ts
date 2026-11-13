@@ -1,4 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { ReadonlyJSONValue } from "assistant-stream/utils";
+import { toFileChip } from "./attachments.ts";
 import type { ConversationItem, ConversationLocale } from "../addons/conversation/task-conversation/core/types.ts";
 import { selectTurns, type ConversationState } from "../addons/conversation/task-conversation/core/reducer.ts";
 import { executionTimingLabel, executionTimings } from "../addons/conversation/task-conversation/vue/executionTiming.ts";
@@ -85,7 +87,7 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
     if (item.data?.media) parts.push({ type: "data-media", id: item.id, data: { media: item.data.media, prompt: item.content, failed: item.lane === "system" || typeof item.data.errorCode === "string" } });
     else if (item.content) parts.push({ type: "text", text: item.content });
     // Files the assistant produced (storage refs only), shown as chips after the text.
-    if (item.attachments?.length) parts.push({ type: "data-files", id: `${item.id}-files`, data: item.attachments.map((a) => ({ id: a.id, name: a.name })) });
+    if (item.attachments?.length) parts.push({ type: "data-files", id: `${item.id}-files`, data: item.attachments.map(toFileChip) as unknown as ReadonlyJSONValue });
   }
   flush();
   return parts;
@@ -120,9 +122,10 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
     out.push({
       id: item.id, role: "user", content: [{ type: "text", text: item.content }],
       // Storage references only (fileId/name/mime/size), never file bytes; chips render from these.
+      // `chip` (size, verification) rides along: aui keeps extra attachment fields as given.
       ...(item.attachments?.length ? { attachments: item.attachments.map((a) => ({
         id: a.id, type: a.mimeType?.startsWith("image/") ? "image" : "file", name: a.name, contentType: a.mimeType,
-        status: { type: "complete" as const }, content: [],
+        status: { type: "complete" as const }, content: [], chip: toFileChip(a),
       })) } : {}),
       createdAt: new Date(item.timestamp), metadata: { custom: { pending: item.status === "pending" } },
     });
