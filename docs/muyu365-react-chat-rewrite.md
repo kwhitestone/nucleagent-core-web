@@ -597,16 +597,16 @@ deploy 仓的 `.env.example`、`docker-compose.yml`、`scripts/dev.sh` 不涉及
 | ThreadPrimitive.LoadEarlier（adapter.hasEarlier/onLoadEarlier） | 未用 | **已用**，接 conversationController.loadOlder | — |
 | MessagePrimitive.GroupedParts（groupBy） | 未用（Parts） | **已用**：执行过程头 + 每步 reasoning/tool-call 合成一个折叠 | — |
 | 正文 Markdown | 自写 renderMarkdown | 先改 `@assistant-ui/react-markdown`（852eea6 之前），**后为体积退回**：aui 文本部件 + `useMessagePartText`/`useSmooth`（aui 流式平滑），渲染用共享 `task-conversation/markdown.ts`（markdown-it + DOMPurify，与 Vue 同策略） | react-markdown+remark-gfm 闭包约 52 KiB gzip，岛超 180 线；见 §19.2 |
-| `tool-call` 部件 | 未用 | **已用**：Core tool_call → tool-call（名称、状态、查询、来源、结果折叠），自写 ToolCard | 无 makeAssistantToolUI 按工具名定制：Core 只发结果不发 args（数据缺口） |
-| `reasoning` 部件 | 未用 | **已用**（每个过程步骤） | ChainOfThoughtPrimitive 未用：GroupedParts 已能分组，CoT 与 tools 组件互斥 |
+| `tool-call` 部件 | 未用 | **已用**：Core tool_call → tool-call（名称、状态、查询、来源、结果）；第 6 棒起作为“执行过程”里的一行步骤（状态图标、工具标签、耗时）渲染，耗时走 aui 部件 `timing` 字段 | 无 makeAssistantToolUI 按工具名定制：Core 只发结果不发 args（数据缺口） |
+| `reasoning` 部件 | 未用 | **已用**（每个过程步骤；第 6 棒加 `timing` 与 Core 状态 `providerMetadata.core.status`） | ChainOfThoughtPrimitive 未用：GroupedParts 已能分组（含 reasoning 与 tool-call 混排），CoT 只收 reasoning 部件，换用会把工具步骤拆到折叠外 |
 | `data` 部件（data-process / data-media / data-files） | 部分 | **已用**：过程头、图片/视频卡（每次渲染取新签名链接）、产出文件芯片 | Image/File 部件未用：媒体链接需按 taskId 现取签名 URL，不适合静态 image 部件 |
-| ActionBarPrimitive.Root + Copy（useActionBarCopy） | 部分 | **已用**（复制原文，沿用 copyRawBody 安全反馈） | — |
+| ActionBarPrimitive.Root + Copy（useActionBarCopy） | 部分 | **已用**（复制原文，沿用 copyRawBody 安全反馈）；第 6 棒移到气泡下方，悬停/键盘聚焦显示 | `autohide` 只跟踪鼠标悬停，键盘聚焦不显示，所以用 `autohide="never"` + CSS `:hover/:focus-within` |
 | ActionBarPrimitive.Reload（adapter.onReload） | 未用 | **已用**，语义 = 重发该回复对应的提问 | Core 无“重跑/分支”接口，生成的是新一轮而不是替换（见下） |
 | ActionBarPrimitive.Edit / Feedback / Speak / ExportMarkdown | 未用 | 未用 | Core 无编辑、反馈、TTS、导出接口 |
 | BranchPickerPrimitive | 未用 | 未用 | Core 会话线性，无分支 |
-| ComposerPrimitive.Input/Send/Cancel/Queue/Attachments/AddAttachment | 已用 | 已用 | — |
+| ComposerPrimitive.Input/Send/Cancel/Queue/Attachments/AddAttachment | 已用 | 已用；第 6 棒：Input 自增高 1–8 行、Send 空输入禁用（aui canSend）、Cancel 为停止方块、运行中有字时 Send 作“加入待发送” | — |
 | ComposerPrimitive.AttachmentDropzone | 未用 | **已用**（拖拽上传，复用 AttachmentAdapter） | — |
-| AttachmentPrimitive.Root/Name/Remove + MessagePrimitive.Attachments | 部分 | **已用**（输入框芯片 + 已发消息芯片） | unstable_Thumb 未用；已发附件无下载/预览（Vue AttachmentChips 有） |
+| AttachmentPrimitive.Root/Name/Remove + MessagePrimitive.Attachments | 部分 | **已用**（输入框芯片 + 已发消息芯片）；第 6 棒加类型图标、大小、已核验附件点击下载（与 AttachmentChips.vue 同路径） | unstable_Thumb 未用；图片无内嵌预览（Vue 有 ImageAttachmentPreview）；未核验附件无“重新核验”按钮 |
 | ComposerPrimitive.Dictate | 未用 | 未用 | 旧 Vue 无听写 |
 | MessagePrimitive.Error / ErrorPrimitive | 未用 | 未用：失败消息由 metadata.custom.failed → `data-failed` 红色气泡 | Core 失败是一条 system 消息而不是 aui 的 incomplete 状态，用 ErrorPrimitive 需改映射；本棒未做 |
 | ThreadListPrimitive + adapters.threadList | 未用 | 未用 | 见下 |
@@ -618,8 +618,9 @@ deploy 仓的 `.env.example`、`docker-compose.yml`、`scripts/dev.sh` 不涉及
 - **会话创建、路由、鉴权**：ChatHost.vue（Vue）持有，React 收 navigate/create/t 回调。
 - **重新生成语义**：aui Reload 原意是替换最后一条回复（分支），Core 只能追加新一轮；界面上是“再问一次”，旧回复保留。没有 BranchPicker。
 - **工具卡**：Core 只给工具名、状态、结果文本、查询/来源，没有 args 和结构化输出，所以只有通用卡，无按工具定制的 UI。
-- **模型/执行器选择**：两个原生 select（modelGroups.ts），不是 aui 组件（aui 无对应原语）。
-- **Markdown 渲染**：markdown-it + DOMPurify 输出 HTML（dangerouslySetInnerHTML），不是 react 元素树；流式平滑仍是 aui useSmooth。
+- **模型/执行器选择**：第 6 棒起为自绘弹出菜单（menuitemradio，方向键/Home/End/Esc），数据仍是 modelGroups.ts，改选仍走 useSettings 的 PATCH；不是 aui 组件（aui 0.15.36 无模型选择原语）。
+- **生成图片/视频入口**：只有置灰胶囊（aria-disabled + 提示），不是功能入口；React 岛不接生成接口（MVP 不做收费调用）。
+- **Markdown 渲染**：markdown-it + DOMPurify 输出 HTML（dangerouslySetInnerHTML），不是 react 元素树；流式平滑仍是 aui useSmooth。第 6 棒的代码块“复制”按钮在净化之后由岛自己插入（textContent），事件委托处理，净化策略未改。
 - **单条可替换排队**：自写 singleSlotQueue 接 aui ComposerPrimitive.Queue 管道（aui 自带 createMessageQueue 不是单槽语义）。
 - **数据层**：框架无关的 conversationController（ea870b6），不是 aui 的 LocalRuntime；React 经 ExternalStoreRuntime 接入。
 
@@ -670,3 +671,74 @@ Vue 侧**未重新截图**：Vue 视图依赖 Pinia/路由/i18n/SFC，不能用�
 - 失去 react-markdown 的 React 元素树和 `components` 覆写（代码块头、按语言定制、memo 化逐块渲染）；现为整段 HTML 重渲染。
 - GFM 能力按 markdown-it 默认：表格、删除线有；脚注、自动链接字面量规则与 remark-gfm 不同；任务列表用 ☐/☑ 文本（与 Vue 相同）。
 - 好处：Vue 与 React 用同一净化策略，不会漂移；`javascript:` 链接按 markdown-it validateLink 保留为纯文本（与 Vue 一致）。
+
+## 20. 第 6 棒：体验打磨（2026-11-13）
+
+出发点：用户反馈“差距很大、体验很差”，要求以 assistant-ui 为骨架重写观感。本节只记录做了什么、用什么验证、还差什么；**体验是否达标由用户在 TEST 上体验后判断，本节不下结论**。
+
+### 20.1 证据与方法
+- React：`node scripts/muyu365-react-selfcheck.mjs <dir>` 把真实的 `Composer` / `MessageRow` / `Welcome`（不再是静态替身）按场景渲染成独立 HTML（react-dom/server + mock 数据，无网络、无令牌）；Windows Chrome `--headless=new` 截图，默认 1100×755，另有 760 与 520 宽。截图：`docs/muyu365-evidence/leg6/`，共 12 张，均已逐张打开核对。
+- 静态渲染的限制：悬停态（时间、操作栏）在截图里按“最后一条回复常显”的规则出现；模型菜单展开、过程展开、输入框草稿由脚本内联 JS 打开/填充；媒体卡停在“生成中”（不取签名链接）。真实壳内未截图。
+- 「◇ 成果」按钮是自检脚本里的内联样式模拟（top 18 / right 22，120×36），不在 chat.css、不在岛 DOM（`tests/chatReactUi.test.ts` 有守卫）。
+- 旧 Vue 对照仍是第 3 棒 TEST 壳内截图 `vue-conversation.png`、`vue-empty.png`；Vue 没有工具卡、媒体、错误、排队、模型菜单的同状态截图，相应行只对照源码。
+
+### 20.2 旧 Vue / 第 5 棒 / 第 6 棒
+
+| 项 | 旧 Vue | 第 5 棒 React | 第 6 棒 React |
+|---|---|---|---|
+| 输入框高度 | 单行起，自增高 | 固定 2 行，显得高而空 | aui Input 自增高 1–8 行（`rows=1`） |
+| 附件入口 | 回形针 / “+” 图标 | 裸文字“附件” | 圆形“+”（AddAttachment），上传中描边变色 + aria-label |
+| 模型选择 | 胶囊下拉（模型 · 执行器） | 两个原生 `<select>` | 胶囊触发 + 弹出菜单，分组 聊天/生图/生视频/执行器，当前项勾选，方向键/Home/End/Esc，生图/生视频列出但不可选 |
+| 生成图片/视频 | “＋生成图片/视频”胶囊，跳生成页 | 无 | 虚线置灰胶囊（aria-disabled + tooltip“本期未接入 React 聊天”），点击只提示 |
+| 发送按钮 | 纸飞机，空输入浅蓝禁用 | 文字按钮常亮 | 圆形箭头：空输入禁用（aui canSend），有字高亮；运行中为黑色停止方块；运行中有字时多一个“加入待发送” |
+| 排队 | 有 | “待发送 1 条”条 | 同（在输入框内顶部） |
+| 快捷键提示 | 无 | 写在 placeholder 里 | 输入框下方小字“Enter 发送 · Shift + Enter 换行”（≤520px 隐藏） |
+| 执行过程位置 | 气泡外独立条 | 助手卡片内，灰字 | 助手回复去框后，作为回复上方独立浅底条 |
+| 执行过程头 | ⌄ + 蓝点 + 蓝标题 + 步数 + 状态 + 总耗时 | 黑标题、无点、无箭头，失败同色 | 箭头 + 蓝点（运行中闪烁）+ 蓝标题 + 步数/状态 + 总耗时；失败时点与文字琥珀色 + 警示图标 |
+| 执行过程展开 | 逐步列表（名称、耗时） | 每步粗体 + 原文；工具为另一种卡 | 每步一行：状态图标（转圈/勾/警示/叉）、名称、“工具”标签、非完成状态文字、耗时，下方摘要/查询/来源；失败行红色。耗时按 Vue 同一规则（`resolveProcessStepDurationMs`）算出后放进 aui 部件 `timing` |
+| 助手回复外框 | 整宽白卡片 | 厚边框白卡片 | 无框，正文 14px / 1.7 |
+| 用户气泡 | 品牌色填充 | 品牌渐变 | 品牌渐变（未改） |
+| 头像/姓名/时间 | 28px 头像 + 姓名 + 精确到秒的时间常驻 | 同 Vue | 20px 头像 + 姓名；时间默认隐藏，悬停/聚焦显示，姓名 title 也带时间 |
+| 复制/重新生成 | 标题行小图标常驻 | 同 Vue，图标小 | 气泡下方操作栏，32px 点击区 + tooltip；悬停或键盘聚焦显示，最后一条回复常显；复制成功变勾 |
+| 表格 | — | 1px 黑边、居中表头、无内边距 | 圆角浅边框、浅底左对齐表头、单元格内边距、超宽时表格内横向滚动 |
+| 行内代码 / 代码块 | — | 几乎无样式 | 浅底圆角等宽；代码块浅灰面板 + 悬停“复制”按钮（净化后插入，事件委托） |
+| 标题/引用/列表/链接 | — | 标题只是粗体 | h1–h4 字号层级，引用左竖条，列表间距与浅色标记，品牌色链接 |
+| 附件 chip | 图标 + 名称 + 大小，点击下载/图片预览 | 只有名称 | 按扩展名/MIME 的内置图标 + 截断名称 + 大小；已核验的点击下载（同 AttachmentChips.vue 路径），未核验显示“核验失败”状态 |
+| 图片/视频卡 | 有 | “生成中…”文字 | 虚线 4:3 占位（图标 + 状态 + 提示词），失败红色；出图后同第 5 棒 |
+| 错误 | 红色气泡 | 红色气泡 | 红框浅红底（助手唯一带框状态） |
+| 空态 | 左上标题 + 副标题 + 最近任务 | 居中标题 + 建议卡 | 同第 5 棒（居中标题 + 建议卡），≤520px 单列 |
+| 内容宽度 | 撑满 | 760px 居中 | 760px 居中，随 iframe 收窄（760 宽时两侧 20px） |
+| 「成果」按钮避让 | 壳内真实 | 视口顶 padding 64px（滚动后会被覆盖） | 视口 `margin-top: 60px` 固定留白（滚动时也不进入按钮区）；1100 / 760 / 520 宽截图均不遮挡头像与操作图标 |
+| 调试文字 | — | 截图里有“壳按钮模拟” | 产品 CSS/DOM 无；模拟按钮只在自检脚本里 |
+
+### 20.3 仍有差距（未做或做不到）
+- **空态与旧 Vue 不同**：没有“最近任务”列表、没有副标题；保留第 5 棒的居中标题 + 建议卡。是否要“最近任务”需拍板（岛内要接会话列表接口）。
+- **生成图片/视频**只是置灰入口，没有功能；旧 Vue 能跳生成页。
+- **图片附件无内嵌预览**（Vue 的 ImageAttachmentPreview）；未核验附件无“重新核验”按钮。
+- **工具卡**仍是通用一行：Core 不发 args / 结构化输出，无法按工具定制。
+- **代码块无语法高亮**：没有引入高亮库（体积）。
+- **重新生成**仍是“再问一次”（追加新一轮），不是替换；无 BranchPicker。
+- **悬停操作栏**在触屏上靠点击消息触发 `:focus-within`/`:hover`，未在真机验证。
+- **真实壳内未截图**：遮挡结论只在模拟按钮下成立；壳的按钮尺寸以 CoreRemoteHost.vue 读数为准。
+- 流式过程中自增高输入框、模型菜单键盘操作、拖拽上传等**交互只做了单测与静态渲染**，没有浏览器内 E2E；`tests/browser/muyu365-chat-react.cjs` 的选择器已改到新菜单，但本棒未在 TEST 跑（不碰 TEST）。
+
+### 20.4 体积（gzip，KB = 1024 B；基线 = c0a82a7 的 /tmp 临时 dist）
+
+| 指标 | 第 5 棒（c24bb45） | 第 6 棒（d797776） | 要求 |
+|---|---|---|---|
+| 默认 `/chat` 增量 | +427 B | +409 B | ≤ 1 KiB ✔ |
+| 默认 `/c/:id` 增量 | +963 B | +944 B | ≤ 1 KiB ✔（余量 80 B） |
+| 默认 entry 增量 | +481 B | +477 B | — |
+| React 岛额外 | 176.89 KB | **180.36 KB** | ≤ 180 ✘（超 0.36 KB） |
+
+- 岛增长约 3.5 KB：ChatApp.tsx +2.7 KB（模型菜单、Composer 状态、步骤行、文件 chip、代码复制）、icons.tsx 约 1.0 KB、attachments.ts 下载与类型判断约 0.6 KB。新代码全部在岛的懒加载包里，默认路径未增加。
+- 过程中发现：岛内直接 import `attachmentPresentation.formatAttachmentSize` 会让 Rollup 把它从 MessageItem 拆成共享 chunk，`/c/:id` 涨到 +1016 B（超线）；改为岛内 6 行 `formatSize`（同输出）后回到 +944 B。
+- **未为压线而砍体验。** 可选削减点（按收益排序，都未做）：
+  1. 文件类型图标 8 种 → 3 种（图片/表格/通用），约 −0.4 KB；
+  2. en-US 岛文案改为按需（只打当前语言），约 −0.4 KB；
+  3. `downloadFile` 改为复用 AttachmentChips.vue 的逻辑抽成共享模块（需同时改 Vue，且要再验 `/c/:id` 拆包），约 −0.4 KB；
+  4. 模型菜单的键盘漫游改用原生 `<select>` 视觉包装（会失去分组标签样式），约 −0.6 KB。
+  任意 1+2 即可回到 180 以下；需用户/协调者决定取舍。
+
+### 20.5 测试
+`npm run test:unit`：876 / 850 通过 / 0 失败 / 26 跳过 → **887 / 861 / 0 / 26**。新增 `tests/chatReactUi.test.ts`（10 项）：发送按钮状态机、模型菜单键盘漫游与分组/勾选/不可选、空输入发送禁用与运行中停止、过程行失败高亮与步骤耗时、悬停操作栏可聚焦且在气泡后、代码块复制按钮（净化策略未放松）、文件 chip（类型、大小、已核验可下载/未核验只显示状态）、布局守卫（模拟按钮不进产品）。`tests/chatReactAdapter.test.ts` 新增步骤耗时规则 1 项并更新 3 处断言（timing、chip 字段、头部结构）。
