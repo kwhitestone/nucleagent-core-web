@@ -41,12 +41,12 @@ const STRINGS: Record<ConversationLocale, Record<string, string>> = {
   "zh-CN": {
     stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务，Enter 发送，Shift + Enter 换行", loading: "正在加载对话…", process: "执行过程",
-    queued: "待发送 1 条", queuedRemove: "移除待发送消息",
+    queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
   },
   "en-US": {
     stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task. Enter to send, Shift + Enter for a new line", loading: "Loading conversation…", process: "Process",
-    queued: "1 queued", queuedRemove: "Remove queued message",
+    queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
   },
 };
 const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
@@ -56,7 +56,7 @@ export function ChatApp(props: ChatProps) {
   const { conversationId } = props;
   const locale = props.locale ?? "zh-CN";
   const t = useMemo(() => withIslandStrings(props.t, locale), [props.t, locale]);
-  const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? "消息格式异常，已跳过一条更新" : modelErrorMessage(error, t)), [t]);
+  const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
   const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
