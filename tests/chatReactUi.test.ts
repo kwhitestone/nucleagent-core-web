@@ -80,7 +80,12 @@ test("composer: empty idle send is a disabled aui button; hint, + attach, media 
   assert.match(html, /chatReact.hint/);
   assert.match(html, /data-testid="mc-attach"[^>]*aria-label="chatReact.attach"|aria-label="chatReact.attach"[^>]*data-testid="mc-attach"/);
   assert.equal(html.match(/aria-disabled="true"[^>]*data-testid="mc-gen-(image|video)"/g)?.length, 2);
-  assert.match(html, /data-testid="mc-model"[^>]*aria-haspopup="menu"/);
+  assert.match(html, /data-testid="mc-model"[^>]*aria-haspopup="menu"/);  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  assert.doesNotMatch(css, /\.mc-pill[^{]*\{[^}]*dashed/, "no dashed pills");
+  assert.match(css, /\.mc-model-trigger\[aria-expanded="true"\] \{[^}]*border-color/, "open picker has an active state");
+  assert.match(css, /\.mc-model-trigger\[aria-expanded="true"\] > svg \{ transform: rotate\(180deg\)/, "chevron flips");
+  assert.match(css, /\.mc-hint \{[^}]*color: var\(--fg-secondary\)/, "hint contrast");
+  assert.match(css, /\.mc-send:disabled \{[^}]*color: var\(--fg-secondary\)/, "disabled send icon visible");
 });
 
 test("composer: running with an empty input shows only the stop square", () => {
