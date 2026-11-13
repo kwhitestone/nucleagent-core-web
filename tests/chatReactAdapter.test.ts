@@ -53,7 +53,7 @@ const stateOf = (items: ConversationItem[], status: "idle" | "running" | "comple
   });
 
 test("switch: default vue; query beats storage; junk values ignored", () => {
-  const store = (v: string | null) => ({ getItem: () => v });
+  const store = (v: string | null) => ({ getItem: () => v, setItem: (_k: string, next: string) => { v = next; } });
   assert.equal(chatUi("", store(null)), "vue");
   assert.equal(chatUi("", store("react")), "react");
   assert.equal(chatUi("?chatUi=vue", store("react")), "vue");
@@ -68,6 +68,49 @@ test("switch: default vue; query beats storage; junk values ignored", () => {
   assert.equal(chatUi("", store(null), () => undefined), "vue");
   // Default fallback reads the loaded runtime config (fixture has no key → old).
   assert.equal(chatUi("", store(null)), "vue");
+});
+
+test("switch: hash query (shell forwards #/chat?chatUi=react) and persistence", () => {
+  const writes: string[] = [];
+  const memory = (v: string | null = null) => ({
+    getItem: () => v,
+    setItem: (k: string, next: string) => { writes.push(`${k}=${next}`); v = next; },
+  });
+  const none = () => undefined;
+  // Hash variants; URLSearchParams never sees the route path.
+  assert.equal(chatUi("", memory(), none, "#/chat?chatUi=react"), "react");
+  assert.equal(chatUi("", memory(), none, "#/c/1133?chatUi=react"), "react");
+  assert.equal(chatUi("", memory(), none, "#/c/1133?foo=1&chatUi=react&bar=2"), "react");
+  assert.equal(chatUi("", memory(), none, "#/chatUi=react"), "vue");
+  assert.equal(chatUi("", memory(), none, "#chatUi=react"), "vue");
+  assert.equal(chatUi("", memory(), none, "#/chat?chatUi=svelte"), "vue");
+  // search beats hash; hash beats storage and runtime default.
+  assert.equal(chatUi("?chatUi=vue", memory(), none, "#/chat?chatUi=react"), "vue");
+  assert.equal(chatUi("?chatUi=svelte", memory(), none, "#/chat?chatUi=react"), "react");
+  assert.equal(chatUi("", memory("react"), () => "react", "#/chat?chatUi=vue"), "vue");
+  // A valid URL value is persisted, so the next load (hash rewritten by routing) keeps it.
+  writes.length = 0;
+  const kept = memory();
+  assert.equal(chatUi("", kept, none, "#/chat?chatUi=react"), "react");
+  assert.equal(chatUi("", kept, none, "#/c/7"), "react");
+  // ?chatUi=vue writes vue (not a clear), so it also overrides CHAT_UI_DEFAULT=react.
+  assert.equal(chatUi("?chatUi=vue", kept, none, ""), "vue");
+  assert.equal(chatUi("", kept, () => "react", "#/c/7"), "vue");
+  assert.deepEqual(writes, ["nucleagent_chat_ui=react", "nucleagent_chat_ui=vue"]);
+  // Junk and absent values never write.
+  writes.length = 0;
+  chatUi("?chatUi=svelte", memory(), none, "#/chat?chatUi=x");
+  chatUi("", memory(), none, "");
+  assert.deepEqual(writes, []);
+  // Storage throwing (read or write): URL choice applies to this load only; else runtime default.
+  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.equal(chatUi("", blocked, none, "#/chat?chatUi=react"), "react");
+  assert.equal(chatUi("?chatUi=vue", blocked, () => "react", ""), "vue");
+  assert.equal(chatUi("", blocked, () => "react", ""), "react");
+  assert.equal(chatUi("", blocked, none, ""), "vue");
+  assert.equal(chatUi("", undefined, none, "#/chat?chatUi=react"), "react");
+  // No params, no storage, no runtime default: old view.
+  assert.equal(chatUi("", memory(), none, ""), "vue");
 });
 
 test("adapter: user items split turns; process → one data-process part, answer → text; hidden lanes dropped", () => {
