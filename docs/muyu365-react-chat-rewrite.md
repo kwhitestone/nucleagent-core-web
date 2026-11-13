@@ -444,6 +444,73 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 
 前一位 worker 留下了未跟踪的 `scripts/muyu365-react-selfcheck.mjs`，运行时报 “must be used within ThreadPrimitive.Viewport”。已修好并提交：外层改成 `ThreadPrimitive.Root`；输入框改为同 class 的普通 `<textarea>`，因为 `ComposerPrimitive.Input` 在这个 SSR 页里拿不到 Viewport 的滚动 store。用法：`node scripts/muyu365-react-selfcheck.mjs out.html`，用 mock 数据渲染，不联网、不用令牌，生成带 aurora.css + chat.css 的静态页。已核对输出含 2 条消息行、1 个合并的“执行过程”行、头像、复制按钮、附件名。**视觉截图比对没有做**：本棒没有打开浏览器截图，只检查了 HTML 结构。
 
+## 16. 入口改造（第 4 棒，2026-11-13）
+
+> 提交：`41e1614` chatUi 读 hash 参数并持久化、`5b55333` 壳在 Core 启动后才送来 `?chatUi=` 时的处理。默认行为（无参数、无 localStorage、无 `CHAT_UI_DEFAULT`）仍是旧 Vue 视图。
+
+### 16.1 TEST 上实测的入口现状（第 4 棒之前，发布 worker 读回）
+
+1. 在壳里访问 `https://nucleagent-web.debug.ndaeweb.com/chat?chatUi=react`，壳会把参数转给 core-web iframe，但放在 **hash** 里（`…/#/chat?chatUi=react`）。旧的 `chatUi()` 只读 `location.search`，所以仍是 Vue。
+2. 直接访问 core-web 域名会被跳回壳，这条路走不通。
+3. 在 iframe 里设 localStorage `nucleagent_chat_ui=react` 再刷新，可以进入 React 版（已走通）。
+
+### 16.2 改动
+
+- `src/chat-react/chatUi.ts` 的 `chatUi()`：
+  - 优先级：`location.search` 的 `chatUi` > `location.hash` 中第一个 `?` 之后的 query 的 `chatUi`（兼容 `#/chat?…`、`#/c/1133?…`、多参数；不把整个 hash 交给 URLSearchParams）> localStorage > runtime-config `CHAT_UI_DEFAULT` > vue。非法值一律忽略。
+  - 持久化：URL 中出现合法的 `react|vue` 时写入 localStorage `nucleagent_chat_ui`。`vue` 选择**写入 vue**（不清除），这样在 `CHAT_UI_DEFAULT=react` 的环境里 `?chatUi=vue` 也能稳定回到旧版。
+  - localStorage 读或写抛异常：URL 值只对本次加载生效，否则走 runtime 默认值。写入只发生在 core-web 源下，只写这一个开关值，不涉及令牌。
+- 壳内时序问题（读壳代码时发现，`5b55333`）：
+  - 壳的 iframe `src` 是固定的 `SUB_APPS.core.url`（`nucleagent-web/src/runtime/RemoteFrame.vue:70`），所以 Core 先以 `#/chat` 启动。
+  - 握手 ready 后，壳才通过 `view` 消息把 `?chatUi=react` 送进来（`CoreRemoteHost.vue:41`），Core 再 `router.push` 到 `/chat?chatUi=react`。
+  - 这时 `/chat` 的组件已经解析过，vue-router 会缓存它，原来的开关不会再次求值。
+  - 处理办法：`loadedChatUi()` 规定每次页面加载只做一次选择。`conversation` 插件注册一个 `router.beforeEach` 守卫，调用 `followChatUiQuery`，对目标路由的 `chatUi` 查询做如下处理：
+    - 还没做过选择：直接采用并持久化。
+    - 已选的 UI 与请求一致：不处理。
+    - 请求另一种 UI：先 `history.replaceState` 到带参数的 URL，再 `location.reload()`。重载后的 URL 带着参数，启动时直接选中，不会循环。
+  - 插件 `destroy` 时移除该守卫。
+- 测试（`tests/chatReactAdapter.test.ts`，新增 2 项）：
+  - hash 变体（含 `#/chatUi=react`、`#chatUi=react` 这类没有 query 的写法）。
+  - search 优先于 hash，hash 优先于 storage 和 runtime 默认值。
+  - 非法值忽略且不写入。
+  - 持久化后 hash 被改写时选择不丢；`?chatUi=vue` 写入 vue，并覆盖 `CHAT_UI_DEFAULT=react`。
+  - storage 读写抛异常或不可用时降级。
+  - 无参数时默认 vue。
+  - 启动后才到达的查询：先锁定，再请求另一种 UI 时只重载一次，非法值忽略。
+- 变异检验：
+  - 共 10 个变异，全部被测试杀死。
+  - `41e1614` 的 6 个：hash 优先于 search、忽略 hash、整个 hash 交给 URLSearchParams、只持久化 react、不持久化、storage 被阻断时丢掉 URL 值。
+  - `5b55333` 的 4 个：总是重载、从不重载、未选时就重载、不校验取值。
+
+### 16.3 壳侧透传结论（只读 `nucleagent-web@607c4ca` 的 `src/addons/core-remote/*`，未改壳）
+
+- **会透传**：壳在 iframe ready 时发一次 `view`，此后壳路由每次变化（`watch(route.fullPath)`，`CoreRemoteHost.vue:109-113`）也会发。消息里的 `path` 由 `router.resolve({ path: childPath, query: route.query })` 生成，**包含壳 URL 当前的全部 query**。因此只要壳地址栏里还有 `?chatUi=`，每次都会转给 Core。
+- **不会长期保留**：
+  - 侧栏点击、Core 上报的会话提升（`conversationParentPath` → `router.replace('/chat/:id')`）、`view-changed` 跟随，生成的都是不带 `chatUi` 的路径，壳 URL 里的参数随之消失。
+  - Core 内部路由跳转同样会改写 hash。
+  - 所以**不能依赖壳持续透传**。本棒的做法是首次见到参数就写入 localStorage，之后不带参数也保持选择。
+- 由此带来的行为：参数从 URL 消失后，下一次 `view` 不再带 `chatUi`，Core 不做处理，继续用已选 UI；刷新后读 localStorage，结果一致。
+
+### 16.4 新入口用法与回退
+
+- 进入 React 版：在壳里打开 `https://nucleagent-web.debug.ndaeweb.com/chat?chatUi=react`。如果 iframe 已用 Vue 启动，会自动重载一次进入 React，并记住选择，之后不带参数也是 React。
+- 回到旧版：打开 `…/chat?chatUi=vue`，同样会重载一次并记住 vue。也可以在 iframe 里删除 localStorage 的 `nucleagent_chat_ui`（这时回到 `CHAT_UI_DEFAULT` 或 vue）。
+- 隐私模式或禁用 storage：参数只对当前页面加载生效，路由跳转后保持，刷新后丢失。
+- **未在 TEST 上验证**：本棒不发布、不部署，上面的流程只做了单元层验证，需由下一棒发布后在壳里实点确认。
+
+### 16.5 测试、构建与体积（gzip，KB = 1024 B，`5b55333` 构建；两个基线都在本机用同一 node_modules 现场构建）
+
+| 项 | vs `c0a82a7`（MUYU-365 前） | vs `af58d0d`（第 4 棒前） | 目标 |
+|---|---|---|---|
+| 默认路径 `/chat` | +414 B | +167 B | — |
+| 默认路径 `/c/:id` | **+963 B** | +175 B | ≤ 1 KiB：达标（余量 61 B） |
+| 默认入口 | +489 B | +204 B | — |
+| React 岛额外加载 | 172.92 KiB | 不变 | ≤ 180 KiB |
+
+- 判定逻辑约 200 B，仍放在 main，没有挪进懒加载包。原因是它决定加载哪个包，挪进去就需要先加载岛才能判定。注意 `/c/:id` 的 1 KiB 余量只剩 61 B，后续再往默认路径加东西就要先腾空间。
+- `npm run test:unit`：基线 869 项（843 通过 / 0 失败 / 26 跳过），现在 **871 项（845 通过 / 0 失败 / 26 跳过）**，覆盖率门槛通过。
+- `npx vue-tsc -b && npx vite build`：通过。
+
 ## 15. 4 项未核项核实结论
 
 > 来源：独立核实 worker 的报告，原文见 `docs/muyu365-verification-report.md`（基线 `64152ff`）。数值以本节标注的最新实测为准。
