@@ -1,0 +1,153 @@
+{
+  "runs": [
+    {
+      "at": "2026-11-13T06:17:30.889Z",
+      "note": "react run (t0 = Enter keydown); vue part of this run timed out on the Home Enter key and was re-run below",
+      "checks": [
+        {
+          "name": "react: switch selected the react view",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "react: grouped picker (chat/image/video/executor from Toolgate types + Core)",
+          "ok": true,
+          "detail": "[{\"kind\":\"chat\",\"n\":94},{\"kind\":\"image\",\"n\":24},{\"kind\":\"video\",\"n\":51},{\"kind\":\"executor\",\"n\":6}]"
+        },
+        {
+          "name": "react: new conversation created and opened",
+          "ok": true,
+          "detail": "shell url /chat/1130"
+        },
+        {
+          "name": "react: follow-ups answered without duplicate bubbles",
+          "ok": true,
+          "detail": "answers=2"
+        },
+        {
+          "name": "react: optimistic user bubbles replaced, not duplicated",
+          "ok": true,
+          "detail": "user bubbles=2"
+        },
+        {
+          "name": "react: Stop returns the composer to Send (cancelled)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "react: requests carried shell-issued Authorization",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "react: token absent from core-web localStorage",
+          "ok": true,
+          "detail": "keys=nucleagent_chat_ui,nucleagent_locale,nucleagent_session_version"
+        },
+        {
+          "name": "react: token absent from console",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "vue: switch selected the vue view",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "latencyMs": {
+        "vue": [],
+        "react": [
+          25326,
+          3530
+        ]
+      },
+      "conversations": [
+        {
+          "mode": "react",
+          "id": "1130"
+        }
+      ],
+      "groups": [
+        {
+          "kind": "chat",
+          "n": 94
+        },
+        {
+          "kind": "image",
+          "n": 24
+        },
+        {
+          "kind": "video",
+          "n": 51
+        },
+        {
+          "kind": "executor",
+          "n": 6
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T06:19:04.393Z",
+      "note": "vue run (t0 = click on Send) + vue reads the React conversation",
+      "checks": [
+        {
+          "name": "vue: switch selected the vue view",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "vue: new conversation created and opened",
+          "ok": true,
+          "detail": "shell url /chat/1131"
+        },
+        {
+          "name": "vue: follow-ups answered without duplicate bubbles",
+          "ok": true,
+          "detail": "answers=2"
+        },
+        {
+          "name": "vue: requests carried shell-issued Authorization",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "vue: token absent from core-web localStorage",
+          "ok": true,
+          "detail": "keys=nucleagent_chat_ui,nucleagent_locale,nucleagent_session_version"
+        },
+        {
+          "name": "vue: token absent from console",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "name": "vue reads the React-written conversation",
+          "ok": true,
+          "detail": "answers=2"
+        }
+      ],
+      "latencyMs": {
+        "vue": [
+          25961,
+          4073
+        ],
+        "react": []
+      },
+      "conversations": [
+        {
+          "mode": "vue",
+          "id": "1131"
+        }
+      ]
+    }
+  ],
+  "screens": [
+    "docs/muyu365-evidence/react-cancelled.png",
+    "docs/muyu365-evidence/react-conversation.png",
+    "docs/muyu365-evidence/react-empty.png",
+    "docs/muyu365-evidence/vue-conversation.png",
+    "docs/muyu365-evidence/vue-empty.png",
+    "docs/muyu365-evidence/vue-reads-react-conversation.png"
+  ]
+}

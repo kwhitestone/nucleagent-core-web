@@ -289,3 +289,83 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 | U6 | 重新生成/编辑/分支 | a. 只做“重新生成 = 再发一轮”（325 §B.7） b. 后端加分支，启用 aui BranchPicker | b 要大改 Core 的消息模型 | **a** |
 | U7 | 默认值切到 react 的条件 | a. P1 对等 + 双开关 E2E 全绿 + TEST 灰度 2 周 b. 更早 | — | **a** |
 | U8 | 用户卡是否借这次改用壳的 `/remote/account-ui.js` | a. 本期不动 b. 一起接入（参考 im-web） | b 多 2–3 天 | **a** |
+
+## 13. MVP 结果（第 2 棒，2026-11-13）
+
+> 代码：`f1c8b63`（依赖与构建）、`ba7baca`（React 岛 MVP）。验收在 `ba7baca` 的 `npm run build` 产物上进行。
+
+### 13.1 做了什么
+
+- 开关：`?chatUi=react` 或 localStorage `nucleagent_chat_ui=react` 时，`/chat`、`/c/:id` 加载 `views/ChatHost.vue`，懒加载 `src/chat-react/mount.tsx` 后用 `createRoot` 挂载；其它情况仍是原 Vue 视图（`src/chat-react/chatUi.ts`）。runtime-config 键 `CHAT_UI_DEFAULT` 未加（U4）。
+- 运行时：`useExternalStoreRuntime`。**原 `useConversation` 控制器原样复用**（快照、`streamMessages` SSE 解码、v2 reducer、乐观发送、停止、重连），只是放在一个脱离组件的 Vue `effectScope` 里跑，React 订阅它的 state（`useCoreConversation.ts`）。对 `useConversation.ts` 只改了一行：不在组件里时不注册 `onBeforeUnmount`。
+- 适配层 `threadMessages.ts`：沿用 `selectTurns` 的可见性规则；每条用户消息一条 user message，两条用户消息之间的条目合成一条 assistant message（process → `reasoning` part，answer/system → `text` part），状态映射到 aui 的 running / complete / incomplete(cancelled|error)。
+- 发送失败抛 `MessageNotSentError`，aui 会把草稿还给输入框。
+- 模型分组下拉 `modelGroups.ts`：聊天 / 生图 / 生视频来自 Toolgate 类型目录（复用 `pickerOptions`），执行器来自 `GET execution-backends`；改选后 PATCH，与 `Conversation.vue` 同一接口。生图/生视频只列出、置灰（MVP 不触发收费调用）。
+- 令牌：React 不碰令牌，所有请求走原 `http`/`streamMessages`（`getPlatformRuntime`）；会话变更事件沿用 TaskConversation 的策略（续期保留历史，登出 dispose）。
+- 样式：`chat-react/chat.css`，只用 aurora 变量和 `mc-` 前缀，无全局 reset、无 Tailwind；字重只有 400/500。
+- Markdown 净化策略抽成 `task-conversation/markdown.ts`，Vue 与 React 共用同一份（行为不变）。
+
+### 13.2 测试与构建
+
+| | 基线 `6eaacd0` | 改动后 `ba7baca` |
+|---|---|---|
+| `npm run test:unit` | 850 项：824 通过 / 0 失败 / 26 跳过；覆盖率门槛通过 | 856 项：830 通过 / 0 失败 / 26 跳过；覆盖率门槛通过 |
+| `vue-tsc -b && vite build` | 通过 | 通过 |
+
+新增 `tests/chatReactAdapter.test.ts`（6 项）：开关优先级、Core→aui 消息映射、经真实控制器的流式累积与取消、发送失败还原草稿、模型分组（含旧 Core 回退）、aui 组件经 ExternalStoreRuntime 渲染（`react-dom/server`）。做过变异检验：把 `isRunning` 改成恒 false、或让 `onNew` 不发送，相关用例都会失败。
+
+依赖：`react`/`react-dom` 19.3.1、`@assistant-ui/react` 0.15.36、`@types/react(-dom)` 19.3.0、`@vitejs/plugin-react` 4.7.0，全部精确锁定。副作用：aui 要求 `zod ^4.6.7`，lock 里 zod 4.6.5→4.6.7，`@babel/parser`/`types` 7.29.8→7.29.14。
+
+### 13.3 包体积（gzip，`node scripts/muyu365-bundle-size.mjs dist <基线dist>`；表中 KB = 1024 B）
+
+| 项 | 基线 | MVP | 差值 | 目标 |
+|---|---|---|---|---|
+| 默认路径 `/chat`（入口 + Home 的静态依赖） | 202.42 KB | 203.41 KB | **+1015 B** | ≤ 1 KiB：达标（余 9 B） |
+| 默认路径 `/c/:id` | 278.20 KB | 279.49 KB | **+1318 B** | ≤ 1 KiB：**未达标**（超 294 B） |
+| React 岛额外加载（`ChatHost` + `mount`，开关打开才下载） | — | **182.33 KiB**（约 186 707 B；Vite 显示 `mount` 186.01 kB） | — | ≤ 180 KB（U5）：**超出**（按 KiB 超 2.3，按 kB 超 6.7） |
+| 全部 JS | 401.81 KB | 585.54 KB | +183.72 KB | — |
+
+默认路径增量来源：`main` +564 B（zod 补丁版本约 160 B、开关判定、两个新分包名进了预加载表），其余是 Rollup 重新切块（`useConversation` 被拆成 React 岛与 Vue 共用的独立分包）。要压到 1 KB 内，可以把开关判定移出 `main`，或给 `useConversation` 固定 `manualChunks`；本棒没做。
+
+### 13.4 首字延迟
+
+方法：`tests/browser/muyu365-chat-react.cjs` 在壳内打开会话，`MutationObserver` 记录从点击发送（捕获阶段）到新的助手气泡出现首个字符的 `performance.now()` 差值；提示词固定为“只回复一个字：好”，每个视图先新建会话再追问 N 次，取中位数。
+
+| 视图 | 新建会话首条 | 追问 | 中位数 |
+|---|---|---|---|
+| React | 25 326 ms | 3 530 ms | 3 530 ms（2 个样本取较小） |
+| Vue | 25 961 ms | 4 073 ms | 4 073 ms |
+
+**结论有限**：每边只有 2 个样本，而且首条耗时被排队与 Agent 初始化（约 25 s，后端）主导，前后端差异远小于后端波动；React 一侧的 t0 是 Enter 按键、Vue 一侧是点击（脚本已统一为点击，下次跑一致）。§9 要求的“各 30 次交替、报 p50/p95”**没有跑**（费用约束）。脚本支持 `--n 30` 直接复跑。
+
+### 13.5 TEST 验收（层级：**TEST 壳 + TEST 后端 + 本地构建产物**）
+
+做法：在自己的业务浏览器（`biz-browser open --task MUYU-365 --env test`，端口 9465，主账号 880723，已 close）里打开真实 TEST 壳 `nucleagent-web.debug.ndaeweb.com`，用 Playwright 的请求拦截把 **TEST core-web 源的静态文件**（HTML 与 `/assets/*`）换成本 worktree 的 `dist`；`/api`、`/runtime-config.json` 原样直连 TEST，令牌只经壳的 postMessage 握手进入 iframe。**没有部署任何东西**，所以这不是“TEST 已发布页面”的验收，而是“真实壳 + 真实后端 + 本地前端产物”。
+
+| 验收项 | 结果 |
+|---|---|
+| M1 令牌由壳传入，不另外登录 | 通过。请求都带壳下发的 Authorization；core-web localStorage 只有 `nucleagent_chat_ui / nucleagent_locale / nucleagent_session_version`，令牌不在其中；console 里没有令牌。续期/401 未在 TEST 上触发验证（只有单元层的既有用例） |
+| M2 发送 | 通过。React 新建会话 1130 并追问 1 次；乐观气泡被替换，用户气泡数 = 2，没有重复 |
+| M3 流式 | 部分。SSE 更新逐步上屏（同一套解码器与 reducer）；断网 30 s 续传**未在 TEST 上测** |
+| M4 取消 | 通过。运行中点“停止”，按钮回到“发送”，会话显示“排队已取消”；Vue 打开同一会话显示“已停止” |
+| M5 历史 | 通过。壳侧栏照常出现新会话；Vue 视图打开 React 写的会话 1130，内容完整一致 |
+| M6 模型分组 | 通过（读取）。TEST 返回 聊天 94 / 生图 24 / 生视频 51 / 执行器 6；切换后的 PATCH **未在 TEST 上点**（避免改动会话设置） |
+
+截图（`docs/muyu365-evidence/`，已逐张打开核对，无令牌/账号信息；`vue-empty.png` 里有他人测试任务的标题）：`react-empty.png`、`react-conversation.png`、`react-cancelled.png`、`vue-empty.png`、`vue-conversation.png`、`vue-reads-react-conversation.png`；结构化结果 `acceptance.json`。
+
+费用：共 5 次短文本调用（React 2 次 + 1 次在排队阶段被取消；Vue 2 次），默认模型、Codex Agent；没有生图/生视频。按每次几万 token 上下文粗估合计 **< ¥3**，未从账单核实。
+
+### 13.6 视觉一致性（人工对比截图）
+
+一致：Noto Sans SC、14px 正文、品牌色 `#3072FF` 系、圆角 16/999、输入框聚焦光晕、亮色背景。
+差异（P1 补）：React 没有头像、时间戳、复制按钮；过程条目是每条一个折叠行（“排队等待”“Agent 初始化”），Vue 是合并的“执行过程 N 个步骤 · 总耗时”；用户气泡是浅蓝底深字，Vue 是品牌蓝底白字；没有会话标题栏与“更多”菜单；没有生图/生视频入口和附件按钮。
+
+### 13.7 未完成与偏差
+
+- 未完成：附件、澄清、工具卡片、产物、生图/生视频、多后端对比、删除/最近删除、首页建议卡、i18n 全量；断网续传与续期的 TEST 实测；§9 的 30 次延迟采样；E2E 双开关回归。
+- 偏差：
+  1. 测试框架是仓内的 `node --test` + Vite SSR，**不是 vitest**（仓里没有 vitest，按“沿用仓内框架”处理）；组件测试用 `react-dom/server` 渲染，没有引入 jsdom。
+  2. 控制器没有移植成 `useSyncExternalStore` store，而是把 Vue 版原样放进 `effectScope`——改动最小，但 React 岛因此仍依赖 `vue` 运行时（本来就在包里）。
+  3. 模型下拉是“模型 + 执行器”两个 `<select>`，不是 325 §E 设想的单个统一下拉，因为会话把两者分开存。
+  4. 包体积：`/c/:id` 默认路径 +1318 B、React 岛 182.3 KiB，都略超目标（见 13.3）。
+- 浏览器验收脚本放在 `tests/browser/muyu365-chat-react.cjs`，沿用 nucleagent-web 的 `*.cjs` + `connectOverCDP` 写法；依赖调用方传入 playwright-core 路径（仓内不装）。
