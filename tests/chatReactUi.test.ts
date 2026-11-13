@@ -145,3 +145,18 @@ test("hover action bar: under the bubble, real buttons (keyboard focusable, ≥2
   assert.match(css, /\.mc-msg:focus-within \.mc-actions/, "keyboard focus reveals the bar");
   assert.match(css, /\.mc-icon-btn \{[^}]*width: 32px;[^}]*height: 32px;/s);
 });
+
+test("code blocks: copy buttons are added after sanitizing (idempotent, text-only); replies still cannot inject buttons", async () => {
+  const { renderMarkdown } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/markdown.ts") as typeof import("../src/addons/conversation/task-conversation/markdown.ts");
+  const doc = new JSDOM("").window.document;
+  const box = doc.createElement("div");
+  box.innerHTML = renderMarkdown("```js\nconst a = 1;\n```\n\n<button onclick=alert(1)>x</button>\n\n```\n<b>two</b>\n```");
+  assert.equal(box.querySelectorAll("button").length, 0, "markdown.ts policy unchanged: no buttons from content");
+  app.addCodeCopyButtons(box, "复制<img>");
+  app.addCodeCopyButtons(box, "复制<img>");
+  const buttons = [...box.querySelectorAll("pre > button.mc-code-copy")];
+  assert.equal(buttons.length, 2, "one per block, not duplicated");
+  assert.equal(buttons[0].textContent, "复制<img>");
+  assert.equal(box.querySelectorAll("img").length, 0, "label is text, never HTML");
+  assert.equal(box.querySelectorAll("pre code")[1].textContent, "<b>two</b>\n", "copied text = the code element only");
+});

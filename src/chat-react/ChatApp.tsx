@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -301,10 +301,37 @@ const MessageAttachmentChips = () => (
  * same markdown-it + DOMPurify policy as MarkdownContent.vue (task-conversation/markdown.ts), which the
  * default Vue chunk already ships; sealed tool links open through Core (openSealedLinkOnClick).
  */
-function MarkdownText() {
+function MarkdownText({ t }: { t: Translate }) {
   const { text, status } = useSmooth(useMessagePartText());
   const html = useMemo(() => renderMarkdown(text), [text]);
-  return <div className="mc-md" data-status={status.type} onClick={(e) => void openSealedLinkOnClick(e.nativeEvent)} dangerouslySetInnerHTML={{ __html: html }} />;
+  const root = useRef<HTMLDivElement>(null);
+  // Copy buttons are our own nodes added after sanitizing (DOMPurify still forbids <button> in replies); one delegated click handler.
+  useEffect(() => { if (root.current) addCodeCopyButtons(root.current, t("common.copy")); }, [html, t]);
+  const onClick = (e: MouseEvent<HTMLDivElement>) => {
+    const button = (e.target as Element).closest?.("button.mc-code-copy");
+    if (!button) return void openSealedLinkOnClick(e.nativeEvent);
+    const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+    void copyRawBody(code, () => button.isConnected).then((r) => {
+      if (!r) return;
+      button.setAttribute("data-state", r);
+      button.textContent = r === "copied" ? t("common.copied") : t("common.operationFailed");
+      setTimeout(() => { button.removeAttribute("data-state"); button.textContent = t("common.copy"); }, 1500);
+    });
+  };
+  return <div ref={root} className="mc-md" data-status={status.type} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/** Adds one text-only copy button to each fenced code block (idempotent; text set via textContent, never HTML). */
+export function addCodeCopyButtons(root: ParentNode, label: string) {
+  for (const pre of root.querySelectorAll("pre")) {
+    if (pre.querySelector(":scope > button.mc-code-copy")) continue;
+    const button = pre.ownerDocument.createElement("button");
+    button.type = "button";
+    button.className = "mc-code-copy";
+    button.textContent = label;
+    button.setAttribute("aria-label", label);
+    pre.prepend(button);
+  }
 }
 
 /** Core step status (threadMessages.ts stores it in providerMetadata.core) → the four states the UI shows. */
@@ -401,7 +428,7 @@ function Parts({ t }: { t: Translate }) {
           case "indicator":
             return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
           case "text":
-            return <MarkdownText />;
+            return <MarkdownText t={t} />;
           case "reasoning": {
             const [title, ...rest] = part.text.split("\n");
             return (
