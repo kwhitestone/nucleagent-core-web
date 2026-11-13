@@ -2,7 +2,7 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { ConversationItem, ConversationLocale } from "../addons/conversation/task-conversation/core/types.ts";
 import { selectTurns, type ConversationState } from "../addons/conversation/task-conversation/core/reducer.ts";
 import { executionTimingLabel, executionTimings } from "../addons/conversation/task-conversation/vue/executionTiming.ts";
-import { orderTurnItemsForDisplay, processGroupStatus, processGroupSummary, processItemForDisplay } from "../addons/conversation/task-conversation/vue/processPresentation.ts";
+import { orderTurnItemsForDisplay, processGroupStatus, processGroupSummary, processItemForDisplay, processToolDetails } from "../addons/conversation/task-conversation/vue/processPresentation.ts";
 
 type Status = NonNullable<ThreadMessageLike["status"]>;
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
@@ -20,12 +20,33 @@ function statusOf(items: readonly ConversationItem[]): Status {
   return { type: "complete", reason: "stop" };
 }
 
-/** One collapsed "执行过程" row for a run of contiguous process items (same summary as the Vue view). */
+/** Header of one "执行过程" group (same summary as the Vue view); its steps follow as reasoning / tool-call parts. */
 export interface ProcessPartData {
   summary: string;
   timing: string;
   status: ConversationItem["status"];
-  steps: { id: string; title: string; content: string; status: ConversationItem["status"] }[];
+}
+
+/** A media generation message (image/video task) and whether it failed. */
+export interface MediaPartData { media: { kind?: string; taskId?: number }; prompt: string; failed: boolean }
+
+/** What a Core tool step carries into its aui tool-call card (no args: Core only sends the outcome). */
+export interface ToolResult { content: string; query?: string; sources?: readonly { title?: string; domain?: string; url?: string }[] }
+
+const terminal = (item: ConversationItem) => item.status !== "pending" && item.status !== "streaming";
+
+/** One Core process step → an aui part: tool calls become `tool-call`, everything else `reasoning`. */
+function stepPart(item: ConversationItem): Part {
+  const toolCallId = typeof item.data?.toolCallId === "string" ? item.data.toolCallId : undefined;
+  if (item.kind === "tool_call" || toolCallId) {
+    const details = processToolDetails(item.data);
+    const result: ToolResult = { content: item.content, ...(details?.query ? { query: details.query } : {}), ...(details?.sources ? { sources: details.sources } : {}) };
+    return {
+      type: "tool-call", toolCallId: toolCallId ?? item.id, toolName: item.title || item.kind, args: {},
+      ...(terminal(item) ? { result, isError: item.status === "failed" } : {}),
+    };
+  }
+  return { type: "reasoning", id: item.id, text: [item.title, item.content].filter(Boolean).join("\n") };
 }
 
 export interface ThreadOptions { locale: ConversationLocale; nowMs: number }
@@ -35,22 +56,23 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
   let run: ConversationItem[] = [];
   const flush = () => {
     if (!run.length) return;
-    const data: ProcessPartData = {
-      summary: processGroupSummary(run, locale), timing, status: processGroupStatus(run),
-      steps: run.map((i) => ({ id: i.id, title: i.title ?? "", content: i.content, status: i.status })),
-    };
-    parts.push({ type: "data-process", id: run[0].id, data });
+    const data: ProcessPartData = { summary: processGroupSummary(run, locale), timing, status: processGroupStatus(run) };
+    parts.push({ type: "data-process", id: run[0].id, data }, ...run.map(stepPart));
     run = [];
   };
   // Late process rows move before the answer, as in the Vue view.
   for (const raw of orderTurnItemsForDisplay(group)) {
     const item = processItemForDisplay(raw, locale);
-    if (item.lane === "process") { run.push(item); continue; }
+    // tool/progress rows join the fold too, so every step group has its 执行过程 header.
+    if (item.lane === "process" || item.lane === "tool" || item.lane === "progress") {
+      if (item.lane === "process" || item.title || item.content) run.push(item);
+      continue;
+    }
     flush();
-    if (item.lane === "tool" || item.lane === "progress") {
-      const text = [item.title, item.content].filter(Boolean).join("\n");
-      if (text) parts.push({ type: "reasoning", text });
-    } else if (item.content) parts.push({ type: "text", text: item.content });
+    if (item.data?.media) parts.push({ type: "data-media", id: item.id, data: { media: item.data.media, prompt: item.content, failed: item.lane === "system" || typeof item.data.errorCode === "string" } });
+    else if (item.content) parts.push({ type: "text", text: item.content });
+    // Files the assistant produced (storage refs only), shown as chips after the text.
+    if (item.attachments?.length) parts.push({ type: "data-files", id: `${item.id}-files`, data: item.attachments.map((a) => ({ id: a.id, name: a.name })) });
   }
   flush();
   return parts;
@@ -59,8 +81,9 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
 /**
  * Core items (same visibility rules as the Vue view, via selectTurns) → assistant-ui messages.
  * Each user item is one user message; the items between two user items join one assistant
- * message (contiguous process items → one `data-process` part, tool/progress → reasoning,
- * answer/system → text).
+ * message (contiguous process items → a `data-process` header followed by one reasoning or
+ * tool-call part per step, grouped in the view by MessagePrimitive.GroupedParts; answer/system → text;
+ * media generation → `data-media`; produced files → `data-files`).
  */
 export function toThreadMessages(state: ConversationState, options: ThreadOptions = { locale: "zh-CN", nowMs: Date.now() }): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];

@@ -4,10 +4,11 @@ import { isRunning, toThreadMessages, type ThreadOptions } from "./threadMessage
 import { toConversationAttachments } from "./attachments";
 import { isConflict, type SingleSlot } from "./singleSlotQueue";
 
-/** The two controller calls the composer needs (useConversation's send/stop). */
+/** The controller calls the thread needs (conversationController's send/stop/loadOlder). */
 export interface ChatController {
   send(content: string, attachments?: readonly ConversationAttachment[]): Promise<void>;
   stop(): Promise<void>;
+  loadOlder?(): Promise<void>;
 }
 
 /** Sends one composer message through the controller (text + stored attachment refs). */
@@ -27,8 +28,9 @@ export function externalStore(
   state: ConversationState, controller: ChatController, options?: ThreadOptions, attachments?: AttachmentAdapter,
   slot?: SingleSlot,
 ): ExternalStoreAdapter<ThreadMessageLike> {
+  const messages = toThreadMessages(state, options);
   return {
-    messages: toThreadMessages(state, options),
+    messages,
     convertMessage: (message) => message,
     isRunning: isRunning(state),
     async onNew(message) {
@@ -42,6 +44,13 @@ export function externalStore(
       }
     },
     onCancel: () => controller.stop(),
+    // 重新生成 = resend the question this reply answered (Core has no rerun endpoint; the adapter rejects it).
+    async onReload(parentId) {
+      const question = messages.find((m) => m.id === parentId && m.role === "user");
+      const text = Array.isArray(question?.content) ? question.content.map((p) => (p.type === "text" ? p.text : "")).join("") : "";
+      if (text) await controller.send(text);
+    },
+    ...(controller.loadOlder ? { hasEarlier: state.hasOlder, onLoadEarlier: controller.loadOlder } : {}),
     ...(slot ? { queue: slot.adapter } : {}),
     ...(attachments ? { adapters: { attachments } } : {}),
   };

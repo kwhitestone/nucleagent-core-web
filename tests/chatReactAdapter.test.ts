@@ -135,7 +135,7 @@ test("switch: shell query arriving after boot locks or reloads, once per page lo
   assert.equal(loadedChatUi(), "react");
 });
 
-test("adapter: user items split turns; process → one data-process part, answer → text; hidden lanes dropped", () => {
+test("adapter: user items split turns; process → data-process header + one part per step, answer → text; hidden lanes dropped", () => {
   const messages = toThreadMessages(stateOf([
     item("u1", { role: "user", content: "hi" }),
     item("t1", { lane: "process", title: "思考过程", content: "plan", userReadable: true }),
@@ -145,14 +145,67 @@ test("adapter: user items split turns; process → one data-process part, answer
     item("e1", { lane: "system", status: "failed", content: "boom" }),
   ]));
   assert.deepEqual(messages.map((m) => [m.id, m.role]), [["u1", "user"], ["t1", "assistant"], ["u2", "user"], ["e1", "assistant"]]);
-  const [process, answer] = messages[1].content as readonly { type: string; data?: { summary: string; steps: { title: string; content: string }[] } }[];
+  const [process, step, answer] = messages[1].content as readonly { type: string; text?: string; data?: { summary: string } }[];
   assert.equal(process.type, "data-process");
   assert.equal(process.data?.summary, "1 个步骤 · 已完成");
-  assert.deepEqual(process.data?.steps.map((step) => [step.title, step.content]), [["思考过程", "plan"]]);
+  assert.deepEqual(step, { type: "reasoning", id: "t1", text: "思考过程\nplan" });
   assert.deepEqual(answer, { type: "text", text: "**hello**" });
+  assert.equal(JSON.stringify(messages).includes("secret"), false, "hidden tool lane never reaches aui");
   assert.deepEqual(messages[1].status, { type: "complete", reason: "stop" });
   assert.deepEqual(messages[3].status, { type: "incomplete", reason: "error" });
   assert.equal((messages[3].metadata?.custom as { failed: boolean }).failed, true);
+});
+
+test("adapter: Core tool steps → aui tool-call parts (result only once settled); media → data-media; produced files → data-files", () => {
+  const tool = (id: string, over: Partial<ConversationItem>) =>
+    item(id, { lane: "process", kind: "tool_call", userReadable: true, title: "联网搜索", ...over });
+  const [, reply] = toThreadMessages(stateOf([
+    item("u1", { role: "user", content: "q" }),
+    tool("s1", { content: "找到 2 条", data: { toolCallId: "call-1", toolDetails: { query: "aui", sources: [{ title: "A", url: "https://a.example" }] } } }),
+    tool("s2", { status: "streaming", content: "", data: { toolCallId: "call-2" } }),
+    tool("s3", { status: "failed", content: "超时" }),
+    item("a1", { content: "done", attachments: [{ id: "f9", name: "report.pdf" }] }),
+    item("m1", { content: "提示词：「猫」", data: { media: { kind: "image", taskId: 7 } } }),
+  ], "running"));
+  const parts = reply.content as readonly Record<string, unknown>[];
+  assert.deepEqual(parts.map((p) => p.type), ["data-process", "tool-call", "tool-call", "tool-call", "text", "data-files", "data-media"]);
+  assert.deepEqual(parts[1], { type: "tool-call", toolCallId: "call-1", toolName: "联网搜索", args: {},
+    result: { content: "找到 2 条", query: "aui", sources: [{ title: "A", url: "https://a.example" }] }, isError: false });
+  assert.equal("result" in parts[2], false, "a running tool has no result yet (aui shows it as running)");
+  assert.deepEqual([parts[3].toolCallId, parts[3].isError], ["s3", true]);
+  assert.deepEqual(parts[5].data, [{ id: "f9", name: "report.pdf" }]);
+  assert.deepEqual(parts[6].data, { media: { kind: "image", taskId: 7 }, prompt: "提示词：「猫」", failed: false });
+});
+
+test("adapter: 重新生成 resends the question; earlier history pages through loadOlder", async () => {
+  const sent: string[] = [];
+  let older = 0;
+  const state = { ...stateOf([item("u1", { role: "user", content: "question" }), item("a1", { content: "answer" })]), hasOlder: true };
+  const store = externalStore(state, { send: async (text) => { sent.push(text); }, stop: async () => {}, loadOlder: async () => { older += 1; } });
+  await store.onReload!("u1", {} as never);
+  await store.onReload!("missing", {} as never);
+  assert.deepEqual(sent, ["question"]);
+  assert.equal(store.hasEarlier, true);
+  await store.onLoadEarlier!();
+  assert.equal(older, 1);
+  assert.equal("onLoadEarlier" in externalStore(state, { send: async () => {}, stop: async () => {} }), false);
+});
+
+test("suggestions: home cards → aui suggestions (locale, prefill vs title, disabled and media cards dropped)", async () => {
+  const { toSuggestions } = await vite.ssrLoadModule("/src/chat-react/suggestions.ts") as typeof import("../src/chat-react/suggestions.ts");
+  const data = { items: [
+    { id: "a", titleZh: "写周报", descZh: "整理本周", action: "fill-title", titleEn: "Weekly", descEn: "Sum up" },
+    { id: "b", titleZh: "翻译", descZh: "", action: "prefill", promptZh: "请翻译：" },
+    { id: "c", titleZh: "关掉的", enabled: false },
+    { id: "generateImage", titleZh: "生成图片" },
+    { titleZh: "无 id" }, null, "junk",
+  ] };
+  assert.deepEqual(toSuggestions(data, "zh-CN"), [
+    { title: "写周报", label: "整理本周", prompt: "写周报：" },
+    { title: "翻译", label: "", prompt: "请翻译：" },
+  ]);
+  assert.equal(toSuggestions(data, "en-US")[0].title, "Weekly");
+  assert.deepEqual(toSuggestions(null, "zh-CN"), []);
 });
 
 test("adapter: contiguous process steps merge into one 执行过程 summary with the run's total time", () => {
@@ -167,10 +220,9 @@ test("adapter: contiguous process steps merge into one 执行过程 summary with
     proc("late", 13, { title: "思考过程" }),
   ]);
   const [, reply] = toThreadMessages(state, { locale: "zh-CN", nowMs: Date.parse(at(30)) });
-  const parts = reply.content as readonly { type: string; data?: { summary: string; timing: string; steps: unknown[] } }[];
-  assert.deepEqual(parts.map((p) => p.type), ["data-process", "text"], "late process joins the run before the answer");
+  const parts = reply.content as readonly { type: string; data?: { summary: string; timing: string } }[];
+  assert.deepEqual(parts.map((p) => p.type), ["data-process", "reasoning", "reasoning", "reasoning", "text"], "late process joins the run before the answer");
   assert.equal(parts[0].data?.summary, "3 个步骤 · 已完成");
-  assert.equal(parts[0].data?.steps.length, 3);
   assert.equal(parts[0].data?.timing, "总耗时 12.0 秒");
   const en = toThreadMessages(state, { locale: "en-US", nowMs: Date.parse(at(30)) })[1].content as readonly { data?: { summary: string; timing: string } }[];
   assert.deepEqual([en[0].data?.summary, en[0].data?.timing], ["3 steps · Completed", "Total time 12.0s"]);
@@ -315,12 +367,7 @@ test("component: assistant-ui renders the converted Core history through Externa
   assert.match(html, /data-role="assistant"[^>]*>.*answer \*\*bold\*\*/s);
 });
 
-test("ChatApp message rows: avatar, author, time, copy button and merged 执行过程 row (react-dom/server)", async (t0) => {
-  // DOMPurify is browser-only; under SSR strip tags like messageAttachmentDisplay.test does.
-  const DOMPurify = (await import("dompurify")).default;
-  const sanitize = DOMPurify.sanitize;
-  DOMPurify.sanitize = ((text: string) => text.replace(/<[^>]*>/g, "")) as typeof DOMPurify.sanitize;
-  t0.after(() => { DOMPurify.sanitize = sanitize; });
+test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行过程 fold, safe markdown (react-dom/server)", async () => {
   const { MessageRow } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof import("../src/chat-react/ChatApp.tsx");
   const { ThreadPrimitive } = await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts") as typeof import("../src/chat-react/auiPrimitives.ts");
   const { createElement: h } = React;
@@ -329,7 +376,7 @@ test("ChatApp message rows: avatar, author, time, copy button and merged 执行�
     item("u1", { role: "user", content: "question" }),
     item("p1", { lane: "process", title: "排队等待", userReadable: true }),
     item("p2", { lane: "process", title: "Agent 初始化", userReadable: true }),
-    item("a1", { content: "answer" }),
+    item("a1", { content: "answer [x](javascript:alert(1)) <img src=x onerror=alert(1)> ![p](https://e.example/p.png) - [x] done" }),
   ]);
   function App() {
     const runtime = aui.useExternalStoreRuntime(externalStore(state, { send: async () => {}, stop: async () => {} }));
@@ -340,8 +387,14 @@ test("ChatApp message rows: avatar, author, time, copy button and merged 执行�
   const html = renderToString(h(App));
   assert.match(html, /data-message-role="user".*class="mc-avatar"[^>]*>你<.*class="mc-author">你<.*class="mc-time">2026-11-13 \d\d:00:00</s);
   assert.match(html, /data-message-role="assistant".*class="mc-author">NucleAgent</s);
-  assert.equal(html.match(/<button[^>]*class="mc-copy"[^>]*aria-label="复制"/g)?.length, 2);
-  assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one row");
+  assert.equal(html.match(/<button[^>]*class="mc-icon-btn"[^>]*aria-label="复制"/g)?.length, 2, "aui ActionBar copy on both rows");
+  assert.equal(html.match(/aria-label="chatReact.reload"/g)?.length, 1, "重新生成 only on the assistant row");
+  assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one fold");
+  assert.equal(html.match(/class="mc-step"/g)?.length, 2);
+  // Same policy as markdown.ts: no raw HTML, no images, no script URLs.
+  assert.doesNotMatch(html, /<img|javascript:|<[^>]*onerror=/);
+  assert.match(html, /<a href="">x<\/a>/, "script URL neutralised");
+  assert.match(html, /&lt;img/);
   assert.match(html, /aria-label="执行过程 · 2 个步骤 · 已完成"/);
   assert.doesNotMatch(html, /lucide/);
 });
