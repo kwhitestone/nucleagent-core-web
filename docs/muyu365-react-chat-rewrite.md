@@ -442,7 +442,7 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 
 ### 14.8 视觉自检脚本
 
-前一位 worker 留下了未跟踪的 `scripts/muyu365-react-selfcheck.mjs`，运行时报 “must be used within … Provider”。**视觉自检未完成**：脚本未提交（处理中，结论以本节最终版本为准）。
+前一位 worker 留下了未跟踪的 `scripts/muyu365-react-selfcheck.mjs`，运行时报 “must be used within ThreadPrimitive.Viewport”。已修好并提交：外层改成 `ThreadPrimitive.Root`；输入框改为同 class 的普通 `<textarea>`，因为 `ComposerPrimitive.Input` 在这个 SSR 页里拿不到 Viewport 的滚动 store。用法：`node scripts/muyu365-react-selfcheck.mjs out.html`，用 mock 数据渲染，不联网、不用令牌，生成带 aurora.css + chat.css 的静态页。已核对输出含 2 条消息行、1 个合并的“执行过程”行、头像、复制按钮、附件名。**视觉截图比对没有做**：本棒没有打开浏览器截图，只检查了 HTML 结构。
 
 ## 15. 4 项未核项核实结论
 
