@@ -339,7 +339,7 @@ function MarkdownText({ t }: { t: Translate }) {
   const onClick = (e: MouseEvent<HTMLDivElement>) => {
     const button = (e.target as Element).closest?.("button.mc-code-copy");
     if (!button) return void openSealedLinkOnClick(e.nativeEvent);
-    const code = button.parentElement?.querySelector("code")?.textContent ?? "";
+    const code = button.parentElement?.nextElementSibling?.querySelector("code")?.textContent ?? "";
     void copyRawBody(code, () => button.isConnected).then((r) => {
       if (!r) return;
       button.setAttribute("data-state", r);
@@ -350,16 +350,29 @@ function MarkdownText({ t }: { t: Translate }) {
   return <div ref={root} className="mc-md" data-status={status.type} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-/** Adds one text-only copy button to each fenced code block (idempotent; text set via textContent, never HTML). */
+/**
+ * Post-sanitize decoration (our own nodes; DOMPurify still forbids <button> in replies), idempotent:
+ * a header (language label + copy button) above each fenced code block, and a scroll box around each
+ * table so it can fill the column yet scroll when too wide. Text set via textContent, never HTML.
+ */
 export function addCodeCopyButtons(root: ParentNode, label: string) {
   for (const pre of root.querySelectorAll("pre")) {
-    if (pre.querySelector(":scope > button.mc-code-copy")) continue;
-    const button = pre.ownerDocument.createElement("button");
-    button.type = "button";
-    button.className = "mc-code-copy";
+    if (pre.previousElementSibling?.classList.contains("mc-code-head")) continue;
+    const doc = pre.ownerDocument;
+    const head = Object.assign(doc.createElement("div"), { className: "mc-code-head" });
+    const lang = Object.assign(doc.createElement("span"), { className: "mc-code-lang" });
+    lang.textContent = /language-([\w+#-]+)/.exec(pre.querySelector("code")?.className ?? "")?.[1] ?? "";
+    const button = Object.assign(doc.createElement("button"), { type: "button", className: "mc-code-copy" });
     button.textContent = label;
     button.setAttribute("aria-label", label);
-    pre.prepend(button);
+    head.append(lang, button);
+    pre.before(head);
+  }
+  for (const table of root.querySelectorAll("table")) {
+    if (table.parentElement?.classList.contains("mc-table-wrap")) continue;
+    const wrap = Object.assign(table.ownerDocument.createElement("div"), { className: "mc-table-wrap" });
+    table.before(wrap);
+    wrap.append(table);
   }
 }
 
@@ -535,8 +548,10 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
   return (
     <MessagePrimitive.Root className="mc-msg" data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
       <div className="mc-header">
-        <span className="mc-avatar" aria-hidden="true">{isUser ? t("conversation.you") : <AssistantMark />}</span>
-        <span className="mc-author" title={time || undefined}>{author}</span>
+        {/* The user side shows only the avatar ("你"), labelled for screen readers instead of a duplicate name. */}
+        <span className="mc-avatar" aria-hidden={isUser ? undefined : "true"} role={isUser ? "img" : undefined} aria-label={isUser ? author : undefined}
+          title={isUser ? time || undefined : undefined}>{isUser ? t("conversation.you") : <AssistantMark />}</span>
+        {!isUser && <span className="mc-author" title={time || undefined}>{author}</span>}
         {time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>}
       </div>
       <div className="mc-bubble">

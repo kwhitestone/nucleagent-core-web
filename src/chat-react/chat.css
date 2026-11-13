@@ -1,5 +1,5 @@
 /* MUYU-365 React chat island. Only aurora.css tokens, only .mc-* classes: no reset, no Tailwind,
-   so nothing here can reach the Vue views (plan §1.3). Weights 400/500/700 only. */
+   so nothing here can reach the Vue views (plan §1.3). Weights 400/500/600 (+700 welcome title). */
 .mc-root {
   display: flex;
   flex-direction: column;
@@ -132,6 +132,7 @@
   background: linear-gradient(160deg, var(--indigo-500), var(--violet-500));
   border: 0;
   color: #fff;
+  font-weight: 400;
   border-radius: 16px 16px 5px 16px;
   box-shadow: 0 2px 8px rgb(99 102 241 / 20%);
 }
@@ -147,7 +148,7 @@
   font-size: 13px;
   line-height: 1.5;
 }
-.mc-process[open] { background: var(--bg-dialog-muted); }
+.mc-process[open] { background: var(--bg-card); box-shadow: inset 0 0 0 1px var(--border-divider); }
 .mc-process-head {
   display: flex;
   align-items: center;
@@ -216,21 +217,26 @@
 .mc-media--slot[data-failed] { color: var(--fg-error); border-color: color-mix(in srgb, var(--fg-error) 40%, transparent); }
 .mc-media--slot[data-failed] .mc-media-icon { color: var(--fg-error); }
 .mc-media-prompt { font-size: 12px; color: var(--fg-tertiary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* Rich text (styles only; the sanitizing policy lives in task-conversation/markdown.ts). */
+/* Rich text (styles only; the sanitizing policy lives in task-conversation/markdown.ts). Body 14px; one
+   12px block rhythm; headings step 20/18/16 at 600 with more space above. Surfaces differ by role:
+   inline code --bg-fill, code block --bg-canvas, quote --bg-brand-soft, open 执行过程 white card with a hairline. */
 .mc-md > :first-child { margin-top: 0; }
 .mc-md > :last-child { margin-bottom: 0; }
-.mc-md p { margin: 0.5em 0; }
-.mc-md h1, .mc-md h2, .mc-md h3, .mc-md h4 { color: var(--fg-primary); font-weight: 700; line-height: 1.4; margin: 1.1em 0 0.45em; }
+.mc-md p, .mc-md ul, .mc-md ol, .mc-md blockquote, .mc-md pre, .mc-table-wrap { margin: 12px 0; }
+.mc-md h1, .mc-md h2, .mc-md h3, .mc-md h4 { color: var(--fg-primary); font-weight: 600; line-height: 1.4; margin: 20px 0 8px; }
 .mc-md h1 { font-size: 20px; }
-.mc-md h2 { font-size: 17px; }
-.mc-md h3 { font-size: 15px; }
+.mc-md h2 { font-size: 18px; }
+.mc-md h3 { font-size: 16px; }
 .mc-md h4 { font-size: 14px; }
-.mc-md strong { font-weight: 700; color: var(--fg-primary); }
-.mc-md ul, .mc-md ol { padding-left: 1.5em; margin: 0.5em 0; }
-.mc-md li { margin: 0.2em 0; }
+.mc-md strong { font-weight: 600; color: var(--fg-primary); }
+.mc-md ul, .mc-md ol { padding-left: 1.5em; }
+.mc-md li { margin: 4px 0; }
+.mc-md li > ul, .mc-md li > ol { margin: 4px 0; }
 .mc-md li::marker { color: var(--fg-tertiary); }
-.mc-md blockquote { margin: 0.6em 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--border-strong, var(--border)); color: var(--fg-secondary); }
-.mc-md hr { border: 0; border-top: 1px solid var(--border); margin: 1em 0; }
+.mc-md blockquote { padding: 8px 12px; border-left: 3px solid var(--fg-brand); border-radius: 0 8px 8px 0; background: var(--bg-brand-soft); color: var(--fg-secondary); }
+.mc-md blockquote > :first-child { margin-top: 0; }
+.mc-md blockquote > :last-child { margin-bottom: 0; }
+.mc-md hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
 .mc-md a { color: var(--fg-brand); text-decoration: none; }
 .mc-md a:hover { text-decoration: underline; }
 .mc-md code {
@@ -242,53 +248,57 @@
   background: var(--bg-fill);
   color: var(--fg-primary);
 }
+/* Code block = header (language + copy, added after sanitizing) + pre, one bordered panel. */
+.mc-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: var(--bg-fill);
+  font-size: 12px;
+  color: var(--fg-secondary);
+}
+.mc-md > .mc-code-head:first-child { margin-top: 0; }
+.mc-code-lang { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .mc-md pre {
-  position: relative;
-  margin: 0.7em 0;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-subtle, var(--bg-fill));
+  background: var(--bg-canvas);
   overflow-x: auto;
   line-height: 1.55;
 }
+.mc-md .mc-code-head + pre { margin-top: 0; border-radius: 0 0 10px 10px; }
 .mc-md pre code { padding: 0; background: transparent; font-size: 12.5px; }
 .mc-code-copy {
-  position: absolute;
-  top: 6px;
-  right: 6px;
   padding: 2px 8px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 6px;
-  background: var(--bg-card);
+  background: transparent;
   color: var(--fg-secondary);
   font: inherit;
-  font-size: 11px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s;
 }
-.mc-md pre:hover .mc-code-copy, .mc-code-copy:focus-visible, .mc-code-copy[data-state] { opacity: 1; }
+.mc-code-copy:hover { background: var(--bg-hover); color: var(--fg-primary); }
 .mc-code-copy:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 1px; }
 .mc-code-copy[data-state="copied"] { color: var(--fg-success); }
-/* Tables scroll inside their own box instead of widening the column. */
+/* Tables fill the column; the wrapper (added after sanitizing) scrolls when one is too wide. */
+.mc-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
 .mc-md table {
-  display: block;
-  width: max-content;
-  max-width: 100%;
-  overflow-x: auto;
-  margin: 0.7em 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  width: 100%;
   border-spacing: 0;
   border-collapse: separate;
   font-size: 13px;
   line-height: 1.55;
 }
-.mc-md th, .mc-md td { padding: 7px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.mc-md th, .mc-md td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
 .mc-md th + th, .mc-md td + td { border-left: 1px solid var(--border); }
 .mc-md tr:last-child td { border-bottom: 0; }
-.mc-md th { background: var(--bg-fill); font-weight: 500; color: var(--fg-primary); white-space: nowrap; }
+.mc-md th { background: var(--bg-canvas); font-weight: 600; color: var(--fg-primary); white-space: nowrap; }
 
 /* Composer: aui Input autosizes 1–8 rows; one toolbar row of round/pill controls; send is a brand circle. */
 .mc-composer {
