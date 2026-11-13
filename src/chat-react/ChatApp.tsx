@@ -20,7 +20,6 @@ import { createConversationState, MAX_ATTACHMENTS, type ConversationLocale } fro
 import { openSealedLinkOnClick } from "./sealedLink";
 import { copyRawBody, formatMessageTime } from "@/addons/conversation/components/conversation/messageCopy";
 import { toast } from "@/composables/useToast";
-import { formatAttachmentSize } from "@/addons/conversation/components/attachmentPresentation";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
@@ -30,7 +29,7 @@ import {
   AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
-import { downloadFile, fileKind, storageAttachmentAdapter, type FileChip } from "./attachments";
+import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type FileChip } from "./attachments";
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import "./chat.css";
@@ -49,7 +48,7 @@ export interface ChatProps {
 const EMPTY = createConversationState("new");
 
 // Island-only strings live in the lazy chunk, not in the main i18n bundle (default-path size, plan §9).
-const STRINGS: Record<ConversationLocale, Record<string, string>> = {
+export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> = {
   "zh-CN": {
     stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
@@ -68,7 +67,7 @@ const STRINGS: Record<ConversationLocale, Record<string, string>> = {
   },
 };
 const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
-  key.startsWith("chatReact.") ? STRINGS[locale][key.slice(10)] ?? key : t(key, named);
+  key.startsWith("chatReact.") ? ISLAND_STRINGS[locale][key.slice(10)] ?? key : t(key, named);
 
 export function ChatApp(props: ChatProps) {
   const { conversationId } = props;
@@ -247,7 +246,7 @@ export function Composer({ t, settings, placeholder }: { t: Translate; settings:
             </div>
           )}
         </ComposerPrimitive.Queue>
-        <ComposerPrimitive.Input className="mc-input" minRows={1} maxRows={8} autoFocus placeholder={placeholder} aria-label={placeholder} />
+        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus placeholder={placeholder} aria-label={placeholder} />
         <div className="mc-toolbar">
           <AttachButton t={t} />
           <MediaPill kind="image" t={t} />
@@ -281,7 +280,7 @@ function ComposerAttachmentChips({ t }: { t: Translate }) {
             <span className="mc-chip-name" title={attachment.name}><AttachmentPrimitive.Name /></span>
             {attachment.status.type === "running"
               ? <span className="mc-chip-meta">{Math.round(("progress" in attachment.status ? attachment.status.progress : 0) * 100)}%</span>
-              : attachment.file?.size ? <span className="mc-chip-meta">{formatAttachmentSize(attachment.file.size)}</span> : null}
+              : attachment.file?.size ? <span className="mc-chip-meta">{formatSize(attachment.file.size)}</span> : null}
             {attachment.status.type === "incomplete" && <span className="mc-chip-meta" role="status">{t("common.attachmentUploadFailed")}</span>}
             <AttachmentPrimitive.Remove className="mc-chip-remove" aria-label={t("common.attachmentRemove")} title={t("common.attachmentRemove")}><CrossMark size={12} /></AttachmentPrimitive.Remove>
           </AttachmentPrimitive.Root>
@@ -299,7 +298,7 @@ function ComposerAttachmentChips({ t }: { t: Translate }) {
 export function FileChipView({ file, t }: { file: FileChip; t: Translate }) {
   const [busy, setBusy] = useState(false);
   const icon = <span className="mc-chip-icon"><FileMark kind={fileKind(file.name, file.mimeType)} /></span>;
-  const size = file.size ? <span className="mc-chip-meta">{formatAttachmentSize(file.size)}</span> : null;
+  const size = file.size ? <span className="mc-chip-meta">{formatSize(file.size)}</span> : null;
   if (!file.verified) {
     return <span className="mc-chip" data-verified="false" title={file.name}>{icon}<span className="mc-chip-name">{file.name}</span>{size}<span className="mc-chip-meta" role="status">{t("common.attachmentVerificationFailed")}</span></span>;
   }
@@ -424,9 +423,17 @@ function MediaCard({ data, t }: { data: MediaPartData; t: Translate }) {
     if (!data.failed && typeof taskId === "number") freshDownloadUrl(taskId).then((u) => live && setUrl(u), () => {});
     return () => { live = false; };
   }, [taskId, data.failed]);
-  if (data.failed) return <p className="mc-media mc-media--failed" role="status">{t("chatReact.mediaFailed")}</p>;
-  if (!url) return <p className="mc-media" role="status">{t("chatReact.mediaPending")}</p>;
-  return data.media.kind === "video"
+  const video = data.media.kind === "video";
+  if (data.failed || !url) {
+    return (
+      <div className="mc-media mc-media--slot" data-failed={data.failed || undefined} role="status">
+        <span className="mc-media-icon">{data.failed ? <AlertMark size={20} /> : video ? <VideoMark size={20} /> : <ImageMark size={20} />}</span>
+        <span>{t(data.failed ? "chatReact.mediaFailed" : "chatReact.mediaPending")}</span>
+        {data.prompt && <span className="mc-media-prompt">{data.prompt}</span>}
+      </div>
+    );
+  }
+  return video
     ? <video className="mc-media" src={url} controls preload="metadata" />
     : <a href={url} target="_blank" rel="noopener noreferrer"><img className="mc-media" src={url} alt={data.prompt} /></a>;
 }

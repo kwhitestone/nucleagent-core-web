@@ -121,3 +121,13 @@ export async function downloadFile(file: FileChip): Promise<void> {
     if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
   }
 }
+
+/**
+ * Same output as attachmentPresentation.formatAttachmentSize; a local copy because importing that module
+ * from the island re-splits the default /c/:id chunks (+~70 B over the 1 KiB budget, leg 6 §20).
+ */
+export function formatSize(bytes?: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

@@ -176,3 +176,13 @@ test("file chips: kind by MIME then extension; verified → download button with
   assert.doesNotMatch(pending, /<button/);
   assert.match(pending, /common.attachmentVerificationFailed/);
 });
+
+test("layout: the shell-button mock lives only in the selfcheck; product CSS keeps a fixed top band and a 520px layout", () => {
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  const tsx = readFileSync("src/chat-react/ChatApp.tsx", "utf8");
+  for (const src of [css, tsx]) assert.doesNotMatch(src, /壳按钮模拟/);
+  assert.doesNotMatch(tsx, /成果/, "no shell-button text in the island DOM");
+  assert.match(readFileSync("scripts/muyu365-react-selfcheck.mjs", "utf8"), /◇ 成果/);
+  assert.match(css, /\.mc-viewport \{[^}]*margin-top: 60px;/s, "band below the shell trigger (18 + 36 px)");
+  assert.match(css, /@media \(max-width: 520px\)/);
+});

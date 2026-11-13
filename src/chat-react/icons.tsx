@@ -15,8 +15,6 @@ export const ChevronMark = ({ size = 14 }: { size?: number }) => <Icon size={siz
 export const AlertMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" /><path d="M12 9v4" /><path d="M12 17h.01" /></>} />;
 export const CrossMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><path d="M18 6L6 18" /><path d="M6 6l12 12" /></>} />;
 export const ToolMark = ({ size = 12 }: { size?: number }) => <Icon size={size} d={<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.8-3.8a6 6 0 01-7.9 7.9l-6.9 6.9a2.1 2.1 0 01-3-3l6.9-6.9a6 6 0 017.9-7.9l-3.8 3.8z" />} />;
-export const ImageMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></>} />;
-export const VideoMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><rect x="2" y="5" width="14" height="14" rx="2" /><path d="M22 8l-6 4 6 4V8z" /></>} />;
 
 /** One icon per file kind (attachments.ts fileKind). */
 const FILE_GLYPH: Record<string, ReactNode> = {
@@ -29,4 +27,6 @@ const FILE_GLYPH: Record<string, ReactNode> = {
   media: <><rect x="2" y="5" width="14" height="14" rx="2" /><path d="M22 8l-6 4 6 4V8z" /></>,
   file: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></>,
 };
-export const FileMark = ({ kind }: { kind: string }) => <Icon size={14} d={FILE_GLYPH[kind] ?? FILE_GLYPH.file} />;
+export const FileMark = ({ kind, size = 14 }: { kind: string; size?: number }) => <Icon size={size} d={FILE_GLYPH[kind] ?? FILE_GLYPH.file} />;
+export const ImageMark = ({ size }: { size?: number }) => <FileMark kind="image" size={size} />;
+export const VideoMark = ({ size }: { size?: number }) => <FileMark kind="media" size={size} />;
