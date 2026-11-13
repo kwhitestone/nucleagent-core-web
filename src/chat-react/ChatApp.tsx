@@ -14,12 +14,14 @@ import { createConversationState } from "@/addons/conversation/task-conversation
 import { copyRawBody, formatMessageTime, type CopyState } from "@/addons/conversation/components/conversation/messageCopy";
 import type { ConversationLocale } from "@/addons/conversation/task-conversation/core";
 import { toast } from "@/composables/useToast";
-import { externalStore } from "./externalStore";
+import { externalStore, sendAppend, type ChatController } from "./externalStore";
+import { useSingleSlotQueue } from "./singleSlotQueue";
+import { isRunning } from "./threadMessages";
 import type { ProcessPartData } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { useCoreConversation } from "./useCoreConversation";
 import { storageAttachmentAdapter } from "./attachments";
-import { AttachmentPrimitive } from "./auiPrimitives";
+import { AttachmentPrimitive, QueueItemPrimitive } from "./auiPrimitives";
 import { MAX_ATTACHMENTS } from "@/addons/conversation/task-conversation/core";
 import "./chat.css";
 
@@ -39,10 +41,12 @@ const STRINGS: Record<ConversationLocale, Record<string, string>> = {
   "zh-CN": {
     stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务，Enter 发送，Shift + Enter 换行", loading: "正在加载对话…", process: "执行过程",
+    queued: "待发送 1 条", queuedRemove: "移除待发送消息",
   },
   "en-US": {
     stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task. Enter to send, Shift + Enter for a new line", loading: "Loading conversation…", process: "Process",
+    queued: "1 queued", queuedRemove: "Remove queued message",
   },
 };
 const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
@@ -58,11 +62,14 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
 
+  const controller: ChatController = {
+    send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
+    stop: () => core?.controller.stop() ?? Promise.resolve(),
+  };
+  // Only an existing conversation queues; the new-chat composer is never running.
+  const slot = useSingleSlotQueue(conversationId, !!core && isRunning(core.state), (m) => sendAppend(controller, m));
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
-    ? externalStore(core?.state ?? EMPTY, {
-      send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
-      stop: () => core?.controller.stop() ?? Promise.resolve(),
-    }, view, attachments)
+    ? externalStore(core?.state ?? EMPTY, controller, view, attachments, slot)
     : externalStore(EMPTY, {
       async send(input, files) {
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
@@ -94,6 +101,15 @@ export function ChatApp(props: ChatProps) {
         </ThreadPrimitive.Viewport>
         <ComposerPrimitive.Root className="mc-composer">
           <ComposerAttachmentChips t={t} />
+          <ComposerPrimitive.Queue>
+            {() => (
+              <div className="mc-queued" data-testid="mc-queued">
+                <span className="mc-queued-label">{t("chatReact.queued")}</span>
+                <QueueItemPrimitive.Text className="mc-queued-text" />
+                <QueueItemPrimitive.Remove className="mc-chip-remove" aria-label={t("chatReact.queuedRemove")}>×</QueueItemPrimitive.Remove>
+              </div>
+            )}
+          </ComposerPrimitive.Queue>
           <ComposerPrimitive.Input
             className="mc-input" rows={2} autoFocus
             placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")}
@@ -102,9 +118,7 @@ export function ChatApp(props: ChatProps) {
             <AttachButton t={t} />
             <ModelGroupPicker t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
               backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-            <AuiIf condition={(s) => !s.thread.isRunning}>
-              <ComposerPrimitive.Send className="mc-btn mc-btn--primary" data-testid="mc-send">{t("common.send")}</ComposerPrimitive.Send>
-            </AuiIf>
+            <ComposerPrimitive.Send className="mc-btn mc-btn--primary" data-testid="mc-send">{t("common.send")}</ComposerPrimitive.Send>
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel className="mc-btn" data-testid="mc-stop">{t("chatReact.stop")}</ComposerPrimitive.Cancel>
             </AuiIf>

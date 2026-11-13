@@ -234,3 +234,6 @@
   background: rgb(255 255 255 / 14%);
   color: #fff;
 }
+.mc-queued { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 999px; background: var(--bg-fill); color: var(--fg-secondary); font-size: 12px; min-width: 0; }
+.mc-queued-label { flex: none; font-weight: 500; }
+.mc-queued-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

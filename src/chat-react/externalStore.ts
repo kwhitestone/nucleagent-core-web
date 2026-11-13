@@ -2,6 +2,7 @@ import { MessageNotSentError, type AppendMessage, type AttachmentAdapter, type E
 import type { ConversationAttachment, ConversationState } from "@/addons/conversation/task-conversation/core";
 import { isRunning, toThreadMessages, type ThreadOptions } from "./threadMessages";
 import { toConversationAttachments } from "./attachments";
+import { isConflict, type SingleSlot } from "./singleSlotQueue";
 
 /** The two controller calls the composer needs (useConversation's send/stop). */
 export interface ChatController {
@@ -9,16 +10,22 @@ export interface ChatController {
   stop(): Promise<void>;
 }
 
+/** Sends one composer message through the controller (text + stored attachment refs). */
+export const sendAppend = (controller: ChatController, message: AppendMessage) =>
+  controller.send(appendText(message), toConversationAttachments(message.attachments));
+
 export const appendText = (message: AppendMessage): string =>
   message.content.map((p) => (p.type === "text" ? p.text : "")).join("\n").trim();
 
 /**
  * ExternalStoreRuntime adapter (plan §2): Core + the existing reducer own history and run
  * state; assistant-ui only renders and forwards send/cancel. A failed send hands the draft
- * back to the composer (MessageNotSentError), like the Vue view keeps the input.
+ * back to the composer (MessageNotSentError), like the Vue view keeps the input. With a `slot`,
+ * sends during a run wait in the single-slot queue and a 409 parks the message there.
  */
 export function externalStore(
   state: ConversationState, controller: ChatController, options?: ThreadOptions, attachments?: AttachmentAdapter,
+  slot?: SingleSlot,
 ): ExternalStoreAdapter<ThreadMessageLike> {
   return {
     messages: toThreadMessages(state, options),
@@ -28,12 +35,14 @@ export function externalStore(
       const text = appendText(message);
       if (!text) return;
       try {
-        await controller.send(text, toConversationAttachments(message.attachments));
+        await sendAppend(controller, message);
       } catch (error) {
+        if (slot && isConflict(error)) return slot.hold(message);
         throw new MessageNotSentError(error instanceof Error ? error.message : String(error));
       }
     },
     onCancel: () => controller.stop(),
+    ...(slot ? { queue: slot.adapter } : {}),
     ...(attachments ? { adapters: { attachments } } : {}),
   };
 }

@@ -10,6 +10,7 @@ let chatUi: typeof import("../src/chat-react/chatUi.ts").chatUi;
 let toThreadMessages: typeof import("../src/chat-react/threadMessages.ts").toThreadMessages;
 let isRunning: typeof import("../src/chat-react/threadMessages.ts").isRunning;
 let externalStore: typeof import("../src/chat-react/externalStore.ts").externalStore;
+let createSingleSlot: typeof import("../src/chat-react/singleSlotQueue.ts").createSingleSlot;
 let modelGroups: typeof import("../src/chat-react/modelGroups.ts").modelGroups;
 let useConversation: typeof import("../src/addons/conversation/task-conversation/vue/useConversation.ts").useConversation;
 let reducer: typeof import("../src/addons/conversation/task-conversation/core/reducer.ts");
@@ -25,6 +26,7 @@ before(async () => {
   ({ chatUi } = await vite.ssrLoadModule("/src/chat-react/chatUi.ts"));
   ({ toThreadMessages, isRunning } = await vite.ssrLoadModule("/src/chat-react/threadMessages.ts"));
   ({ externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts"));
+  ({ createSingleSlot } = await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts"));
   ({ modelGroups } = await vite.ssrLoadModule("/src/chat-react/modelGroups.ts"));
   ({ useConversation } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/vue/useConversation.ts"));
   reducer = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
@@ -181,6 +183,19 @@ test("failed send hands the draft back to the composer (MessageNotSentError)", a
   await assert.rejects(store.onNew({ role: "user", content: [{ type: "text", text: "x" }] } as never),
     (e: unknown) => aui.isMessageNotSentError(e) && (e as Error).message === "409 busy");
   assert.equal(isRunning(stateOf([item("a", { status: "streaming" })], "completed")), true);
+});
+
+test("queue: onNew 409 parks the message in the single slot instead of MessageNotSentError", async () => {
+  const slot = createSingleSlot(async () => {}, () => true, () => {});
+  const msg = (text: string) => ({ role: "user", content: [{ type: "text", text }] }) as never;
+  const conflict = { send: async () => { throw Object.assign(new Error("busy"), { status: 409 }); }, stop: async () => {} };
+  const store = externalStore(stateOf([]), conflict, undefined, undefined, slot);
+  assert.equal(store.queue, slot.adapter);
+  await store.onNew(msg("late"));
+  assert.deepEqual(slot.adapter.items.map((i) => i.prompt), ["late"]);
+  const plain = externalStore(stateOf([]), { send: async () => { throw new Error("x"); }, stop: async () => {} }, undefined, undefined, slot);
+  await assert.rejects(plain.onNew(msg("y")), (e: unknown) => aui.isMessageNotSentError(e));
+  assert.equal(externalStore(stateOf([]), conflict).queue, undefined, "no slot → no queue capability (new chat)");
 });
 
 test("model groups: chat/image/video from the typed catalog, executors from Core, empty groups dropped", () => {
