@@ -5,13 +5,14 @@ import router from "@/router";
 import { authenticatedRoute } from "@/contracts/platform-runtime";
 import { installShellBridge } from "./composables/useShellBridge";
 import { bindDeleteRouter } from "./composables/useConversationDelete";
-import { chatUi } from "@/chat-react/chatUi";
+import { followChatUiQuery, loadedChatUi } from "@/chat-react/chatUi";
 
 // MUYU-365: the React island only loads when the switch says so; default stays the Vue view.
 const chatView = (vue: () => Promise<{ default: Component }>) => () =>
-  chatUi() === "react" ? import("./views/ChatHost.vue") : vue();
+  loadedChatUi() === "react" ? import("./views/ChatHost.vue") : vue();
 
 let removeShellBridge: (() => void) | undefined;
+let removeChatUiGuard: (() => void) | undefined;
 
 const conversation: PluginModule = {
   name: "conversation",
@@ -83,10 +84,17 @@ const conversation: PluginModule = {
   setup() {
     bindDeleteRouter(router);
     removeShellBridge = installShellBridge(router);
+    // Reload into the URL that carries ?chatUi=, so chatUi() reads (and persists) it at boot.
+    removeChatUiGuard = router.beforeEach((to) => followChatUiQuery(to.query.chatUi, () => {
+      history.replaceState(history.state, "", router.resolve(to).href);
+      location.reload();
+    }));
   },
   destroy() {
     removeShellBridge?.();
     removeShellBridge = undefined;
+    removeChatUiGuard?.();
+    removeChatUiGuard = undefined;
   },
 };
 

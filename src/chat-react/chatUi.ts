@@ -31,3 +31,17 @@ export function chatUi(
   } catch { /* storage blocked: this load only */ }
   return fromUrl ?? fallback() ?? "vue";
 }
+
+let chosen: ChatUi | undefined;
+/** vue-router caches a route's resolved component, so one choice holds for the whole page load. */
+export const loadedChatUi = (): ChatUi => (chosen ??= chatUi());
+
+/**
+ * In the shell, Core boots at `#/chat` before the shell's view message adds `?chatUi=`, so /chat is
+ * already resolved: take the query if nothing was chosen yet, reload if it asks for the other UI.
+ */
+export function followChatUiQuery(asked: unknown, reload: () => void): void {
+  if (asked !== "react" && asked !== "vue") return;
+  if (!chosen) chosen = chatUi(`?chatUi=${asked}`);
+  else if (asked !== chosen) reload();
+}

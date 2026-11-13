@@ -7,6 +7,7 @@ import type { ConversationAdapter, ConversationEvent, ConversationItem } from ".
 // MUYU-365 React chat island: switch, Core → assistant-ui mapping, streaming, cancel, model groups.
 let vite: ViteDevServer;
 let chatUi: typeof import("../src/chat-react/chatUi.ts").chatUi;
+let chatUiModule: typeof import("../src/chat-react/chatUi.ts");
 let toThreadMessages: typeof import("../src/chat-react/threadMessages.ts").toThreadMessages;
 let isRunning: typeof import("../src/chat-react/threadMessages.ts").isRunning;
 let externalStore: typeof import("../src/chat-react/externalStore.ts").externalStore;
@@ -23,7 +24,8 @@ before(async () => {
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: clearTimeout });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   await initializeRuntimeFixture(vite);
-  ({ chatUi } = await vite.ssrLoadModule("/src/chat-react/chatUi.ts"));
+  chatUiModule = await vite.ssrLoadModule("/src/chat-react/chatUi.ts");
+  ({ chatUi } = chatUiModule);
   ({ toThreadMessages, isRunning } = await vite.ssrLoadModule("/src/chat-react/threadMessages.ts"));
   ({ externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts"));
   ({ createSingleSlot } = await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts"));
@@ -111,6 +113,24 @@ test("switch: hash query (shell forwards #/chat?chatUi=react) and persistence", 
   assert.equal(chatUi("", undefined, none, "#/chat?chatUi=react"), "react");
   // No params, no storage, no runtime default: old view.
   assert.equal(chatUi("", memory(), none, ""), "vue");
+});
+
+test("switch: shell query arriving after boot locks or reloads, once per page load", () => {
+  const { followChatUiQuery, loadedChatUi } = chatUiModule;
+  let reloads = 0;
+  const reload = () => { reloads++; };
+  followChatUiQuery(undefined, reload);
+  followChatUiQuery("svelte", reload);
+  followChatUiQuery(["react"], reload);
+  // Nothing loaded yet: the query decides, no reload.
+  followChatUiQuery("react", reload);
+  assert.equal(loadedChatUi(), "react");
+  followChatUiQuery("react", reload);
+  assert.equal(reloads, 0);
+  // Already resolved, other UI asked: reload (the reloaded URL carries the query, so no loop).
+  followChatUiQuery("vue", reload);
+  assert.equal(reloads, 1);
+  assert.equal(loadedChatUi(), "react");
 });
 
 test("adapter: user items split turns; process → one data-process part, answer → text; hidden lanes dropped", () => {
