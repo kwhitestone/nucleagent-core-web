@@ -108,3 +108,24 @@ test("model menu: groups, current choice checked, image/video listed but not pic
   assert.equal(open.match(/aria-checked="true"/g)?.length, 2, "current model and executor");
   assert.match(open, /aria-checked="false" aria-disabled="true"[^>]*><span class="mc-menu-text">P · i/, "image model not pickable");
 });
+
+test("process row: failed step → amber header with alert icon; expanded rows carry state icon, name, tool tag, duration", () => {
+  const at = (sec: number) => `2026-11-13T00:00:0${sec}Z`;
+  const state = stateOf([
+    item("u1", { role: "user", content: "q", timestamp: at(0) }),
+    item("p1", { lane: "process", title: "排队等待", userReadable: true, timestamp: at(1) }),
+    item("p2", { lane: "process", kind: "tool_call", title: "命令执行", content: "exit 1", status: "failed", userReadable: true, timestamp: at(3), data: { toolCallId: "c2" } }),
+    item("a1", { content: "答案", timestamp: at(8) }),
+  ]);
+  const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.match(html, /class="mc-process-head" data-status="failed"/);
+  assert.match(html, /class="mc-process-alert"/);
+  assert.match(html, /mc-process-dot/);
+  assert.match(html, /class="mc-step" data-state="done".*排队等待.*class="mc-step-time">2.0s</s);
+  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*chatReact.failed.*class="mc-step-time">5.0s<.*exit 1/s);
+  assert.equal(app.stepState("streaming", { type: "complete" }), "running");
+  assert.equal(app.stepState(undefined, { type: "running" }), "running");
+  assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
+  assert.equal(app.stepState("cancelled", { type: "complete" }), "cancelled");
+});

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { useActionBarCopy } from "@assistant-ui/core/react";
 import { useMessagePartText, useSmooth } from "@assistant-ui/react";
 import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
+import { formatProcessDuration } from "@/addons/conversation/task-conversation/vue/processPresentation";
 import {
   ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
 } from "./auiPrimitives";
@@ -25,7 +26,7 @@ import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } 
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { composerActions, moveFocus } from "./composerState";
 import {
-  AssistantMark, CheckMark, ChevronMark, CopyMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
+  AlertMark, AssistantMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
 import { storageAttachmentAdapter } from "./attachments";
@@ -54,7 +55,7 @@ const STRINGS: Record<ConversationLocale, Record<string, string>> = {
     genImage: "生成图片", genVideo: "生成视频", mediaLaterTip: "生图 / 生视频本期未接入 React 聊天，请在旧版界面使用", attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
-    query: "查询", sources: "来源", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
+    query: "查询", sources: "来源", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
   },
   "en-US": {
     stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
@@ -62,7 +63,7 @@ const STRINGS: Record<ConversationLocale, Record<string, string>> = {
     genImage: "Generate image", genVideo: "Generate video", mediaLaterTip: "Image / video generation is not in the React chat yet; use the classic view", attach: "Add attachment", loading: "Loading conversation…", process: "Process",
     queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
     reload: "Regenerate", toBottom: "Scroll to bottom", earlier: "Load earlier messages", running: "Running", done: "Done", failed: "Failed",
-    query: "Query", sources: "Sources", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
+    query: "Query", sources: "Sources", cancelled: "Stopped", tool: "Tool", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
   },
 };
 const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
@@ -305,25 +306,54 @@ function MarkdownText() {
   return <div className="mc-md" data-status={status.type} onClick={(e) => void openSealedLinkOnClick(e.nativeEvent)} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-const statusKey = (status: { type: string }, isError?: boolean) =>
-  status.type === "running" ? "running" : isError || status.type === "incomplete" ? "failed" : "done";
+/** Core step status (threadMessages.ts stores it in providerMetadata.core) → the four states the UI shows. */
+type StepState = "running" | "done" | "failed" | "cancelled";
+export const stepState = (core: unknown, aui: { type: string }, isError?: boolean): StepState => {
+  if (core === "pending" || core === "streaming") return "running";
+  if (core === "failed" || isError) return "failed";
+  if (core === "cancelled") return "cancelled";
+  return core === undefined && aui.type === "running" ? "running" : "done";
+};
+const coreStatus = (part: { providerMetadata?: unknown }) => (part.providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
+const elapsed = (timing?: { startedAt: number; completedAt?: number }) =>
+  timing?.completedAt === undefined ? "" : formatProcessDuration(timing.completedAt - timing.startedAt);
 
-/** Generic Core tool-call card: name, state, and the outcome (query / sources / text) folded. */
-function ToolCard({ toolName, result, isError, status, t }: { toolName: string; result?: unknown; isError?: boolean; status: { type: string }; t: Translate }) {
-  const r = result as ToolResult | undefined;
-  const state = statusKey(status, isError);
+const StepIcon = ({ state }: { state: StepState }) => (
+  <span className="mc-step-icon" data-state={state} aria-hidden="true">
+    {state === "running" ? <span className="mc-spinner" /> : state === "failed" ? <AlertMark size={13} /> : state === "cancelled" ? <CrossMark size={12} /> : <CheckMark size={13} />}
+  </span>
+);
+
+/** One row of the 执行过程 list: status icon, name, (tool tag), duration, then the step's summary or tool outcome. */
+function Step({ state, name, tool, duration, t, children }: { state: StepState; name: string; tool?: boolean; duration: string; t: Translate; children?: ReactNode }) {
+  return (
+    <div className="mc-step" data-state={state}>
+      <div className="mc-step-head">
+        <StepIcon state={state} />
+        <span className="mc-step-name">{name}</span>
+        {tool && <span className="mc-step-tag"><ToolMark />{t("chatReact.tool")}</span>}
+        {state !== "done" && <span className="mc-step-state">{t(`chatReact.${state}`)}</span>}
+        {duration && <span className="mc-step-time">{duration}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Generic Core tool step: name, state, duration and the outcome (query / sources / text). Core sends no args. */
+function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isError?: boolean; status: { type: string }; timing?: { startedAt: number; completedAt?: number }; providerMetadata?: unknown }; t: Translate }) {
+  const r = part.result as ToolResult | undefined;
   const sources = (r?.sources ?? []).filter((s) => s.url && /^https?:\/\//i.test(s.url));
   return (
-    <details className="mc-tool" data-status={state}>
-      <summary><span className="mc-tool-name">{toolName}</span><span className="mc-tool-state">{t(`chatReact.${state}`)}</span></summary>
-      {r?.query && <p className="mc-tool-row"><b>{t("chatReact.query")}</b> {r.query}</p>}
+    <Step state={stepState(coreStatus(part), part.status, part.isError)} name={part.toolName} tool duration={elapsed(part.timing)} t={t}>
+      {r?.query && <p className="mc-step-detail"><b>{t("chatReact.query")}</b> {r.query}</p>}
       {sources.length > 0 && (
         <ul className="mc-tool-sources" aria-label={t("chatReact.sources")}>
           {sources.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.domain || s.url}</a></li>)}
         </ul>
       )}
-      {r?.content && <pre className="mc-tool-result">{r.content}</pre>}
-    </details>
+      {r?.content && <pre className="mc-step-detail">{r.content}</pre>}
+    </Step>
   );
 }
 
@@ -349,29 +379,47 @@ const groupBy = (part: { type: string }) =>
     ? (part.type === "data" && (part as { name?: string }).name !== "process" ? null : ["group-process" as const])
     : null;
 
+/** The 执行过程 fold: GroupedParts puts the header <summary> and the step rows in it. Opens while the run is live, like the Vue view. */
+function ProcessFold({ running, children }: { running: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(running);
+  useEffect(() => { if (running) setOpen(true); }, [running]);
+  return (
+    <details className="mc-process" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      {children}
+    </details>
+  );
+}
+
 function Parts({ t }: { t: Translate }) {
   return (
     <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="empty">
       {({ part, children }) => {
         switch (part.type) {
           case "group-process":
-            return <details className="mc-process" open={part.status.type === "running"}>{children}</details>;
+            return <ProcessFold running={part.status.type === "running"}>{children}</ProcessFold>;
           case "indicator":
             return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
           case "text":
             return <MarkdownText />;
           case "reasoning": {
             const [title, ...rest] = part.text.split("\n");
-            return <div className="mc-step"><b>{title}</b>{rest.length > 0 && <pre>{rest.join("\n")}</pre>}</div>;
+            return (
+              <Step state={stepState(coreStatus(part), part.status)} name={title ?? ""} duration={elapsed(part.timing)} t={t}>
+                {rest.length > 0 && <pre className="mc-step-detail">{rest.join("\n")}</pre>}
+              </Step>
+            );
           }
           case "tool-call":
-            return <ToolCard toolName={part.toolName} result={part.result} isError={part.isError} status={part.status} t={t} />;
+            return <ToolStep part={part} t={t} />;
           case "data":
             if (part.name === "process") {
               const data = part.data as ProcessPartData;
               return (
-                <summary aria-label={`${t("chatReact.process")} · ${data.summary}`}>
+                <summary className="mc-process-head" data-status={data.status} aria-label={`${t("chatReact.process")} · ${data.summary}`}>
+                  <span className="mc-process-chevron"><ChevronMark /></span>
+                  <span className="mc-process-dot" aria-hidden="true" />
                   <span className="mc-process-label">{t("chatReact.process")}</span>
+                  {data.status === "failed" && <span className="mc-process-alert"><AlertMark /></span>}
                   <span className="mc-process-summary">{data.summary}</span>
                   {data.timing && <span className="mc-process-timing">{data.timing}</span>}
                 </summary>

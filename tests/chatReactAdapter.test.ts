@@ -151,7 +151,8 @@ test("adapter: user items split turns; process → data-process header + one par
   const [process, step, answer] = messages[1].content as readonly { type: string; text?: string; data?: { summary: string } }[];
   assert.equal(process.type, "data-process");
   assert.equal(process.data?.summary, "1 个步骤 · 已完成");
-  assert.deepEqual(step, { type: "reasoning", id: "t1", text: "思考过程\nplan" });
+  assert.deepEqual(step, { type: "reasoning", id: "t1", text: "思考过程\nplan", providerMetadata: { core: { status: "complete" } },
+    timing: { startedAt: Date.parse("2026-11-13T00:00:00Z"), completedAt: Date.parse("2026-11-13T00:00:00Z") } });
   assert.deepEqual(answer, { type: "text", text: "**hello**" });
   assert.equal(JSON.stringify(messages).includes("secret"), false, "hidden tool lane never reaches aui");
   assert.deepEqual(messages[1].status, { type: "complete", reason: "stop" });
@@ -172,8 +173,11 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
   ], "running"));
   const parts = reply.content as readonly Record<string, unknown>[];
   assert.deepEqual(parts.map((p) => p.type), ["data-process", "tool-call", "tool-call", "tool-call", "text", "data-files", "data-media"]);
-  assert.deepEqual(parts[1], { type: "tool-call", toolCallId: "call-1", toolName: "联网搜索", args: {},
+  const { timing, ...first } = parts[1] as { timing?: unknown };
+  assert.deepEqual(first, { type: "tool-call", toolCallId: "call-1", toolName: "联网搜索", args: {},
     result: { content: "找到 2 条", query: "aui", sources: [{ title: "A", url: "https://a.example" }] }, isError: false });
+  assert.ok(timing, "settled tool step carries aui timing");
+  assert.equal("timing" in parts[2], false, "a running step has no duration yet");
   assert.equal("result" in parts[2], false, "a running tool has no result yet (aui shows it as running)");
   assert.deepEqual([parts[3].toolCallId, parts[3].isError], ["s3", true]);
   assert.deepEqual(parts[5].data, [{ id: "f9", name: "report.pdf" }]);
@@ -209,6 +213,22 @@ test("suggestions: home cards → aui suggestions (locale, prefill vs title, dis
   ]);
   assert.equal(toSuggestions(data, "en-US")[0].title, "Weekly");
   assert.deepEqual(toSuggestions(null, "zh-CN"), []);
+});
+
+test("adapter: step durations follow the Vue rule (until the next step / the answer; explicit durationMs wins)", () => {
+  const at = (sec: number) => `2026-11-13T00:00:${String(sec).padStart(2, "0")}Z`;
+  const [, reply] = toThreadMessages(stateOf([
+    item("u1", { role: "user", content: "q", timestamp: at(0) }),
+    item("p1", { lane: "process", title: "排队", userReadable: true, timestamp: at(1) }),
+    item("p2", { lane: "process", kind: "tool_call", title: "命令", status: "failed", userReadable: true, timestamp: at(4), data: { toolCallId: "c" } }),
+    item("p3", { lane: "process", title: "收尾", userReadable: true, timestamp: at(5), data: { durationMs: 250 } }),
+    item("a1", { content: "done", timestamp: at(9) }),
+  ]));
+  const spans = (reply.content as readonly { timing?: { startedAt: number; completedAt?: number } }[]).slice(1, 4)
+    .map((p) => p.timing && (p.timing.completedAt ?? 0) - p.timing.startedAt);
+  assert.deepEqual(spans, [3000, 1000, 250]);
+  const p2 = (reply.content as readonly Record<string, unknown>[])[2];
+  assert.equal(p2.isError, true, "failed tool step is an aui error result");
 });
 
 test("adapter: contiguous process steps merge into one 执行过程 summary with the run's total time", () => {

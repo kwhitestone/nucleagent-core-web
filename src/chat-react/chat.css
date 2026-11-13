@@ -41,7 +41,186 @@
   cursor: pointer;
 }
 .mc-to-bottom:disabled { display: none; }
-.mc-dropzone[data-dragging="true"] /* Composer: aui Input autosizes 1–8 rows; one toolbar row of round/pill controls; send is a brand circle. */
+.mc-dropzone[data-dragging="true"] .mc-composer { border-color: var(--border-prompt-focus); border-style: dashed; }
+.mc-welcome { margin: auto; max-width: 760px; width: 100%; text-align: center; }
+.mc-welcome-title { font-size: 22px; font-weight: 700; margin: 0 0 20px; color: var(--fg-primary); }
+.mc-suggestions { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; text-align: left; }
+.mc-suggestion {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mc-suggestion:hover { background: var(--bg-hover); }
+.mc-suggestion-title { font-size: 14px; font-weight: 500; color: var(--fg-primary); }
+.mc-suggestion-desc { font-size: 12px; color: var(--fg-tertiary); }
+.mc-thinking { margin: 0; color: var(--fg-tertiary); font-size: 13px; }
+.mc-empty {
+  text-align: center;
+  margin: auto;
+  color: var(--fg-tertiary);
+  font-size: 14px;
+}
+/* Message row mirrors MessageItem.vue: 28px avatar, author + time + copy header, single-layer bubble. */
+.mc-msg {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.mc-msg[data-message-role="user"] { flex-direction: row-reverse; }
+.mc-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-500), var(--fuchsia-500));
+}
+.mc-avatar svg { width: 15px; height: 15px; }
+.mc-msg[data-message-role="user"] .mc-avatar { background: var(--indigo-500); }
+.mc-main { flex: 1; min-width: 0; }
+.mc-msg[data-message-role="user"] .mc-main {
+  flex: unset;
+  max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.mc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+  padding: 0 2px;
+}
+.mc-msg[data-message-role="user"] .mc-header { justify-content: flex-end; }
+.mc-author { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.mc-time { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.mc-actions { display: inline-flex; align-items: center; gap: 2px; }
+.mc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-self: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mc-icon-btn:hover { background: var(--bg-hover); }
+.mc-icon-btn:disabled { opacity: 0.5; cursor: default; }
+.mc-copy-status { font-size: 11px; color: var(--text-secondary); }
+.mc-bubble {
+  padding: 10px 16px;
+  border-radius: 5px 16px 16px 16px;
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  color: var(--slate-700);
+}
+/* Assistant replies are frameless (no card), so the 执行过程 row reads as its own strip above the answer. */
+.mc-msg[data-message-role="assistant"] .mc-bubble { padding: 0; border: 0; background: transparent; box-shadow: none; border-radius: 0; }
+/* Same brand-blue fill + white text as the Vue user bubble (aurora maps indigo/violet to --fg-brand). */
+.mc-msg[data-message-role="user"] .mc-bubble {
+  background: linear-gradient(160deg, var(--indigo-500), var(--violet-500));
+  border: 0;
+  color: #fff;
+  border-radius: 16px 16px 5px 16px;
+  box-shadow: 0 2px 8px rgb(99 102 241 / 20%);
+}
+.mc-msg[data-message-role="user"] .mc-md code { background: rgb(255 255 255 / 20%); color: #fff; }
+.mc-msg[data-message-role="user"] .mc-md a { color: #fff; text-decoration: underline; }
+/* 执行过程: a separate light row above the answer (blue dot + blue title + steps + status + total time + chevron),
+   failures in amber/red; expanded, one row per step with status icon, name, duration and summary. */
+.mc-process {
+  margin: 0 0 10px;
+  border-radius: 12px;
+  background: var(--bg-fill);
+  color: var(--fg-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mc-process-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.mc-process-head::-webkit-details-marker { display: none; }
+.mc-process-head:hover { background: var(--bg-hover); }
+.mc-process-head:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 2px; }
+.mc-process-chevron { display: inline-flex; color: var(--fg-tertiary); transition: transform 0.15s; transform: rotate(-90deg); }
+.mc-process[open] .mc-process-chevron { transform: none; }
+.mc-process-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--fg-brand); flex: none; }
+.mc-process-head[data-status="streaming"] .mc-process-dot, .mc-process-head[data-status="pending"] .mc-process-dot { animation: mc-pulse 1.2s ease-in-out infinite; }
+.mc-process-head[data-status="failed"] .mc-process-dot { background: var(--amber-500); }
+.mc-process-head[data-status="cancelled"] .mc-process-dot { background: var(--fg-tertiary); }
+.mc-process-label { font-weight: 500; color: var(--fg-brand); }
+.mc-process-alert { display: inline-flex; color: var(--amber-600); }
+.mc-process-head[data-status="failed"] .mc-process-summary { color: var(--amber-600); font-weight: 500; }
+.mc-process-timing { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); white-space: nowrap; }
+.mc-process[open] > .mc-step:last-child { padding-bottom: 10px; }
+.mc-step { position: relative; padding: 4px 12px 4px 38px; }
+.mc-step-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-step-icon { position: absolute; left: 14px; top: 7px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-success); }
+.mc-step-icon[data-state="failed"] { color: var(--fg-error); }
+.mc-step-icon[data-state="cancelled"] { color: var(--fg-tertiary); }
+.mc-step-icon[data-state="running"] { color: var(--fg-brand); }
+.mc-spinner { width: 10px; height: 10px; box-sizing: border-box; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: mc-spin 0.8s linear infinite; }
+.mc-step-name { color: var(--fg-primary); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-step-tag { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 6px; background: var(--bg-card); color: var(--fg-tertiary); font-size: 11px; flex: none; }
+.mc-step-state { font-size: 12px; color: var(--fg-brand); flex: none; }
+.mc-step[data-state="failed"] .mc-step-state { color: var(--fg-error); font-weight: 500; }
+.mc-step[data-state="cancelled"] .mc-step-state { color: var(--fg-tertiary); }
+.mc-step-time { margin-left: auto; font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mc-step-detail { margin: 2px 0 0; color: var(--fg-secondary); font-size: 12px; font-family: inherit; white-space: pre-wrap; word-break: break-word; }
+.mc-step-detail b { font-weight: 500; }
+.mc-step[data-state="failed"] .mc-step-detail { color: var(--fg-error); }
+.mc-tool-sources { margin: 2px 0 0; padding-left: 18px; font-size: 12px; }
+.mc-tool-sources a { color: var(--fg-brand); }
+@keyframes mc-spin { to { transform: rotate(360deg); } }
+@keyframes mc-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .mc-spinner, .mc-process-dot { animation: none !important; } }
+.mc-media { display: block; max-width: min(100%, 420px); border-radius: 10px; margin: 6px 0; color: var(--fg-tertiary); font-size: 13px; }
+.mc-media--failed { color: var(--fg-error); }
+.mc-md > :first-child { margin-top: 0; }
+.mc-md > :last-child { margin-bottom: 0; }
+.mc-md pre, .mc-md code {
+  background: var(--bg-fill);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.mc-md pre { padding: 8px 12px; overflow-x: auto; }
+.mc-md p { margin: 0.4em 0; }
+.mc-md ul, .mc-md ol { padding-left: 1.4em; margin: 0.4em 0; }
+.mc-md table { border-collapse: collapse; font-size: 13px; }
+.mc-md th, .mc-md td { border: 1px solid var(--border); padding: 4px 8px; }
+.mc-md a { color: var(--fg-brand); }
+/* Composer: aui Input autosizes 1–8 rows; one toolbar row of round/pill controls; send is a brand circle. */
 .mc-composer {
   max-width: 760px;
   width: 100%;
