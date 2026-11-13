@@ -10,9 +10,17 @@ import { ComposerPrimitiveRoot } from "@aui-dist/primitives/composer/ComposerRoo
 import { ComposerPrimitiveInput } from "@aui-dist/primitives/composer/ComposerInput.js";
 import { ComposerPrimitiveSend } from "@aui-dist/primitives/composer/ComposerSend.js";
 import { ComposerPrimitiveCancel } from "@aui-dist/primitives/composer/ComposerCancel.js";
+import { ComposerPrimitiveAddAttachment } from "@aui-dist/primitives/composer/ComposerAddAttachment.js";
+import { ComposerPrimitiveAttachments } from "@aui-dist/primitives/composer/ComposerAttachments.js";
+import { AttachmentPrimitiveRoot } from "@aui-dist/primitives/attachment/AttachmentRoot.js";
+import { AttachmentPrimitiveRemove } from "@aui-dist/primitives/attachment/AttachmentRemove.js";
 import { MessagePrimitiveRoot } from "@aui-dist/primitives/message/MessageRoot.js";
 import { MessagePrimitiveParts } from "@aui-dist/primitives/message/MessageParts.js";
 
 export const ThreadPrimitive = { Root: ThreadPrimitiveRoot, Viewport: ThreadPrimitiveViewport, Messages: ThreadPrimitiveMessages };
-export const ComposerPrimitive = { Root: ComposerPrimitiveRoot, Input: ComposerPrimitiveInput, Send: ComposerPrimitiveSend, Cancel: ComposerPrimitiveCancel };
+export const ComposerPrimitive = {
+  Root: ComposerPrimitiveRoot, Input: ComposerPrimitiveInput, Send: ComposerPrimitiveSend, Cancel: ComposerPrimitiveCancel,
+  AddAttachment: ComposerPrimitiveAddAttachment, Attachments: ComposerPrimitiveAttachments,
+};
+export const AttachmentPrimitive = { Root: AttachmentPrimitiveRoot, Remove: AttachmentPrimitiveRemove };
 export const MessagePrimitive = { Root: MessagePrimitiveRoot, Parts: MessagePrimitiveParts };

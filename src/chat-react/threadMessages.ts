@@ -83,6 +83,11 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
     if (item.data?.clarifyResponse !== true) userId = item.id;
     out.push({
       id: item.id, role: "user", content: [{ type: "text", text: item.content }],
+      // Storage references only (fileId/name/mime/size), never file bytes; chips render from these.
+      ...(item.attachments?.length ? { attachments: item.attachments.map((a) => ({
+        id: a.id, type: a.mimeType?.startsWith("image/") ? "image" : "file", name: a.name, contentType: a.mimeType,
+        status: { type: "complete" as const }, content: [],
+      })) } : {}),
       createdAt: new Date(item.timestamp), metadata: { custom: { pending: item.status === "pending" } },
     });
   }

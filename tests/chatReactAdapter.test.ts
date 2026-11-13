@@ -264,3 +264,47 @@ test("copyRawBody: raw text, clipboard failure is reported, stale or revalidatin
   assert.equal(await copyRawBody("", () => true), undefined);
   assert.deepEqual(calls, ["**raw** <b>", "x", "x"]);
 });
+
+test("attachments: storage upload adapter yields progress, sends only the stored fileId ref, reports failures", async () => {
+  const { storageAttachmentAdapter, toConversationAttachments } = await vite.ssrLoadModule("/src/chat-react/attachments.ts") as typeof import("../src/chat-react/attachments.ts");
+  const errors: string[] = [];
+  const drain = async (gen: AsyncGenerator<{ status: { type: string; progress?: number } }> | Promise<unknown>) => {
+    const states: { status: { type: string; progress?: number }; id?: string }[] = [];
+    for await (const s of gen as AsyncGenerator<{ status: { type: string; progress?: number } }>) states.push(s);
+    return states;
+  };
+  const file = new File(["hello"], "a.png", { type: "image/png" });
+  const ok = storageAttachmentAdapter((f, m) => errors.push(`${f.name}:${m}`), async (_f, onProgress) => {
+    onProgress(1, 2); await tick();
+    return { fileId: "f-1", name: "a.png", mimeType: "image/png", size: 5, sha256: "x" };
+  });
+  const states = await drain(ok.add({ file }) as never);
+  assert.deepEqual(states.map((s) => s.status.type), ["running", "running", "requires-action"]);
+  assert.equal(states[1].status.progress, 0.5);
+  const done = await ok.send({ ...states.at(-1), file } as never);
+  assert.deepEqual(done, { id: "f-1", type: "image", name: "a.png", contentType: "image/png", status: { type: "complete" }, content: [] });
+  assert.equal("file" in done, false, "no File object travels with the message");
+  await assert.rejects(ok.send({ ...states.at(-1), file } as never), /未上传完成/, "a ref is sent once");
+  assert.deepEqual(toConversationAttachments([done]), [{ id: "f-1", name: "a.png", mimeType: "image/png" }]);
+
+  const failing = storageAttachmentAdapter((f, m) => errors.push(`${f.name}:${m}`), async () => { throw new Error("boom"); });
+  const failed = await drain(failing.add({ file }) as never);
+  assert.equal(failed.at(-1)?.status.type, "incomplete");
+  await assert.rejects(failing.send({ ...failed.at(-1), file } as never));
+  const huge = { name: "big.bin", type: "", size: 200 * 1024 * 1024 } as File;
+  let called = false;
+  const capped = storageAttachmentAdapter((f, m) => errors.push(`${f.name}:${m}`), async () => { called = true; throw new Error("x"); });
+  assert.equal((await drain(capped.add({ file: huge }) as never)).at(-1)?.status.type, "incomplete");
+  assert.equal(called, false, "oversize files never hit the upload API");
+  assert.deepEqual(errors, ["a.png:上传失败", "big.bin:文件超过 100MB 上限"]);
+});
+
+test("attachments: onNew forwards refs to the controller; history shows them on the user message", async () => {
+  const calls: unknown[] = [];
+  const store = externalStore(stateOf([]), { send: async (text, files) => { calls.push([text, files]); }, stop: async () => {} });
+  await store.onNew({ role: "user", content: [{ type: "text", text: "see file" }],
+    attachments: [{ id: "f-1", type: "file", name: "r.pdf", contentType: "application/pdf", status: { type: "complete" }, content: [] }] } as never);
+  assert.deepEqual(calls, [["see file", [{ id: "f-1", name: "r.pdf", mimeType: "application/pdf" }]]]);
+  const [user] = toThreadMessages(stateOf([item("u1", { role: "user", content: "q", attachments: [{ id: "f-9", name: "x.png", mimeType: "image/png", size: 3 }] })]));
+  assert.deepEqual(user.attachments, [{ id: "f-9", type: "image", name: "x.png", contentType: "image/png", status: { type: "complete" }, content: [] }]);
+});

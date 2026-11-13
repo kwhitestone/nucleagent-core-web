@@ -193,3 +193,44 @@
   outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
 }
+.mc-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.mc-attach:hover { background: var(--bg-hover); }
+.mc-attach:disabled { opacity: 0.5; cursor: default; }
+.mc-attach:focus-visible, .mc-chip-remove:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 2px; }
+.mc-attach-count { font-variant-numeric: tabular-nums; }
+.mc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-chips:not(:empty) { margin-bottom: 8px; }
+.mc-chips--sent { margin: 8px 0 0; }
+.mc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+}
+.mc-chip[data-status="incomplete"] { border-color: var(--fg-error); color: var(--fg-error); }
+.mc-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-chip-meta { font-variant-numeric: tabular-nums; }
+.mc-chip-remove { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; }
+.mc-msg[data-message-role="user"] .mc-chip {
+  border-color: rgb(255 255 255 / 30%);
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
+}

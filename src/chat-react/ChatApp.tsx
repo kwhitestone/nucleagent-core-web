@@ -18,6 +18,9 @@ import { externalStore } from "./externalStore";
 import type { ProcessPartData } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { useCoreConversation } from "./useCoreConversation";
+import { storageAttachmentAdapter } from "./attachments";
+import { AttachmentPrimitive } from "./auiPrimitives";
+import { MAX_ATTACHMENTS } from "@/addons/conversation/task-conversation/core";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -52,21 +55,23 @@ export function ChatApp(props: ChatProps) {
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? "消息格式异常，已跳过一条更新" : modelErrorMessage(error, t)), [t]);
   const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
+  const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
 
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
     ? externalStore(core?.state ?? EMPTY, {
-      send: (text) => core ? core.controller.send(text) : Promise.reject(new Error(t("chatReact.loading"))),
+      send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
       stop: () => core?.controller.stop() ?? Promise.resolve(),
-    }, view)
+    }, view, attachments)
     : externalStore(EMPTY, {
-      async send(input) {
+      async send(input, files) {
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
         try {
           const created = await props.create({
             mode: "a2a_agent", input,
             model: settings.model?.model ?? "", providerId: settings.model?.providerId,
             executionBackend: settings.backend ?? undefined,
+            ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
           });
           props.navigate(`/c/${created.id}`);
         } catch (error) {
@@ -75,7 +80,7 @@ export function ChatApp(props: ChatProps) {
         }
       },
       stop: () => Promise.resolve(),
-    });
+    }, undefined, attachments);
   const runtime = useExternalStoreRuntime(adapter);
 
   return (
@@ -88,11 +93,13 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
         </ThreadPrimitive.Viewport>
         <ComposerPrimitive.Root className="mc-composer">
+          <ComposerAttachmentChips t={t} />
           <ComposerPrimitive.Input
             className="mc-input" rows={2} autoFocus
             placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")}
           />
           <div className="mc-toolbar">
+            <AttachButton t={t} />
             <ModelGroupPicker t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
               backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
             <AuiIf condition={(s) => !s.thread.isRunning}>
@@ -161,6 +168,52 @@ function CopyButton({ id, body, t }: { id: string; body: string; t: Translate })
   );
 }
 
+const ClipMark = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+
+/** Paperclip button; the cap matches Core's MAX_ATTACHMENTS like AttachmentPicker.vue's `max`. */
+function AttachButton({ t }: { t: Translate }) {
+  const count = useAuiState((s) => s.composer.attachments.length);
+  const uploading = useAuiState((s) => s.composer.attachments.some((a) => a.status.type === "running"));
+  return (
+    <ComposerPrimitive.AddAttachment className="mc-attach" data-testid="mc-attach" title={t("common.attachment")} aria-label={t("common.attachment")}
+      disabled={count >= MAX_ATTACHMENTS}>
+      <ClipMark />{uploading ? <span>{t("common.attachmentUploading")}</span> : count > 0 ? <span className="mc-attach-count">{count}</span> : null}
+    </ComposerPrimitive.AddAttachment>
+  );
+}
+
+function ComposerAttachmentChips({ t }: { t: Translate }) {
+  return (
+    <div className="mc-chips">
+      <ComposerPrimitive.Attachments>
+        {({ attachment }) => (
+          <AttachmentPrimitive.Root className="mc-chip" data-status={attachment.status.type}>
+            <span className="mc-chip-name">{attachment.name}</span>
+            {attachment.status.type === "running" && <span className="mc-chip-meta">{Math.round(("progress" in attachment.status ? attachment.status.progress : 0) * 100)}%</span>}
+            {attachment.status.type === "incomplete" && <span className="mc-chip-meta" role="status">{t("common.attachmentUploadFailed")}</span>}
+            <AttachmentPrimitive.Remove className="mc-chip-remove" aria-label={t("common.delete")}>×</AttachmentPrimitive.Remove>
+          </AttachmentPrimitive.Root>
+        )}
+      </ComposerPrimitive.Attachments>
+    </div>
+  );
+}
+
+/** Sent attachments on a user message (names only; shortcut: no download/preview yet, AttachmentChips.vue still owns that). */
+function MessageAttachmentChips() {
+  const list = useAuiState((s) => s.message.attachments);
+  if (!list?.length) return null;
+  return (
+    <div className="mc-chips mc-chips--sent">
+      {list.map((a) => <span key={a.id} className="mc-chip" data-kind={a.type}><span className="mc-chip-name">{a.name}</span></span>)}
+    </div>
+  );
+}
+
 function ProcessGroup({ data, t }: { data: ProcessPartData; t: Translate }) {
   const title = t("chatReact.process");
   return (
@@ -207,6 +260,7 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
                   ? <details className="mc-reasoning"><summary>{part.text.split("\n")[0]}</summary><pre>{part.text.split("\n").slice(1).join("\n")}</pre></details>
                   : null}
           </MessagePrimitive.Parts>
+          {isUser && <MessageAttachmentChips />}
         </div>
       </div>
     </MessagePrimitive.Root>
