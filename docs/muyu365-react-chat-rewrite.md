@@ -583,3 +583,31 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 | `tools/env-modify/runner-cw.test.cjs:226-228` `STAGE5 / STAGE_PRE` | 测试里的同一份键表 | 同步更新，断言里的 `keys=[…]` 列表（如 `:452,:458`）也要一起改 |
 
 deploy 仓的 `.env.example`、`docker-compose.yml`、`scripts/dev.sh` 不涉及 core-web 的 runtime-config 键表，本地开发不设这个变量即可。TEST 环境（不在 5/8 里）的下发通道没有在 deploy 仓里找到，按现有 TEST 的配置方式手工加环境变量。上面这些都只是读出来的结果，**没有改 deploy 仓**。
+
+## 17. assistant-ui 覆盖度审计（第 5 棒，2026-11-13，初稿）
+
+依据：本地 `node_modules/@assistant-ui/react@0.15.36`、`@assistant-ui/core@0.3.35`（MIT）的 d.ts；`@assistant-ui/react-markdown@0.14.26` 用 `npm view` 读取（MIT，依赖 react-markdown ^10.1.0、classnames、@radix-ui/react-primitive、micromark-util-html-tag-name、@types/hast）。官网文档未读取（NOT_VERIFIED），以下只以包内声明为准。
+
+| 能力（aui 出处） | 第 4 棒现状 | 第 5 棒计划 | 对应旧 Vue 功能 |
+|---|---|---|---|
+| ThreadPrimitive.Root/Viewport/Messages | 已用 | 保留 | 消息列表 |
+| ThreadPrimitive.ScrollToBottom（+Viewport autoScroll） | 未用 | 改用 | “回到底部”按钮、跟随流式滚动 |
+| ThreadPrimitive.Empty | 未用（AuiIf 自判） | 改用 | 首页空态 |
+| ThreadPrimitive.Suggestions/Suggestion + SuggestionPrimitive.Title/Description/Trigger | 未用 | 改用，数据来自 `fetchHomeSuggestions`（经 ExternalStoreAdapter.suggestions） | 首页建议卡 |
+| ThreadPrimitive.LoadEarlier | 未用 | 评估：Core 有向上分页游标则接，否则不接 | 历史消息上翻 |
+| MessagePrimitive.Parts `components.Text` | 已用但正文为自写 `renderMarkdown`+`dangerouslySetInnerHTML` | 改为 `@assistant-ui/react-markdown` 的 MarkdownTextPrimitive；净化沿用 task-conversation/markdown.ts 规则 | Markdown 正文 |
+| `components.Reasoning` / `ReasoningGroup` / `ChainOfThought`（与 tools 互斥） | 未用，自写 `<details>` | 改用 `ChainOfThought`（ChainOfThoughtPrimitive.Root/AccordionTrigger/Parts）承载 process 条目+工具调用，标题“执行过程 N 个步骤 · 总耗时” | 执行过程折叠 |
+| `components.tools` / `ToolGroup` / makeAssistantToolUI | 未用（工具卡缺失） | Core 工具条目映射为 `tool-call` 部件；通用卡片（名称、状态、入参/结果折叠） | 工具调用卡 |
+| `components.Image` / `File` / `data` | 未用 | 图片/视频产物：Image 部件 + `data` 自定义部件 | 成果图片/视频卡 |
+| MessagePartPrimitive.InProgress、useSmooth | 未用 | 流式文本用 aui smooth（Markdown 组件 `smooth` 选项） | 流式平滑（旧 Vue StreamSmoothState） |
+| ActionBarPrimitive.Copy/Reload/Edit/Feedback*/Speak/ExportMarkdown | 未用，复制自写 | Copy 用 aui（文本仍取原文、沿用安全反馈）；Reload=重发上一问（adapter.onReload）；Edit/Feedback/Speak/Export 不接（Core 无对应接口） | 复制、重新生成 |
+| BranchPickerPrimitive | 未用 | 不用：Core 会话线性，无分支 | 无 |
+| ThreadListPrimitive + ExternalStoreAdapter.adapters.threadList（threads/onSwitchToThread/onSwitchToNewThread/onRename/onArchive/onDelete） | 未用 | 壳模式下侧栏由壳持有（useShellBridge）不接；独立运行时可接，见 §18 结论 | 历史会话侧栏 |
+| ComposerPrimitive.Input/Send/Cancel/Queue/Attachments/AddAttachment | 已用 | 保留 | 输入框、停止、排队、附件 |
+| ComposerPrimitive.AttachmentDropzone | 未用 | 改用（拖拽上传，复用 AttachmentAdapter） | 拖拽上传 |
+| ComposerPrimitive.Dictate（WebSpeechDictationAdapter） | 未用 | 不用：旧 Vue 无听写，浏览器语音服务未经评估 | 无 |
+| AttachmentPrimitive.Root/Name/Remove/unstable_Thumb | 部分（自写渲染） | 改用 | 附件芯片 |
+| MessagePrimitive.Error / ErrorPrimitive | 未用 | 改用显示流错误 | 发送/流失败提示 |
+| @assistant-ui/react-ui 0.2.1、@assistant-ui/styles 0.3.7 | 未用 | 待读包源码后定；倾向不用（主题须对齐目鱼 Vue 视觉，且增大包体） | — |
+
+数据层：第 4 棒 React 岛经 `useCoreConversation.ts` 镜像 Vue `useConversation`（effectScope）。第 5 棒目标为 React 端 store，复用 api 层、SSE 解码器、v2 reducer 等纯 TS。
