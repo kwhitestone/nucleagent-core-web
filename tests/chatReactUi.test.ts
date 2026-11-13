@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { readFileSync } from "node:fs";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
@@ -128,4 +129,19 @@ test("process row: failed step → amber header with alert icon; expanded rows c
   assert.equal(app.stepState(undefined, { type: "running" }), "running");
   assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
   assert.equal(app.stepState("cancelled", { type: "complete" }), "cancelled");
+});
+
+test("hover action bar: under the bubble, real buttons (keyboard focusable, ≥28px via .mc-icon-btn), last reply marked", () => {
+  const state = stateOf([item("u1", { role: "user", content: "q" }), item("a1", { content: "答案" })]);
+  const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  const assistant = html.slice(html.indexOf('data-message-role="assistant"'));
+  assert.match(assistant, /class="mc-bubble".*class="mc-actions"/s, "action bar comes after the bubble");
+  assert.match(assistant, /<button type="button" class="mc-icon-btn" aria-label="common.copy" title="common.copy"/);
+  assert.match(assistant, /<button[^>]*class="mc-icon-btn"[^>]*aria-label="chatReact.reload"/);
+  assert.doesNotMatch(assistant, /tabindex="-1"/, "no action is taken out of the tab order");
+  assert.match(html, /data-message-role="assistant"[^>]*data-last="true"/);
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  assert.match(css, /\.mc-msg:focus-within \.mc-actions/, "keyboard focus reveals the bar");
+  assert.match(css, /\.mc-icon-btn \{[^}]*width: 32px;[^}]*height: 32px;/s);
 });

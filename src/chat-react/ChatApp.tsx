@@ -192,7 +192,8 @@ function CopyAction({ t }: { t: Translate }) {
   });
   return (
     <>
-      <button type="button" className="mc-icon-btn" aria-label={t("common.copy")} title={t("common.copy")} disabled={disabled} onClick={copy}><CopyMark /></button>
+      <button type="button" className="mc-icon-btn" aria-label={t("common.copy")} title={t("common.copy")} disabled={disabled} onClick={copy}
+        data-copied={isCopied || undefined}>{isCopied ? <CheckMark /> : <CopyMark />}</button>
       <span className="mc-copy-status" role="status">{isCopied ? t("common.copied") : failed ? t("common.operationFailed") : ""}</span>
     </>
   );
@@ -438,30 +439,36 @@ function Parts({ t }: { t: Translate }) {
   );
 }
 
+/**
+ * One message: small avatar + name (exact time only on hover, via title and a hover-revealed stamp),
+ * the bubble (brand gradient for the user, frameless for the assistant), and aui's ActionBar under it.
+ * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
+ * pointer), and always on the last reply.
+ */
 export function MessageRow({ role, t }: { role: string; t: Translate }) {
   const createdAt = useAuiState((s) => s.message.createdAt);
   const failed = useAuiState((s) => (s.message.metadata.custom as { failed?: boolean }).failed === true);
+  const isLast = useAuiState((s) => s.message.isLast);
   const isUser = role === "user";
   const time = formatMessageTime(createdAt?.toISOString());
+  const author = isUser ? t("conversation.you") : t("home.greeting");
   return (
-    <MessagePrimitive.Root className="mc-msg" data-message-role={role} data-failed={failed || undefined}>
-      <div className="mc-avatar" aria-hidden="true">{isUser ? t("conversation.you") : <AssistantMark />}</div>
-      <div className="mc-main">
-        <div className="mc-header">
-          <span className="mc-author">{isUser ? t("conversation.you") : t("home.greeting")}</span>
-          {time && <span className="mc-time">{time}</span>}
-          <ActionBarPrimitive.Root className="mc-actions" hideWhenRunning autohide="never">
-            <CopyAction t={t} />
-            {!isUser && (
-              <ActionBarPrimitive.Reload className="mc-icon-btn" aria-label={t("chatReact.reload")} title={t("chatReact.reload")}><ReloadMark /></ActionBarPrimitive.Reload>
-            )}
-          </ActionBarPrimitive.Root>
-        </div>
-        <div className="mc-bubble">
-          <Parts t={t} />
-          {isUser && <MessageAttachmentChips />}
-        </div>
+    <MessagePrimitive.Root className="mc-msg" data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
+      <div className="mc-header">
+        <span className="mc-avatar" aria-hidden="true">{isUser ? t("conversation.you") : <AssistantMark />}</span>
+        <span className="mc-author" title={time || undefined}>{author}</span>
+        {time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>}
       </div>
+      <div className="mc-bubble">
+        <Parts t={t} />
+        {isUser && <MessageAttachmentChips />}
+      </div>
+      <ActionBarPrimitive.Root className="mc-actions" hideWhenRunning autohide="never">
+        <CopyAction t={t} />
+        {!isUser && (
+          <ActionBarPrimitive.Reload className="mc-icon-btn" aria-label={t("chatReact.reload")} title={t("chatReact.reload")}><ReloadMark /></ActionBarPrimitive.Reload>
+        )}
+      </ActionBarPrimitive.Root>
     </MessagePrimitive.Root>
   );
 }

@@ -408,8 +408,8 @@ test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行�
         h(ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => h(MessageRow, { role: message.role, t }))));
   }
   const html = renderToString(h(App));
-  assert.match(html, /data-message-role="user".*class="mc-avatar"[^>]*>你<.*class="mc-author">你<.*class="mc-time">2026-11-13 \d\d:00:00</s);
-  assert.match(html, /data-message-role="assistant".*class="mc-author">NucleAgent</s);
+  assert.match(html, /data-message-role="user".*class="mc-avatar"[^>]*>你<.*class="mc-author" title="2026-11-13 \d\d:00:00">你<.*class="mc-time"[^>]*>2026-11-13 \d\d:00:00</s);
+  assert.match(html, /data-message-role="assistant".*class="mc-author"[^>]*>NucleAgent</s);
   assert.equal(html.match(/<button[^>]*class="mc-icon-btn"[^>]*aria-label="复制"/g)?.length, 2, "aui ActionBar copy on both rows");
   assert.equal(html.match(/aria-label="chatReact.reload"/g)?.length, 1, "重新生成 only on the assistant row");
   assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one fold");
