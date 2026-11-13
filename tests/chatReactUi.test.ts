@@ -95,24 +95,32 @@ test("composer: running with an empty input shows only the stop square", () => {
   assert.doesNotMatch(html, /data-testid="mc-send"/);
 });
 
-test("model menu: groups, current choice checked, image/video listed but not pickable, closed by default", () => {
+test("model menu: 默认模型 is a checked radio of the chat group, provider as hint, media folded to one 即将开放 row, lone executor shown once", () => {
   const model = { providerId: "p", model: "m1" };
   const groups = [
-    { kind: "chat" as const, options: [{ value: "chat:p:m1", label: "P · m1", choice: { kind: "chat" as const, model } }, { value: "chat:p:m2", label: "P · m2", choice: { kind: "chat" as const, model: { providerId: "p", model: "m2" } } }] },
-    { kind: "image" as const, options: [{ value: "image:p:i", label: "P · i", choice: { kind: "image" as const, model: { providerId: "p", model: "i" } } }] },
-    { kind: "executor" as const, options: [{ value: "executor:x", label: "执行器 X", choice: { kind: "executor" as const, backend: "x" } }] },
+    { kind: "chat" as const, options: [{ value: "chat:p:m1", label: "m1", hint: "P", choice: { kind: "chat" as const, model } }, { value: "chat:p:m2", label: "m2", hint: "P", choice: { kind: "chat" as const, model: { providerId: "p", model: "m2" } } }] },
+    { kind: "image" as const, options: [{ value: "image:p:i", label: "i", hint: "P", choice: { kind: "image" as const, model: { providerId: "p", model: "i" } } }] },
+    { kind: "video" as const, options: [{ value: "video:p:v", label: "v", hint: "P", choice: { kind: "video" as const, model: { providerId: "p", model: "v" } } }] },
+    { kind: "executor" as const, options: [{ value: "executor:x", label: "chatReact.executor", choice: { kind: "executor" as const, backend: "x" } }] },
   ];
   const props = { t, groups, value: "chat:p:m1", backend: "x", disabled: false, onPick: () => {} };
   const closed = renderToString(React.createElement(app.ModelMenu, props));
   assert.match(closed, /aria-expanded="false"/);
   assert.match(closed, /role="menu"[^>]*hidden=""/);
-  assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider prefix");
-  assert.match(closed, /执行器 X/);
+  assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider");
   const open = renderToString(React.createElement(app.ModelMenu, { ...props, defaultOpen: true }));
   assert.doesNotMatch(open, /role="menu"[^>]*hidden=""/);
-  assert.deepEqual([...open.matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]), ["chat", "image", "executor"]);
+  assert.deepEqual([...open.matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]), ["chat", "media", "executor"]);
+  assert.match(open, /data-kind="chat"[^>]*><div class="mc-menu-label"[^>]*>model.types.chat<\/div><button[^>]*role="menuitemradio"[^>]*aria-checked="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
+  assert.match(open, /aria-checked="true"><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
   assert.equal(open.match(/aria-checked="true"/g)?.length, 2, "current model and executor");
-  assert.match(open, /aria-checked="false" aria-disabled="true"[^>]*><span class="mc-menu-text">P · i/, "image model not pickable");
+  assert.match(open, /role="menuitem" aria-disabled="true" title="chatReact.mediaLaterTip"><span class="mc-menu-text">model.types.image · model.types.video<\/span><span class="mc-menu-tag">chatReact.mediaLater</);
+  assert.doesNotMatch(open, /model.types.image<\/div>/, "no media group lists");
+  assert.equal(open.slice(open.indexOf(`role="menu"`)).match(/>chatReact.executor</g)?.length, 1, "executor group title not repeated");
+  const unpinned = renderToString(React.createElement(app.ModelMenu, { ...props, value: "", defaultOpen: true }));
+  assert.match(unpinned, /aria-checked="true"><span class="mc-menu-text">common.modelDefault<\/span><svg/, "默认模型 checked when nothing is pinned");
+  assert.match(unpinned, /mc-model-name">common.modelDefault</);
+  assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-menu \{[^}]*max-height:[^}]*overflow-y: auto;/s, "panel scrolls");
 });
 
 test("process row: failed step → one severity color (alert icon, no dot), opens on the failure, done steps fold to one row; aria-expanded", () => {

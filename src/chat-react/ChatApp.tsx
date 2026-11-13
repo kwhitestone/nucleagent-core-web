@@ -50,7 +50,7 @@ const EMPTY = createConversationState("new");
 // Island-only strings live in the lazy chunk, not in the main i18n bundle (default-path size, plan §9).
 export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> = {
   "zh-CN": {
-    stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
+    stop: "停止", executor: "目鱼执行器", mediaLater: "即将开放", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
     genImage: "生成图片", genVideo: "生成视频", mediaLaterTip: "即将开放", attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
@@ -58,7 +58,7 @@ export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> 
     query: "查询", sources: "来源", doneSteps: "步成功", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
   },
   "en-US": {
-    stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
+    stop: "Stop", executor: "Executors", mediaLater: "Coming soon", pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",
     genImage: "Generate image", genVideo: "Generate video", mediaLaterTip: "Coming soon", attach: "Add attachment", loading: "Loading conversation…", process: "Process",
     queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
@@ -556,7 +556,7 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
 /**
  * Model + executor menu over modelGroups.ts (chat / image / video / executor). A popover of
  * menuitemradio buttons: arrows/Home/End move, Enter/Space pick, Escape or an outside click closes.
- * Image/video models are listed but not pickable in the MVP (no paid calls).
+ * Image/video models fold into one disabled 即将开放 row in the MVP (no paid calls).
  */
 export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean }) {
   const { t, groups } = props;
@@ -565,7 +565,7 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
   const trigger = useRef<HTMLButtonElement>(null);
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
   const options = groups.flatMap((g) => g.options);
-  const model = options.find((o) => o.value === props.value)?.label.split(" · ").pop() ?? t("common.modelDefault");
+  const model = options.find((o) => o.value === props.value)?.label ?? t("common.modelDefault");
   const executor = options.find((o) => o.value === backendValue)?.label;
   const label = (g: Group) => (g.kind === "executor" ? t("chatReact.executor") : t(`model.types.${g.kind}`));
   const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]:not([aria-disabled=true])") ?? [])];
@@ -587,12 +587,12 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
     const next = moveFocus(list.length, list.indexOf(document.activeElement as HTMLButtonElement), e.key);
     if (next !== null) { e.preventDefault(); list[next]!.focus(); }
   };
-  const item = (key: string, text: string, checked: boolean, onSelect: (() => void) | null) => (
-    <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked}
-      aria-disabled={onSelect ? undefined : true} onClick={onSelect ?? undefined}>
-      <span className="mc-menu-text">{text}</span>{checked && <CheckMark size={14} />}
+  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string) => (
+    <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked} onClick={onSelect}>
+      <span className="mc-menu-text">{text}{hint && <span className="mc-menu-hint">{hint}</span>}</span>{checked && <CheckMark size={14} />}
     </button>
   );
+  const media = groups.filter((g) => g.kind === "image" || g.kind === "video");
   return (
     <div className="mc-model" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
@@ -600,17 +600,27 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
         <span className="mc-model-name">{model}</span>{executor && <span className="mc-model-exec">· {executor}</span>}<ChevronMark size={12} />
       </button>
       <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
-        {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
-        {groups.map((g) => {
-          const media = g.kind === "image" || g.kind === "video";
-          return (
-            <div key={g.kind} role="group" aria-label={label(g)} data-kind={g.kind} className="mc-menu-group">
-              <div className="mc-menu-label" aria-hidden="true">{label(g)}{media ? t("chatReact.mediaLater") : ""}</div>
-              {g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value),
-                media ? null : () => choose(o.choice)))}
+        {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
+        <div role="group" aria-label={t("model.types.chat")} data-kind="chat" className="mc-menu-group">
+          <div className="mc-menu-label" aria-hidden="true">{t("model.types.chat")}</div>
+          {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
+          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint))}
+        </div>
+        {/* Image/video are not pickable in the MVP (no paid calls): one disabled row, not a list. */}
+        {media.length > 0 && (
+          <div role="group" data-kind="media" className="mc-menu-group">
+            <div className="mc-menu-item" role="menuitem" aria-disabled="true" title={t("chatReact.mediaLaterTip")}>
+              <span className="mc-menu-text">{media.map(label).join(" · ")}</span><span className="mc-menu-tag">{t("chatReact.mediaLater")}</span>
             </div>
-          );
-        })}
+          </div>
+        )}
+        {groups.filter((g) => g.kind === "executor").map((g) => (
+          <div key={g.kind} role="group" aria-label={label(g)} data-kind={g.kind} className="mc-menu-group">
+            {/* A lone executor named like its group shows once. */}
+            {!(g.options.length === 1 && g.options[0]!.label === label(g)) && <div className="mc-menu-label" aria-hidden="true">{label(g)}</div>}
+            {g.options.map((o) => item(o.value, o.label, o.value === backendValue, () => choose(o.choice)))}
+          </div>
+        ))}
       </div>
     </div>
   );

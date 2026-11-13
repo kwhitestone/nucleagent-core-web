@@ -6,7 +6,8 @@ export type GroupKind = "chat" | "image" | "video" | "executor";
 export type Choice =
   | { kind: "chat" | "image" | "video"; model: ModelChoice }
   | { kind: "executor"; backend: string };
-export interface Option { value: string; label: string; choice: Choice }
+/** `label` is the model (or executor) name; `hint` the provider, shown as secondary text. */
+export interface Option { value: string; label: string; hint?: string; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
@@ -23,7 +24,7 @@ export function modelGroups(providers: Provider[], typed: Record<string, TypedMo
     kind,
     options: pickerOptions(providers, typed?.[kind] ?? null, kind).flatMap((g) => g.models.map((model) => {
       const choice: Choice = { kind, model: { providerId: g.id, model } };
-      return { value: choiceValue(choice), label: `${g.name} · ${model}`, choice };
+      return { value: choiceValue(choice), label: model, hint: g.name, choice };
     })),
   }));
   const executors: Group = {

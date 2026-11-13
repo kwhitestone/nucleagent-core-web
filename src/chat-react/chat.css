@@ -392,8 +392,9 @@
   box-shadow: var(--shadow-lg);
 }
 .mc-menu[hidden] { display: none; }
-.mc-menu-group { border-top: 1px solid var(--border-divider, var(--border)); margin-top: 4px; padding-top: 4px; }
-.mc-menu-label { padding: 4px 8px; font-size: 11px; font-weight: 500; color: var(--fg-tertiary); }
+.mc-menu-group + .mc-menu-group { border-top: 1px solid var(--border-divider, var(--border)); margin-top: 4px; padding-top: 4px; }
+/* Group titles: 12px/500 secondary, distinct from the tertiary disabled row. */
+.mc-menu-label { padding: 6px 8px 2px; font-size: 12px; font-weight: 500; color: var(--fg-secondary); }
 .mc-menu-item {
   display: flex;
   align-items: center;
@@ -414,6 +415,8 @@
 .mc-menu-item[aria-disabled="true"] { color: var(--fg-tertiary); cursor: not-allowed; }
 .mc-menu-item[aria-disabled="true"]:hover { background: transparent; }
 .mc-menu-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-menu-hint { margin-left: 6px; font-size: 12px; font-weight: 400; color: var(--fg-tertiary); }
+.mc-menu-tag { flex: none; padding: 0 6px; border-radius: 6px; background: var(--bg-fill); color: var(--fg-secondary); font-size: 11px; }
 .mc-round:focus-visible, .mc-send:focus-visible, .mc-pill:focus-visible, .mc-menu-item:focus-visible, .mc-icon-btn:focus-visible,
 .mc-suggestion:focus-visible, .mc-to-bottom:focus-visible, .mc-chip-remove:focus-visible, .mc-earlier:focus-visible {
   outline: 2px solid var(--focus-ring-color);

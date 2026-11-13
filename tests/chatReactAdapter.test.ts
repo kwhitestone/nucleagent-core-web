@@ -371,6 +371,8 @@ test("model groups: chat/image/video from the typed catalog, executors from Core
   assert.deepEqual(groups.map((g) => [g.kind, g.options.map((o) => o.value)]), [
     ["chat", ["chat:1:c1"]], ["image", ["image:1:i1"]], ["executor", ["executor:codex"]],
   ]);
+  assert.deepEqual(groups[0]!.options[0]!.label, "c1", "model name first");
+  assert.equal(groups[0]!.options[0]!.hint, "P1", "provider as secondary hint");
   // Old Core without typed lists: chat falls back to config.models; media groups disappear.
   assert.deepEqual(modelGroups(providers, null, []).map((g) => g.kind), ["chat"]);
 });

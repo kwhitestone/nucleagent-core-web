@@ -48,9 +48,9 @@ try {
     tool("p4", 8, "命令执行", "exit 1: timeout after 30s", { status: "failed", data: { toolCallId: "c2" } }),
   ];
   const GROUPS = [
-    { kind: "chat", options: ["deepseek-v3", "qwen-max"].map((m) => ({ value: `chat:p:${m}`, label: `示例供应商 · ${m}`, choice: { kind: "chat", model: { providerId: "p", model: m } } })) },
-    { kind: "image", options: [{ value: "image:p:img-1", label: "示例供应商 · img-1", choice: { kind: "image", model: { providerId: "p", model: "img-1" } } }] },
-    { kind: "video", options: [{ value: "video:p:vid-1", label: "示例供应商 · vid-1", choice: { kind: "video", model: { providerId: "p", model: "vid-1" } } }] },
+    { kind: "chat", options: ["deepseek-v3", "qwen-max"].map((m) => ({ value: `chat:p:${m}`, label: m, hint: "示例供应商", choice: { kind: "chat", model: { providerId: "p", model: m } } })) },
+    { kind: "image", options: [{ value: "image:p:img-1", label: "img-1", hint: "示例供应商", choice: { kind: "image", model: { providerId: "p", model: "img-1" } } }] },
+    { kind: "video", options: [{ value: "video:p:vid-1", label: "vid-1", hint: "示例供应商", choice: { kind: "video", model: { providerId: "p", model: "vid-1" } } }] },
     { kind: "executor", options: [{ value: "executor:muyu", label: "目鱼执行器", choice: { kind: "executor", backend: "muyu" } }] },
   ];
   const settings = { groups: GROUPS, model: { providerId: "p", model: "deepseek-v3" }, backend: "muyu", busy: false, pick: async () => {} };
