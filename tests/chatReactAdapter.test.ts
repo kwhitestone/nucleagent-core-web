@@ -223,6 +223,7 @@ test("ChatApp message rows: avatar, author, time, copy button and merged 执行�
   DOMPurify.sanitize = ((text: string) => text.replace(/<[^>]*>/g, "")) as typeof DOMPurify.sanitize;
   t0.after(() => { DOMPurify.sanitize = sanitize; });
   const { MessageRow } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof import("../src/chat-react/ChatApp.tsx");
+  const { ThreadPrimitive } = await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts") as typeof import("../src/chat-react/auiPrimitives.ts");
   const { createElement: h } = React;
   const t = (key: string) => ({ "conversation.you": "你", "home.greeting": "NucleAgent", "common.copy": "复制", "chatReact.process": "执行过程" })[key] ?? key;
   const state = stateOf([
@@ -234,7 +235,8 @@ test("ChatApp message rows: avatar, author, time, copy button and merged 执行�
   function App() {
     const runtime = aui.useExternalStoreRuntime(externalStore(state, { send: async () => {}, stop: async () => {} }));
     return h(aui.AssistantRuntimeProvider, { runtime },
-      h(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => h(MessageRow, { role: message.role, t })));
+      h(ThreadPrimitive.Viewport, null,
+        h(ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => h(MessageRow, { role: message.role, t }))));
   }
   const html = renderToString(h(App));
   assert.match(html, /data-message-role="user".*class="mc-avatar"[^>]*>你<.*class="mc-author">你<.*class="mc-time">2026-11-13 \d\d:00:00</s);

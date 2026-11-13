@@ -31,6 +31,9 @@
       "@/*": [
         "src/*"
       ],
+      "@aui-dist/*": [
+        "./node_modules/@assistant-ui/react/dist/*"
+      ],
       "@prism-fusion/plugin-runtime": [
         "./src/vendor/prism-fusion-plugin-runtime/headless.ts"
       ],

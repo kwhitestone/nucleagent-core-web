@@ -33,9 +33,15 @@ export default defineConfig(({ mode }) => {
           process.cwd(),
           "src/vendor/prism-fusion-plugin-runtime/headless.ts",
         ),
+        // MUYU-365: per-file aui primitives; the package's `XPrimitive` namespaces are not tree-shakable
+        // (getter-based export objects pull every member). Valid for the exactly pinned 0.15.36 only.
+        "@aui-dist": resolve(process.cwd(), "node_modules/@assistant-ui/react/dist"),
         "@": resolve(process.cwd(), "src"),
       },
     },
+    // Folds sub-500 B shared chunks back so the React island's split does not add per-chunk gzip
+    // overhead to the default (Vue) /chat and /c/:id paths (MUYU-365 plan §9: ≤ 1 KiB delta).
+    build: { rollupOptions: { output: { experimentalMinChunkSize: 500 } } },
     server: {
       host,
       port,

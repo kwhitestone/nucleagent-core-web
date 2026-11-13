@@ -192,15 +192,6 @@ export default {
     agentMode: "Agent 模式",
     followUpPlaceholder: "继续对话...",
   },
-  chatReact: {
-    stop: "停止",
-    executor: "目鱼执行器",
-    mediaLater: "（MVP 未接入）",
-    pickerLabel: "模型与执行器",
-    newPlaceholder: "描述你的任务，Enter 发送，Shift + Enter 换行",
-    loading: "正在加载对话…",
-    process: "执行过程",
-  },
   model: {
     typeMismatch: "{model} 是{type}模型，聊天和任务只能选聊天模型，请改选。",
     types: {

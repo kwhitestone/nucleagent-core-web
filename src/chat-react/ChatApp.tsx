@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AssistantRuntimeProvider, AuiIf, ComposerPrimitive, MessagePrimitive, ThreadPrimitive,
-  useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
+  AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
+import { ComposerPrimitive, MessagePrimitive, ThreadPrimitive } from "./auiPrimitives";
 import { listProviders, listAllTypedModels, type Provider } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
@@ -31,12 +31,28 @@ export interface ChatProps {
 
 const EMPTY = createConversationState("new");
 
+// Island-only strings live in the lazy chunk, not in the main i18n bundle (default-path size, plan §9).
+const STRINGS: Record<ConversationLocale, Record<string, string>> = {
+  "zh-CN": {
+    stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
+    newPlaceholder: "描述你的任务，Enter 发送，Shift + Enter 换行", loading: "正在加载对话…", process: "执行过程",
+  },
+  "en-US": {
+    stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
+    newPlaceholder: "Describe your task. Enter to send, Shift + Enter for a new line", loading: "Loading conversation…", process: "Process",
+  },
+};
+const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
+  key.startsWith("chatReact.") ? STRINGS[locale][key.slice(10)] ?? key : t(key, named);
+
 export function ChatApp(props: ChatProps) {
-  const { t, conversationId } = props;
+  const { conversationId } = props;
+  const locale = props.locale ?? "zh-CN";
+  const t = useMemo(() => withIslandStrings(props.t, locale), [props.t, locale]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? "消息格式异常，已跳过一条更新" : modelErrorMessage(error, t)), [t]);
   const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
-  const view = { locale: props.locale ?? "zh-CN", nowMs: useClock(!!core && core.state.status === "running") };
+  const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
 
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
     ? externalStore(core?.state ?? EMPTY, {
