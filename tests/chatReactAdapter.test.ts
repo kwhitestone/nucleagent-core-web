@@ -13,7 +13,8 @@ let isRunning: typeof import("../src/chat-react/threadMessages.ts").isRunning;
 let externalStore: typeof import("../src/chat-react/externalStore.ts").externalStore;
 let createSingleSlot: typeof import("../src/chat-react/singleSlotQueue.ts").createSingleSlot;
 let modelGroups: typeof import("../src/chat-react/modelGroups.ts").modelGroups;
-let useConversation: typeof import("../src/addons/conversation/task-conversation/vue/useConversation.ts").useConversation;
+let observableBoxes: typeof import("../src/chat-react/observableBox.ts").observableBoxes;
+let createConversationController: typeof import("../src/addons/conversation/task-conversation/conversationController.ts").createConversationController;
 let reducer: typeof import("../src/addons/conversation/task-conversation/core/reducer.ts");
 let renderToString: typeof import("react-dom/server").renderToString;
 let React: typeof import("react");
@@ -30,7 +31,8 @@ before(async () => {
   ({ externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts"));
   ({ createSingleSlot } = await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts"));
   ({ modelGroups } = await vite.ssrLoadModule("/src/chat-react/modelGroups.ts"));
-  ({ useConversation } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/vue/useConversation.ts"));
+  ({ observableBoxes } = await vite.ssrLoadModule("/src/chat-react/observableBox.ts"));
+  ({ createConversationController } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/conversationController.ts"));
   reducer = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
   ({ renderToString } = await import("react-dom/server"));
   React = await import("react");
@@ -210,11 +212,15 @@ const upsert = (it: ConversationItem): ConversationEvent => ({
 });
 const tick = () => new Promise((r) => setTimeout(r, 5));
 
-test("streaming + cancel through the real controller (outside a Vue component) and ExternalStore adapter", async () => {
+test("streaming + cancel through the framework-free controller and ExternalStore adapter", async () => {
   const { adapter, sent, emit } = streamingAdapter();
   const errors: Error[] = [];
-  const c = useConversation({ conversationKey: () => "7", adapter: () => adapter, onConnectionChange() {}, onStatusChange() {}, onError: (e) => errors.push(e) });
+  const { box, subscribe } = observableBoxes();
+  const c = createConversationController({ conversationKey: () => "7", adapter: () => adapter, onConnectionChange() {}, onStatusChange() {}, onError: (e) => errors.push(e) }, box);
+  let notified = 0;
+  const unsubscribe = subscribe(() => { notified += 1; });
   await c.initialize();
+  assert.ok(notified > 0 && c.authoritativeReady.value, "subscribe fires on snapshot (useSyncExternalStore contract)");
   const store = () => externalStore(c.state.value, c);
   assert.equal(store().messages.length, 0);
 
@@ -238,7 +244,22 @@ test("streaming + cancel through the real controller (outside a Vue component) a
   assert.equal(done.isRunning, false, "Stop clears the running state");
   assert.deepEqual(done.messages.at(-1)?.status, { type: "incomplete", reason: "cancelled" });
   assert.deepEqual(errors, []);
+  const before = notified;
+  unsubscribe();
   c.dispose();
+  assert.equal(notified, before, "unsubscribed listener is not called");
+});
+
+test("React island and the controller do not import Vue at runtime", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const files = [
+    ...readdirSync(new URL("../src/chat-react/", import.meta.url)).filter((f) => /\.tsx?$/.test(f)).map((f) => `../src/chat-react/${f}`),
+    "../src/addons/conversation/task-conversation/conversationController.ts",
+  ];
+  for (const f of files) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.doesNotMatch(src, /^import (?!type )[^;]*from "vue"/m, f);
+  }
 });
 
 test("failed send hands the draft back to the composer (MessageNotSentError)", async () => {
