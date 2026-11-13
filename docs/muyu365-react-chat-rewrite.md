@@ -268,12 +268,14 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
 
 ## 11. 未能核实项
 
+> 2026-11-13 第 3 棒更新：第 2、3、5、6 项已实测核实，结论见 §15。
+
 1. assistant-ui 官方文档站（www.assistant-ui.com）和 GitHub 仓库页：当天网络不可达（connection reset），**NOT_VERIFIED**。所有 aui 结论只来自 npm 包源码。
-2. aui 的完整传递依赖许可证树（只抽查了直接依赖和二级依赖）。
-3. aui 分包在本项目里的实际 gzip 体积和 tree-shaking 效果（需要装包构建）。
-4. `@assistant-ui/react-markdown` 平滑流式参数的确切名称和行为。
-5. aui `queue`（`createMessageQueue`）的语义是否满足“只排 1 条、可替换”。
-6. React 与 vue-i18n 直接共用（`i18n.global`）的响应式更新方式，需要 MVP 验证。
+2. ~~aui 的完整传递依赖许可证树~~ **已核实**（§15.1）。
+3. ~~aui 分包在本项目里的实际 gzip 体积和 tree-shaking 效果~~ **已核实**（§15.2，§14.3）。
+4. `@assistant-ui/react-markdown` 平滑流式参数的确切名称和行为（未用该包，仍未核实）。
+5. ~~aui `queue`（`createMessageQueue`）的语义是否满足“只排 1 条、可替换”~~ **已核实：不满足，已自写单槽**（§15.3，§14.5）。
+6. ~~React 与 vue-i18n 直接共用的响应式更新方式~~ **已核实**（§15.4）。
 7. `git push`：见提交说明（github 不可达）。
 8. matrix 中 tests 的说明来自测试名和 import，没有逐个读完测试体。
 
@@ -367,5 +369,150 @@ data: {…完整 Message（camelCase）…}      // deleted 时只有 {id}
   1. 测试框架是仓内的 `node --test` + Vite SSR，**不是 vitest**（仓里没有 vitest，按“沿用仓内框架”处理）；组件测试用 `react-dom/server` 渲染，没有引入 jsdom。
   2. 控制器没有移植成 `useSyncExternalStore` store，而是把 Vue 版原样放进 `effectScope`——改动最小，但 React 岛因此仍依赖 `vue` 运行时（本来就在包里）。
   3. 模型下拉是“模型 + 执行器”两个 `<select>`，不是 325 §E 设想的单个统一下拉，因为会话把两者分开存。
-  4. 包体积：`/c/:id` 默认路径 +1318 B、React 岛 182.3 KiB，都略超目标（见 13.3）。
+  4. 包体积：`/c/:id` 默认路径 +1318 B、React 岛 182.3 KiB，都略超目标（见 13.3）。第 3 棒已回收到 +788 B / 172.92 KiB（§14.3）。
 - 浏览器验收脚本放在 `tests/browser/muyu365-chat-react.cjs`，沿用 nucleagent-web 的 `*.cjs` + `connectOverCDP` 写法；依赖调用方传入 playwright-core 路径（仓内不装）。
+
+## 14. 第 3 棒结果（2026-11-13）
+
+> 提交：`0597b11` 视觉追平、`970bc32` CHAT_UI_DEFAULT、`03df1cf` 体积回收、`8390852` 附件、`45f9cd8` 单槽排队、`45895f5` i18n 收尾。默认行为（开关关）不变。
+
+### 14.1 视觉追平（`0597b11`）
+
+消息行按 `MessageItem.vue` 做：28px 头像、作者、精确到秒的时间、复制按钮（含“已复制/操作失败”状态）、单层气泡；用户气泡改成品牌渐变底白字。连续的过程条目合成一个 `data-process` part，渲染成一行“执行过程 N 个步骤 · 总耗时”，用的是 Vue 视图同一套 `processGroupSummary / orderTurnItemsForDisplay / executionTimings`。复制逻辑（会话重验 + 过期结果丢弃）和时间格式抽到 `components/conversation/messageCopy.ts`，Vue 与 React 共用，Vue 行为不变。§13.6 的差异里，标题栏/“更多”菜单、生图/生视频入口仍未做。
+
+### 14.2 CHAT_UI_DEFAULT（`970bc32`）
+
+- 优先级：URL `?chatUi=` > localStorage `nucleagent_chat_ui` > runtime-config `CHAT_UI_DEFAULT` > 默认旧视图（`src/chat-react/chatUi.ts:4-25`）。
+- `src/runtimeConfig.ts:11` 把键加进白名单，`:52-57` 只接受 `old` / `react`，缺失或空串就省略，所以已有的 runtime-config 照常解析。
+- `docker-entrypoint.d/40-runtime-config.sh:76-81` 只在设置了环境变量时写入该键，其它值启动直接失败。
+- 测试：`tests/runtimeConfig.test.ts`、`tests/browserRuntimeConfig.test.ts`、`tests/chatReactAdapter.test.ts` 的开关用例。
+
+### 14.3 体积实测（gzip，`node scripts/muyu365-bundle-size.mjs dist <c0a82a7 的 dist>`，KB = 1024 B，`45895f5` 构建）
+
+| 项 | 基线 `c0a82a7` | `45895f5` | 差值 | 目标 |
+|---|---|---|---|---|
+| 默认路径 `/chat` | 202.59 KB | 202.83 KB | **+247 B** | ≤ 1 KiB：达标 |
+| 默认路径 `/c/:id` | 278.38 KB | 279.15 KB | **+788 B** | ≤ 1 KiB：达标 |
+| 默认入口 | — | 159.37 KB | +285 B | — |
+| React 岛额外加载（`ChatHost` + `mount`） | — | **172.92 KiB gzip / 147.47 KiB brotli** | — | ≤ 180 KiB（U5）：达标 |
+| 全部 JS | 401.97 KB | 573.89 KB | +171.92 KB | — |
+
+手段（`03df1cf`）：`output.experimentalMinChunkSize: 500` 把拆出来的小共享分包并回 Vue 一侧；岛内专用文案从主 i18n 包移到 `ChatApp.tsx`；aui primitives 按文件深路径引入（`src/chat-react/auiPrimitives.ts`，经 `@aui-dist` 别名），不再用命名空间对象。shortcut：深路径绑定精确锁定的 0.15.36，升级 aui 时要复核。§13.3 的 182.33 KiB 降到 170.4 KiB；之后附件和排队又加了约 2.5 KiB。
+
+可选优化（未做）：§15.2 的第 1 项，不用 `ComposerPrimitive.Input`，改成自家 `<textarea>`，预计再省 6–8 KB。现在已达标，余量 7 KiB，所以本棒不做。
+
+### 14.4 附件（`8390852`）
+
+`src/chat-react/attachments.ts` 的 `storageAttachmentAdapter` 是 aui `AttachmentAdapter`，复用 Vue `AttachmentPicker` 的 `uploadFile`（预签名 → 直传 → 登记）。行为：
+- 选中文件即上传并显示进度；单个文件上限 100 MB；上传失败按文件提示。
+- 发送时只带存储引用（fileId / name / mime），`content: []`，文件字节不进入消息状态。
+- 追问走 `useConversation.send`，新建会话走 create 载荷；数量上限是 Core 的 `MAX_ATTACHMENTS`。
+- UI：回形针按钮 + chips（进度 / 失败 / 移除），用户消息上列出附件名。附件下载和预览仍由 Vue 的 `AttachmentChips` 负责，React 岛没做。
+
+测试在 `tests/chatReactAdapter.test.ts`，两项：上传适配器的进度 / 引用 / 失败；onNew 透传引用，历史中显示附件。
+
+### 14.5 单条可替换排队（`45f9cd8`，325 §B.6）
+
+- `src/chat-react/singleSlotQueue.ts`：自写 `ExternalThreadQueueAdapter`，只有一个槽。
+  - `enqueue` 和 `steer` 都是“有槽就替换内容（id 不变），没槽就新建”。steer 不打断当前运行，想“停止并发送”就用 Cancel。
+  - `remove` 清空槽；`move` 不做任何事。
+  - `__internal_notifyCancelled` 会暂停队列：取消后槽内消息保留，但不会自动发出。之后再发送一条会替换槽内消息，并重新开始自动发送。
+  - `useSingleSlotQueue` 在 `isRunning` 由真变假且未暂停时把槽发出去，只发一次。
+- `externalStore(…, slot)` 传入 slot 后才有 `queue` 能力。`onNew` 收到 409 时把消息放回槽里，不抛 `MessageNotSentError`；冲刷时再遇到 409 也留在槽里，等下一次运行结束。其它错误照旧把草稿还给输入框。
+- UI：运行中也显示“发送”。`ComposerPrimitive.Queue` + `QueueItemPrimitive.Text/Remove` 显示“待发送 1 条 · 内容 · ×”。新建会话页没有队列。
+- 没用 aui 的 `createMessageQueue`：它是多条 FIFO，而且传了 `cancel` 时 steer 会打断运行（§15.3）。
+- shortcut：空闲时如果槽里有取消后留下的消息，新发送会替换它并立即发出；没有“原样发送槽内消息”的按钮。
+- 测试：`tests/chatReactQueue.test.ts` 5 项（替换且 id 不变、清槽、取消后不冲刷且再发送会重新开始自动发送、冲刷遇 409 回槽、运行结束只冲刷一次），`tests/chatReactAdapter.test.ts` 1 项（onNew 409 回槽，其它错误仍是 MessageNotSentError，不传 slot 则没有 queue）。
+- 未验证：没有在浏览器 / TEST 上点过排队，只有单元层验证。
+
+### 14.6 i18n（`45895f5`）
+
+岛内最后一处硬编码中文（ZodError 提示）改成 `t("chatReact.badUpdate")`，中英文都放在 `ChatApp.tsx` 的 `STRINGS` 里。和 `03df1cf` 一样，岛内专用文案放在懒加载分包，不进主 i18n 包，避免默认路径变大，所以没有写进 `zh.ts` / `en.ts`。没有做方案 B（`useT()`）：现在由 `ChatHost` 注入 `t` + `watch(locale)` 的做法已经可用（§15.4）。
+
+另有一处遗留：`attachments.ts:25,48,56` 有 3 处中文错误文案，是附件上传的提示，未国际化。
+
+### 14.7 测试与构建
+
+| | 基线（第 3 棒前） | `45895f5` |
+|---|---|---|
+| `npm run test:unit` | 863 项：837 通过 / 0 失败 / 26 跳过 | **869 项：843 通过 / 0 失败 / 26 跳过**；覆盖率门槛通过 |
+| `vue-tsc -b && vite build` | 通过 | 通过 |
+
+新增的 6 项都是排队测试。
+
+### 14.8 视觉自检脚本
+
+前一位 worker 留下了未跟踪的 `scripts/muyu365-react-selfcheck.mjs`，运行时报 “must be used within … Provider”。**视觉自检未完成**：脚本未提交（处理中，结论以本节最终版本为准）。
+
+## 15. 4 项未核项核实结论
+
+> 来源：独立核实 worker 的报告，原文见 `docs/muyu365-verification-report.md`（基线 `64152ff`）。数值以本节标注的最新实测为准。
+
+### 15.1 许可证全树
+
+- **结论**：达标，生产包里没有 copyleft。
+- **证据**：
+  - package-lock 的生产闭包共 184 个包：MIT 173、BSD-3 3、ISC 2、BSD-2 2、0BSD 1、Python-2.0 1、(MPL-2.0 OR Apache-2.0) 1、无 license 字段 1。
+  - `license-checker --production` 交叉核对，结论一致。
+  - 非常见许可证逐个读了原文：
+    - `argparse`：PSF，宽松许可，只给 markdown-it 的 CLI 用。
+    - `dompurify`：MPL/Apache 二选一，选 Apache-2.0。
+  - 相对 `c0a82a7` 新增 92 个生产包：90 个 MIT，另有 `secure-json-parse` BSD-3 和 `tslib` 0BSD。
+  - dev 包里唯一的非宽松许可是 `caniuse-lite`（CC-BY-4.0），只在构建期用。
+- **后续**：
+  - 唯一需要确认的是 vendored `@prism-fusion/editor-ui@0.1.0`：没有 LICENSE 文件，也没有 `license` 字段。这与本单无关（`c0a82a7` 就已存在）。
+  - 可在 CI 加 `npx license-checker --production --failOn 'GPL;AGPL;LGPL;CC-BY-SA'`。
+
+### 15.2 React 分包真实体积
+
+- **结论**：已达标，按 `45895f5` 实测：React 岛 **172.92 KiB gzip / 147.47 KiB brotli**，默认路径 `/c/:id` +788 B。核实报告当时（`64152ff`）是 182.33 / 154.49 KiB，`/c/:id` +1318 B，第 3 棒已回收到上述数值（§14.3）。
+- **证据**：用 sourcemap 把字节按源模块归属：
+  - assistant-ui 全家约 61%：core ≈67 KB、react ≈19、assistant-stream ≈11、store ≈8、tap ≈6。
+  - React 运行时约 37%（react-dom ≈63 KB）。
+  - markdown-it / dompurify / zod / vue-i18n 不在岛内独占部分，和 Vue 共用。
+  - aui 各包都是 `sideEffects:false`，tree-shaking 已生效。
+  - nginx.conf.template 里没有 gzip/brotli 配置，线上实际按哪种压缩传输未核实。
+- **后续（可选）**：
+  - 不用 `ComposerPrimitive.Input`，预计省 6–8 KB。它引入 `react-textarea-autosize`、radix 和 trigger popover，见 `node_modules/@assistant-ui/react/dist/primitives/composer/ComposerInput.js:10-17`。
+  - `ComposerPrimitive.Root` 换成 `<form>`，约 0.5–1 KB。
+  - react-dom 换 preact 风险大，不建议。
+
+### 15.3 单条可替换排队
+
+- **结论**：aui 提供了队列管道，但 `createMessageQueue` 不是单槽语义，所以自写了，已实现（§14.5）。
+- **证据**（`node_modules/@assistant-ui/core/src/…`）：
+  - 传 `ExternalStoreAdapter.queue` 后 `capabilities.queue = true`（`runtimes/external-store/external-store-adapter.ts:202-203`、`external-store-thread-runtime-core.ts:588`）。
+  - 不传 queue 时运行中禁用发送（`store/primitive-predicates.ts:13-18`）。
+  - 有 queue 时运行中发送走 `queue.steer`，空闲时走 `enqueue`（`external-store-thread-runtime-core.ts:1204-1206`）。
+  - 取消时调用 `__internal_notifyCancelled`（`:1541,1580`）。
+  - `createMessageQueue` 的 push 是多条 FIFO（`runtime/queue/message-queue.ts:321-330`）；传了 `cancel` 时 steer 会取消当前运行再插队（`:336-345`）。
+  - ExternalStore runtime 不会替宿主调用 `notifyBusy/notifyIdle`（只有 LocalRuntime 会，`local-thread-runtime-core.ts:929,938`）。所以由我们自己在 `isRunning` 的下降沿冲刷。
+- **后续**：在浏览器或 TEST 上点一遍排队（运行中发送 → 替换 → 移除 → 取消 → 运行结束自动发出）。
+
+### 15.4 i18n 共用
+
+- **结论**：支持，已实测。
+- **证据**：
+  - `ChatHost.vue:16-32` 用 `useI18n().t` 注入，`watch(locale)` 触发重渲染。
+  - 无组件上下文时 `i18n.global.t` 可用：插值、`setLocale` 后同步 watch、缺失 key 回落到 key 本身，4/4 通过。
+  - zh/en 各 948 条；没有复数、链接、列表语法；只有 `zh.ts:224` 一条带 HTML（首页用，React 岛不涉及）。
+  - React 岛的硬编码中文只有 1 处，已在 `45895f5` 改成 key。
+- **后续**：方案 B（`useT()` 用 `useSyncExternalStore` 订阅 `i18n.global.locale`）可选，现在没有必要做。附件的 3 处中文提示见 §14.6。
+
+### 15.5 deploy 仓需要的改动点（本单不改 deploy 仓）
+
+本仓的入口脚本已经支持 `CHAT_UI_DEFAULT`（`docker-entrypoint.d/40-runtime-config.sh:76-81`）。它**不在** `runtime_keys`（`:45`）的循环里，而是单独 `case`：
+- 未设置或空串时不写入。
+- `old|react` 写入 `"CHAT_UI_DEFAULT":"…"`。
+- 其它值会让容器启动失败（exit 1）。
+
+所以 deploy 侧只需要按环境设一个**环境变量** `CHAT_UI_DEFAULT`。读 `../nucleagent-deploy`（HEAD `3437c24`）的结果：
+
+| 文件:行 | 现状 | 需要的改动 |
+|---|---|---|
+| `tools/env-modify/runner-cw.cjs:37` `CFG.batch` | core-web 按环境写入的键表：5（预发）= `CORE_UPSTREAM, SHELL_ORIGIN, VITE_AUTH_BACKEND_URL, VITE_CORE_BACKEND_URL, VITE_CORE_WEB_URL, VITE_EMBED_HOST_ORIGINS, VITE_SHELL_URL, VITE_STORAGE_URL`；8（生产）= 后 6 个 | 需要按环境切换时，往对应环境的数组加 `'CHAT_UI_DEFAULT'`（值 `old` 或 `react`）。只想保持旧视图的环境**不用加**（缺省就是旧视图） |
+| `tools/env-modify/runner-cw.cjs:47` `CFG.unwritten` | 部署时不写入的键 | 如果某个环境暂不下发，也可以记在这里 |
+| `tools/env-modify/accept-shape-cw.cjs:30` `BATCH` | 回读校验用的键表，和上面的 batch 镜像一致 | 和 `runner-cw.cjs:37` 同步加 `'CHAT_UI_DEFAULT'` |
+| `tools/env-modify/runner-cw.test.cjs:226-228` `STAGE5 / STAGE_PRE` | 测试里的同一份键表 | 同步更新，断言里的 `keys=[…]` 列表（如 `:452,:458`）也要一起改 |
+
+deploy 仓的 `.env.example`、`docker-compose.yml`、`scripts/dev.sh` 不涉及 core-web 的 runtime-config 键表，本地开发不设这个变量即可。TEST 环境（不在 5/8 里）的下发通道没有在 deploy 仓里找到，按现有 TEST 的配置方式手工加环境变量。上面这些都只是读出来的结果，**没有改 deploy 仓**。
