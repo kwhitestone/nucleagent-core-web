@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
+import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
 // 端口、后端地址、跨域目标全部可通过环境变量配置（.env 或 shell）：
@@ -14,7 +15,8 @@ export default defineConfig(({ mode }) => {
   const backendUrl = env.CORE_BACKEND_URL ?? "http://localhost:26680";
 
   return {
-    plugins: [vue()],
+    // React only for the MUYU-365 chat island; every .vue file stays on plugin-vue.
+    plugins: [vue(), react({ include: /src\/chat-react\/.*\.tsx$/ })],
     resolve: {
       dedupe: ["vue", "vue-router"],
       preserveSymlinks: true,
