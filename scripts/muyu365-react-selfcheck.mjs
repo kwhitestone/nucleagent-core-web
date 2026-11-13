@@ -94,8 +94,8 @@ try {
     "common.modelDefault": "默认模型", "common.attachmentDownload": "下载", "common.attachmentRemove": "移除附件", "common.attachmentUploading": "上传中...",
     "common.attachmentVerificationFailed": "核验失败，附件待核验", "conversation.inputPlaceholder": "继续输入，追问或调整方向...",
     "model.types.chat": "聊天", "model.types.image": "生图", "model.types.video": "生视频" };
-  // The island's own strings (ChatApp STRINGS) for zh-CN, same lookup as withIslandStrings.
-  const island = (await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx")).ISLAND_STRINGS["zh-CN"];
+  // The island's own zh-CN strings (islandStringsZh.ts), same lookup as withIslandStrings.
+  const island = (await vite.ssrLoadModule("/src/chat-react/islandStringsZh.ts")).ZH_STRINGS;
   const t = (k) => dict[k] ?? (k.startsWith("chatReact.") ? island[k.slice(10)] : undefined) ?? k;
 
   function Prefill({ text }) {

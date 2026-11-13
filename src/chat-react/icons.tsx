@@ -16,17 +16,12 @@ export const AlertMark = ({ size = 14 }: { size?: number }) => <Icon size={size}
 export const CrossMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><path d="M18 6L6 18" /><path d="M6 6l12 12" /></>} />;
 export const ToolMark = ({ size = 12 }: { size?: number }) => <Icon size={size} d={<path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.8-3.8a6 6 0 01-7.9 7.9l-6.9 6.9a2.1 2.1 0 01-3-3l6.9-6.9a6 6 0 017.9-7.9l-3.8 3.8z" />} />;
 
-/** One icon per file kind (attachments.ts fileKind). */
+/** One icon per file kind (attachments.ts fileKind): image, sheet, everything else a page. */
 const FILE_GLYPH: Record<string, ReactNode> = {
   image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></>,
-  pdf: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></>,
-  doc: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h8M8 9h2" /></>,
   sheet: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" /></>,
-  code: <><path d="M16 18l6-6-6-6" /><path d="M8 6l-6 6 6 6" /></>,
-  archive: <><path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><path d="M10 12h4" /></>,
-  media: <><rect x="2" y="5" width="14" height="14" rx="2" /><path d="M22 8l-6 4 6 4V8z" /></>,
   file: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></>,
 };
 export const FileMark = ({ kind, size = 14 }: { kind: string; size?: number }) => <Icon size={size} d={FILE_GLYPH[kind] ?? FILE_GLYPH.file} />;
 export const ImageMark = ({ size }: { size?: number }) => <FileMark kind="image" size={size} />;
-export const VideoMark = ({ size }: { size?: number }) => <FileMark kind="media" size={size} />;
+export const VideoMark = ({ size = 14 }: { size?: number }) => <Icon size={size} d={<><rect x="2" y="5" width="14" height="14" rx="2" /><path d="M22 8l-6 4 6 4V8z" /></>} />;

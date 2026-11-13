@@ -73,14 +73,10 @@ export const toFileChip = (a: ConversationAttachment): FileChip => ({
   verified: a.metadata?.verification === "verified",
 });
 
+// shortcut: 3 icon kinds (image / sheet / page) to fit the island budget (§21); add kinds back if size allows.
 const KINDS: [RegExp, string][] = [
   [/\.(png|jpe?g|gif|webp|bmp|svg|heic)$/, "image"],
-  [/\.pdf$/, "pdf"],
-  [/\.(docx?|rtf|odt|txt|md|pptx?|key)$/, "doc"],
   [/\.(xlsx?|csv|tsv|ods|numbers)$/, "sheet"],
-  [/\.(js|ts|tsx|jsx|py|go|java|c|cpp|h|rs|rb|php|sh|json|ya?ml|xml|html|css|sql)$/, "code"],
-  [/\.(zip|rar|7z|tar|gz|tgz|bz2)$/, "archive"],
-  [/\.(mp4|mov|webm|avi|mkv|mp3|wav|m4a|flac)$/, "media"],
 ];
 /** Icon kind for a file chip: the MIME image type wins, then the extension, else a plain file. */
 export function fileKind(name: string, mimeType?: string): string {

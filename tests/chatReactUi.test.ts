@@ -201,7 +201,7 @@ test("code blocks: header (language + copy) and table wrapper added after saniti
 test("file chips: kind by MIME then extension; verified → download button with size; unverified → status only", async () => {
   const { fileKind, toFileChip } = await vite.ssrLoadModule("/src/chat-react/attachments.ts") as typeof import("../src/chat-react/attachments.ts");
   assert.deepEqual(["a.PNG", "b.pdf", "c.docx", "d.csv", "e.ts", "f.zip", "g.mp4", "h.bin", "noext"].map((n) => fileKind(n)),
-    ["image", "pdf", "doc", "sheet", "code", "archive", "media", "file", "file"]);
+    ["image", "file", "file", "sheet", "file", "file", "file", "file", "file"]);
   assert.equal(fileKind("photo", "image/jpeg"), "image");
   assert.deepEqual(toFileChip({ id: "1", name: "r.pdf", size: 2048, metadata: { verification: "verified" } }), { id: "1", name: "r.pdf", size: 2048, verified: true });
   const ok = renderToString(React.createElement(app.FileChipView, { file: { id: "1", name: "周报.pdf", size: 182345, verified: true }, t }));
@@ -222,4 +222,17 @@ test("layout: the shell-button mock lives only in the selfcheck; product CSS kee
   assert.match(readFileSync("scripts/muyu365-react-selfcheck.mjs", "utf8"), /◇ 成果/);
   assert.match(css, /\.mc-viewport \{[^}]*margin-top: 60px;/s, "band below the shell trigger (18 + 36 px)");
   assert.match(css, /@media \(max-width: 520px\)/);
+});
+
+test("island strings: zh/en chunks have the same keys, mount picks the current language, ChatApp inlines neither", async () => {
+  const { ZH_STRINGS: zh } = await vite.ssrLoadModule("/src/chat-react/islandStringsZh.ts") as typeof import("../src/chat-react/islandStringsZh.ts");
+  const { EN_STRINGS: en } = await vite.ssrLoadModule("/src/chat-react/islandStringsEn.ts") as typeof import("../src/chat-react/islandStringsEn.ts");
+  assert.equal(zh.process, "执行过程");
+  assert.equal(en.process, "Process");
+  assert.equal(zh.mediaLater, "即将开放");
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort());
+  const mount = readFileSync("src/chat-react/mount.tsx", "utf8");
+  assert.match(mount, /locale === "en-US" \? import\("\.\/islandStringsEn"\)[^:]*: import\("\.\/islandStringsZh"\)/, "one chunk per language, zh default");
+  assert.doesNotMatch(readFileSync("src/chat-react/ChatApp.tsx", "utf8"), /ZH_STRINGS|EN_STRINGS|stop: "停止"/, "strings are not inlined in the island");
+  assert.match(readFileSync("src/addons/conversation/views/ChatHost.vue", "utf8"), /import\("@\/chat-react\/islandStringsEn"\) : import\("@\/chat-react\/islandStringsZh"\)/, "host prefetches the strings chunk with the island");
 });

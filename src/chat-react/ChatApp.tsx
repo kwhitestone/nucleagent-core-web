@@ -32,6 +32,7 @@ import { useCoreConversation } from "./useCoreConversation";
 import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type FileChip } from "./attachments";
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
+import type { IslandStrings } from "./islandStringsZh";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -43,36 +44,21 @@ export interface ChatProps {
   locale?: ConversationLocale;
   navigate(path: string): void;
   create(payload: CreateConversationRequest): Promise<Conversation>;
+  /** Island strings for `locale`, loaded by mount.tsx. */
+  strings: IslandStrings;
 }
 
 const EMPTY = createConversationState("new");
 
-// Island-only strings live in the lazy chunk, not in the main i18n bundle (default-path size, plan §9).
-export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> = {
-  "zh-CN": {
-    stop: "停止", executor: "目鱼执行器", mediaLater: "即将开放", pickerLabel: "模型与执行器",
-    newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
-    genImage: "生成图片", genVideo: "生成视频", mediaLaterTip: "即将开放", attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
-    queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
-    reload: "重新生成", toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
-    query: "查询", sources: "来源", doneSteps: "步成功", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
-  },
-  "en-US": {
-    stop: "Stop", executor: "Executors", mediaLater: "Coming soon", pickerLabel: "Model and executor",
-    newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",
-    genImage: "Generate image", genVideo: "Generate video", mediaLaterTip: "Coming soon", attach: "Add attachment", loading: "Loading conversation…", process: "Process",
-    queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
-    reload: "Regenerate", toBottom: "Scroll to bottom", earlier: "Load earlier messages", running: "Running", done: "Done", failed: "Failed",
-    query: "Query", sources: "Sources", doneSteps: "steps succeeded", cancelled: "Stopped", tool: "Tool", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
-  },
-};
-const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
-  key.startsWith("chatReact.") ? ISLAND_STRINGS[locale][key.slice(10)] ?? key : t(key, named);
+// Island-only strings stay out of the main i18n bundle (default-path size, plan §9) and out of the island:
+// only the current language's chunk is downloaded (islandStrings*.ts, loaded by mount.tsx).
+const withIslandStrings = (t: Translate, strings: Record<string, string>): Translate => (key, named) =>
+  key.startsWith("chatReact.") ? strings[key.slice(10)] ?? key : t(key, named);
 
 export function ChatApp(props: ChatProps) {
   const { conversationId } = props;
   const locale = props.locale ?? "zh-CN";
-  const t = useMemo(() => withIslandStrings(props.t, locale), [props.t, locale]);
+  const t = useMemo(() => withIslandStrings(props.t, props.strings), [props.t, props.strings]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
   const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
