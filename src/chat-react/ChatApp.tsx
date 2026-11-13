@@ -55,7 +55,7 @@ export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> 
     genImage: "生成图片", genVideo: "生成视频", mediaLaterTip: "生图 / 生视频本期未接入 React 聊天，请在旧版界面使用", attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
-    query: "查询", sources: "来源", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
+    query: "查询", sources: "来源", doneSteps: "步成功", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
   },
   "en-US": {
     stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
@@ -63,7 +63,7 @@ export const ISLAND_STRINGS: Record<ConversationLocale, Record<string, string>> 
     genImage: "Generate image", genVideo: "Generate video", mediaLaterTip: "Image / video generation is not in the React chat yet; use the classic view", attach: "Add attachment", loading: "Loading conversation…", process: "Process",
     queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
     reload: "Regenerate", toBottom: "Scroll to bottom", earlier: "Load earlier messages", running: "Running", done: "Done", failed: "Failed",
-    query: "Query", sources: "Sources", cancelled: "Stopped", tool: "Tool", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
+    query: "Query", sources: "Sources", doneSteps: "steps succeeded", cancelled: "Stopped", tool: "Tool", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
   },
 };
 const withIslandStrings = (t: Translate, locale: ConversationLocale): Translate => (key, named) =>
@@ -371,7 +371,7 @@ export const stepState = (core: unknown, aui: { type: string }, isError?: boolea
   if (core === "cancelled") return "cancelled";
   return core === undefined && aui.type === "running" ? "running" : "done";
 };
-const coreStatus = (part: { providerMetadata?: unknown }) => (part.providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
+const coreStatus = (part: object) => ((part as { providerMetadata?: unknown }).providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
 const elapsed = (timing?: { startedAt: number; completedAt?: number }) =>
   timing?.completedAt === undefined ? "" : formatProcessDuration(timing.completedAt - timing.startedAt);
 
@@ -444,12 +444,39 @@ const groupBy = (part: { type: string }) =>
     ? (part.type === "data" && (part as { name?: string }).name !== "process" ? null : ["group-process" as const])
     : null;
 
-/** The 执行过程 fold: GroupedParts puts the header <summary> and the step rows in it. Opens while the run is live, like the Vue view. */
-function ProcessFold({ running, children }: { running: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(running);
-  useEffect(() => { if (running) setOpen(true); }, [running]);
+/**
+ * 执行过程 defaults: open while running or after a failure; after a failure the successful steps fold
+ * into one "N 步成功" row so the failed step is what shows.
+ */
+export function foldView(states: readonly StepState[], running: boolean) {
+  const failed = !running && states.includes("failed");
+  const done = states.filter((s) => s === "done").length;
+  return { open: running || failed, hideDone: failed && done > 0, done };
+}
+
+/** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
+function ProcessFold({ indices, running, t, children }: { indices: readonly number[]; running: boolean; t: Translate; children: ReactNode }) {
+  const parts = useAuiState((s) => s.message.parts);
+  const group = indices.map((i) => parts[i]!);
+  const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
+  const view = foldView(group.filter((p) => p.type !== "data").map((p) => stepState(coreStatus(p), p.status, (p as { isError?: boolean }).isError)), running);
+  const [open, setOpen] = useState(view.open);
+  const [showDone, setShowDone] = useState(false);
+  useEffect(() => { if (view.open) setOpen(true); }, [view.open]);
+  const failed = head?.status === "failed";
   return (
-    <details className="mc-process" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details className="mc-process" data-status={head?.status} data-hide-done={(view.hideDone && !showDone) || undefined} open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}>
+        <span className="mc-process-chevron"><ChevronMark size={16} /></span>
+        {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
+        <span className="mc-process-label">{t("chatReact.process")}</span>
+        <span className="mc-process-summary">{head?.summary}</span>
+        {head?.timing && <span className="mc-process-timing">{head.timing}</span>}
+      </summary>
+      {view.hideDone && !showDone && (
+        <button type="button" className="mc-step-more" onClick={() => setShowDone(true)}><CheckMark size={13} />{`${view.done} ${t("chatReact.doneSteps")}`}</button>
+      )}
       {children}
     </details>
   );
@@ -461,7 +488,7 @@ function Parts({ t }: { t: Translate }) {
       {({ part, children }) => {
         switch (part.type) {
           case "group-process":
-            return <ProcessFold running={part.status.type === "running"}>{children}</ProcessFold>;
+            return <ProcessFold indices={part.indices} running={part.status.type === "running"} t={t}>{children}</ProcessFold>;
           case "indicator":
             return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
           case "text":
@@ -477,19 +504,8 @@ function Parts({ t }: { t: Translate }) {
           case "tool-call":
             return <ToolStep part={part} t={t} />;
           case "data":
-            if (part.name === "process") {
-              const data = part.data as ProcessPartData;
-              return (
-                <summary className="mc-process-head" data-status={data.status} aria-label={`${t("chatReact.process")} · ${data.summary}`}>
-                  <span className="mc-process-chevron"><ChevronMark /></span>
-                  <span className="mc-process-dot" aria-hidden="true" />
-                  <span className="mc-process-label">{t("chatReact.process")}</span>
-                  {data.status === "failed" && <span className="mc-process-alert"><AlertMark /></span>}
-                  <span className="mc-process-summary">{data.summary}</span>
-                  {data.timing && <span className="mc-process-timing">{data.timing}</span>}
-                </summary>
-              );
-            }
+            // The header is drawn by ProcessFold.
+            if (part.name === "process") return <></>;
             if (part.name === "media") return <MediaCard data={part.data as MediaPartData} t={t} />;
             if (part.name === "files") {
               return <div className="mc-chips mc-chips--sent">{(part.data as unknown as FileChip[]).map((f) => <FileChipView key={f.id} file={f} t={t} />)}</div>;

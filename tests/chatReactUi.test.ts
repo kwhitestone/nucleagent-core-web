@@ -110,7 +110,7 @@ test("model menu: groups, current choice checked, image/video listed but not pic
   assert.match(open, /aria-checked="false" aria-disabled="true"[^>]*><span class="mc-menu-text">P · i/, "image model not pickable");
 });
 
-test("process row: failed step → amber header with alert icon; expanded rows carry state icon, name, tool tag, duration", () => {
+test("process row: failed step → one severity color (alert icon, no dot), opens on the failure, done steps fold to one row; aria-expanded", () => {
   const at = (sec: number) => `2026-11-13T00:00:0${sec}Z`;
   const state = stateOf([
     item("u1", { role: "user", content: "q", timestamp: at(0) }),
@@ -120,15 +120,31 @@ test("process row: failed step → amber header with alert icon; expanded rows c
   ]);
   const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-  assert.match(html, /class="mc-process-head" data-status="failed"/);
+  assert.match(html, /<details class="mc-process" data-status="failed" data-hide-done="true" open="">/, "failure: open, done steps hidden");
+  assert.match(html, /<summary class="mc-process-head" aria-expanded="true"/);
   assert.match(html, /class="mc-process-alert"/);
-  assert.match(html, /mc-process-dot/);
+  assert.doesNotMatch(html, /mc-process-dot/, "alert icon replaces the dot, not both");
+  assert.match(html, /class="mc-step-more"[^>]*>.*1 chatReact.doneSteps</s);
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  assert.match(css, /\.mc-process\[data-hide-done\] > \.mc-step\[data-state="done"\] \{ display: none; \}/);
+  assert.doesNotMatch(css.slice(css.indexOf(".mc-process {"), css.indexOf(".mc-step-detail {")), /amber/, "one severity color");
   assert.match(html, /class="mc-step" data-state="done".*排队等待.*class="mc-step-time">2.0s</s);
   assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*chatReact.failed.*class="mc-step-time">5.0s<.*exit 1/s);
   assert.equal(app.stepState("streaming", { type: "complete" }), "running");
   assert.equal(app.stepState(undefined, { type: "running" }), "running");
   assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
   assert.equal(app.stepState("cancelled", { type: "complete" }), "cancelled");
+});
+
+test("process fold defaults: closed when all done, open while running, open on failure with done steps folded", () => {
+  assert.deepEqual(app.foldView(["done", "done"], false), { open: false, hideDone: false, done: 2 });
+  assert.deepEqual(app.foldView(["done", "running"], true), { open: true, hideDone: false, done: 1 });
+  assert.deepEqual(app.foldView(["done", "done", "done", "failed"], false), { open: true, hideDone: true, done: 3 });
+  assert.deepEqual(app.foldView(["failed"], false), { open: true, hideDone: false, done: 0 });
+  const html = render(stateOf([item("u1", { role: "user", content: "q" }), item("p1", { lane: "process", title: "排队", userReadable: true }), item("a1", { content: "答" })]),
+    () => React.createElement(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.match(html, /<details class="mc-process" data-status="complete"><summary class="mc-process-head" aria-expanded="false"/);
+  assert.match(html, /mc-process-dot/);
 });
 
 test("hover action bar: under the bubble, real buttons (keyboard focusable, ≥28px via .mc-icon-btn), last reply marked", () => {
