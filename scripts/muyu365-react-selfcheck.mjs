@@ -4,6 +4,10 @@
 // Usage: node scripts/muyu365-react-selfcheck.mjs <out.html>   (then screenshot it with any headless browser)
 import { readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "vite";
+import { JSDOM } from "jsdom";
+
+// DOMPurify (markdown.ts) needs a DOM to sanitize under react-dom/server.
+globalThis.window = new JSDOM("").window;
 
 const out = process.argv[2] ?? "muyu365-selfcheck.html";
 const vite = await createServer({ appType: "custom", logLevel: "error", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });

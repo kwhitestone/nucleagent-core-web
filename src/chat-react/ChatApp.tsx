@@ -3,8 +3,8 @@ import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { useActionBarCopy } from "@assistant-ui/core/react";
-import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
-import remarkGfm from "remark-gfm";
+import { useMessagePartText, useSmooth } from "@assistant-ui/react";
+import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
 import {
   ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
 } from "./auiPrimitives";
@@ -26,7 +26,7 @@ import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups
 import { useCoreConversation } from "./useCoreConversation";
 import { storageAttachmentAdapter } from "./attachments";
 import { toSuggestions } from "./suggestions";
-import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
+import { fetchHomeSuggestions } from "./suggestions";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -266,19 +266,15 @@ const MessageAttachmentChips = () => (
 );
 
 /**
- * Markdown body via aui's MarkdownTextPrimitive (react-markdown + smooth streaming). Same policy as
- * task-conversation/markdown.ts: raw HTML is never rendered (react-markdown without rehype-raw), images
- * are dropped, task-list checkboxes become ☐/☑ text, links keep react-markdown's safe-protocol filter
- * and sealed tool links open through Core (openSealedLinkOnClick).
+ * Markdown body: aui's text part + smooth streaming (useMessagePartText/useSmooth), rendered by the
+ * same markdown-it + DOMPurify policy as MarkdownContent.vue (task-conversation/markdown.ts), which the
+ * default Vue chunk already ships; sealed tool links open through Core (openSealedLinkOnClick).
  */
-const MARKDOWN_COMPONENTS = {
-  img: () => null,
-  input: ({ checked }: { checked?: boolean }) => <>{checked ? "☑" : "☐"} </>,
-};
-const MarkdownText = () => (
-  <MarkdownTextPrimitive className="mc-md" remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}
-    containerProps={{ onClick: (e) => void openSealedLinkOnClick(e.nativeEvent) }} />
-);
+function MarkdownText() {
+  const { text, status } = useSmooth(useMessagePartText());
+  const html = useMemo(() => renderMarkdown(text), [text]);
+  return <div className="mc-md" data-status={status.type} onClick={(e) => void openSealedLinkOnClick(e.nativeEvent)} dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 const statusKey = (status: { type: string }, isError?: boolean) =>
   status.type === "running" ? "running" : isError || status.type === "incomplete" ? "failed" : "done";

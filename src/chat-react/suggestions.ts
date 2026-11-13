@@ -1,3 +1,4 @@
+import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import type { ChatSuggestion } from "./ChatApp";
 
 /**
@@ -19,4 +20,10 @@ export function toSuggestions(data: unknown, locale: string): ChatSuggestion[] {
     const prompt = (en && str(r.promptEn)) || str(r.promptZh);
     return [{ title, label: (en && str(r.descEn)) || str(r.descZh), prompt: r.action === "prefill" && prompt ? prompt : `${title}：` }];
   }).slice(0, 12);
+}
+
+/** Same GET as api/homeSuggestions.ts; kept local so the island does not split that module out of Home's chunk. */
+export async function fetchHomeSuggestions(): Promise<unknown> {
+  const response = await getPlatformRuntime().http.get<{ data?: unknown }>("/api/v1/addons/conversation/home-suggestions", { timeout: 2000 });
+  return response.data?.data ?? null;
 }

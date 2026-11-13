@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.36",
-    "@assistant-ui/react-markdown": "0.14.26",
     "@lucide/vue": "1.49.0",
     "@prism-fusion/editor-ui": "file:vendor/editor-ui-8fe4a2071ada3daaaf5f73bf183e94dc34680cbd5e3a638c247797f4169ccbcd.tgz",
     "axios": "^1.7.0",
@@ -22,7 +21,6 @@
     "pinia": "^2.2.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "remark-gfm": "4.0.1",
     "vue": "^3.5.0",
     "vue-i18n": "^9.14.0",
     "vue-router": "^4.6.0",
@@ -35,6 +33,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "4.7.0",
     "@vitejs/plugin-vue": "5.2.4",
+    "jsdom": "29.1.1",
     "typescript": "^5.5.0",
     "vite": "6.4.3",
     "vue-tsc": "^2.1.0"

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
+import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import type { ConversationAdapter, ConversationEvent, ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
 
@@ -21,6 +22,8 @@ let React: typeof import("react");
 let aui: typeof import("@assistant-ui/react");
 
 before(async () => {
+  // DOMPurify (markdown.ts) needs a DOM; installed before the module loads so the real policy runs.
+  Object.defineProperty(globalThis, "window", { configurable: true, value: new JSDOM("").window });
   Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 0) });
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: clearTimeout });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
@@ -392,8 +395,8 @@ test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行�
   assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one fold");
   assert.equal(html.match(/class="mc-step"/g)?.length, 2);
   // Same policy as markdown.ts: no raw HTML, no images, no script URLs.
-  assert.doesNotMatch(html, /<img|javascript:|<[^>]*onerror=/);
-  assert.match(html, /<a href="">x<\/a>/, "script URL neutralised");
+  assert.doesNotMatch(html, /<img|href="javascript:|<[^>]*onerror=/);
+  assert.match(html, /\[x\]\(javascript:alert\(1\)\)/, "script URL stays inert text (markdown-it validateLink), as in the Vue view");
   assert.match(html, /&lt;img/);
   assert.match(html, /aria-label="执行过程 · 2 个步骤 · 已完成"/);
   assert.doesNotMatch(html, /lucide/);
@@ -459,4 +462,36 @@ test("attachments: onNew forwards refs to the controller; history shows them on 
   assert.deepEqual(calls, [["see file", [{ id: "f-1", name: "r.pdf", mimeType: "application/pdf" }]]]);
   const [user] = toThreadMessages(stateOf([item("u1", { role: "user", content: "q", attachments: [{ id: "f-9", name: "x.png", mimeType: "image/png", size: 3 }] })]));
   assert.deepEqual(user.attachments, [{ id: "f-9", type: "image", name: "x.png", contentType: "image/png", status: { type: "complete" }, content: [] }]);
+});
+
+test("sealedLink: sealed tool links open via Core in a fresh no-opener tab; others and unsafe results are not opened", async (t) => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const { openSealedLinkOnClick } = await vite.ssrLoadModule("/src/chat-react/sealedLink.ts");
+  const posts: unknown[] = [];
+  let reply = "https://wb.example.com/real";
+  const unregister = registerPlatformRuntime({ http: { post: async (url: string, body: unknown) => { posts.push([url, body]); return { data: { url: reply } }; } } } as never);
+  const tabs: { opener: unknown; location: { href: string }; closed?: boolean; close(): void }[] = [];
+  const win = globalThis.window as unknown as { open: unknown };
+  const originalOpen = win.open;
+  win.open = () => { const tab = { opener: {}, location: { href: "" }, close() { tab.closed = true; } } as (typeof tabs)[number]; tabs.push(tab); return tab; };
+  const doc = (globalThis.window as unknown as { document: Document }).document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: doc }); // toast.error mounts into it
+  t.after(() => { win.open = originalOpen; unregister(); Reflect.deleteProperty(globalThis, "document"); });
+  const click = async (href: string, key = "42") => {
+    doc.body.innerHTML = `<div data-conversation-key="${key}"><a href="${href}">x</a></div>`;
+    const event = { target: doc.querySelector("a"), defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    await openSealedLinkOnClick(event as unknown as MouseEvent);
+    return event.defaultPrevented;
+  };
+  assert.equal(await click("https://e.example/plain"), false, "ordinary links follow the browser");
+  assert.equal(await click("https://wb.example.com/52?token=nlk.abc", ""), false, "no conversation id → not handled");
+  assert.equal(await click("https://wb.example.com/52?token=nlk.abc"), true);
+  assert.deepEqual(posts, [["/api/v1/addons/conversation/42/tool-link", { url: "https://wb.example.com/52?token=nlk.abc" }]]);
+  assert.equal(tabs[0].opener, null);
+  assert.equal(tabs[0].location.href, "https://wb.example.com/real");
+  reply = "javascript:alert(1)";
+  await click("https://wb.example.com/52?token=nlk.abc");
+  assert.equal(tabs[1].location.href, "", "unsafe Core reply never navigates");
+  assert.equal(tabs[1].closed, true);
+  assert.match(doc.body.textContent ?? "", /链接无法打开/);
 });
