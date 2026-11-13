@@ -10,8 +10,8 @@
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Copy } from "@lucide/vue";
-import { sessionRequestSignal } from "@/addons/platform-api/session/embeddedSession";
 import { revalidating } from "@/addons/platform-api/session/embeddedAuthorization";
+import { copyRawBody, formatMessageTime, type CopyState } from "./messageCopy";
 import type { ConversationItem } from "@/addons/conversation/task-conversation/core";
 import ConversationContent from "@/addons/conversation/task-conversation/vue/ConversationContent.vue";
 import AttachmentChips from "@/addons/conversation/components/AttachmentChips.vue";
@@ -25,7 +25,7 @@ defineEmits<{ respond: [value: unknown] }>();
 
 const isUser = computed(() => props.role === "user" || props.item.role === "user");
 const copying = ref(false);
-const copyState = ref<"" | "copied" | "error">("");
+const copyState = ref<CopyState>("");
 const hasBody = computed(() => typeof props.item.content === "string" && props.item.content.length > 0);
 watch(() => [props.item.id, props.item.content], () => { copyState.value = ""; });
 let active = true;
@@ -33,18 +33,13 @@ onScopeDispose(() => { active = false; });
 
 async function copyBody() {
   if (!active || !hasBody.value || copying.value || revalidating.value) return;
-  const signal = sessionRequestSignal("business");
   const content = props.item.content;
   const id = props.item.id;
   copying.value = true;
   copyState.value = "";
-  const current = () => active && !signal.aborted && !revalidating.value &&
-    props.item.id === id && props.item.content === content;
   try {
-    await navigator.clipboard.writeText(content);
-    if (current()) copyState.value = "copied";
-  } catch {
-    if (current()) copyState.value = "error";
+    const result = await copyRawBody(content, () => active && props.item.id === id && props.item.content === content);
+    if (result) copyState.value = result;
   } finally {
     if (active) copying.value = false;
   }
@@ -59,13 +54,7 @@ const messageAttachments = computed(() =>
 );
 
 /** 格式化时间（精确到秒）。 */
-const time = computed(() => {
-  if (!props.item.timestamp) return "";
-  const d = new Date(props.item.timestamp);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-});
+const time = computed(() => formatMessageTime(props.item.timestamp));
 </script>
 
 <template>

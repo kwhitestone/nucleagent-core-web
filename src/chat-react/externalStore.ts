@@ -1,6 +1,6 @@
 import { MessageNotSentError, type AppendMessage, type ExternalStoreAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import type { ConversationState } from "@/addons/conversation/task-conversation/core";
-import { isRunning, toThreadMessages } from "./threadMessages";
+import { isRunning, toThreadMessages, type ThreadOptions } from "./threadMessages";
 
 /** The two controller calls the composer needs (useConversation's send/stop). */
 export interface ChatController {
@@ -16,9 +16,9 @@ export const appendText = (message: AppendMessage): string =>
  * state; assistant-ui only renders and forwards send/cancel. A failed send hands the draft
  * back to the composer (MessageNotSentError), like the Vue view keeps the input.
  */
-export function externalStore(state: ConversationState, controller: ChatController): ExternalStoreAdapter<ThreadMessageLike> {
+export function externalStore(state: ConversationState, controller: ChatController, options?: ThreadOptions): ExternalStoreAdapter<ThreadMessageLike> {
   return {
-    messages: toThreadMessages(state),
+    messages: toThreadMessages(state, options),
     convertMessage: (message) => message,
     isRunning: isRunning(state),
     async onNew(message) {

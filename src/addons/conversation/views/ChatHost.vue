@@ -20,6 +20,7 @@ let disposed = false;
 const chatProps = (): ChatProps => ({
   conversationId: props.id,
   t: (key, named) => t(key, named ?? {}),
+  locale: locale.value === "en" ? "en-US" : "zh-CN",
   navigate: (path) => void router.push(path),
   create: (payload) => store.create(payload),
 });

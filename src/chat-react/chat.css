@@ -21,23 +21,104 @@
   color: var(--fg-tertiary);
   font-size: 14px;
 }
+/* Message row mirrors MessageItem.vue: 28px avatar, author + time + copy header, single-layer bubble. */
 .mc-msg {
   max-width: 760px;
   width: 100%;
   margin: 0 auto;
+  display: flex;
+  gap: 12px;
   font-size: 14px;
   line-height: 1.7;
 }
-.mc-msg[data-message-role="user"] {
+.mc-msg[data-message-role="user"] { flex-direction: row-reverse; }
+.mc-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  margin-top: 20px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: linear-gradient(135deg, var(--violet-500), var(--fuchsia-500));
 }
-.mc-msg[data-message-role="user"] .mc-md {
-  background: var(--bg-brand-soft);
-  border-radius: 16px;
-  padding: 8px 16px;
+.mc-avatar svg { width: 15px; height: 15px; }
+.mc-msg[data-message-role="user"] .mc-avatar { background: var(--indigo-500); }
+.mc-main { flex: 1; min-width: 0; }
+.mc-msg[data-message-role="user"] .mc-main {
+  flex: unset;
   max-width: 80%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
+.mc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+  padding: 0 2px;
+}
+.mc-msg[data-message-role="user"] .mc-header { justify-content: flex-end; }
+.mc-author { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.mc-time { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.mc-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-self: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mc-copy:hover { background: var(--bg-hover); }
+.mc-copy:disabled { opacity: 0.5; cursor: default; }
+.mc-copy-status { font-size: 11px; color: var(--text-secondary); }
+.mc-bubble {
+  padding: 10px 16px;
+  border-radius: 5px 16px 16px 16px;
+  background: rgb(255 255 255 / 80%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  color: var(--slate-700);
+}
+/* Same brand-blue fill + white text as the Vue user bubble (aurora maps indigo/violet to --fg-brand). */
+.mc-msg[data-message-role="user"] .mc-bubble {
+  background: linear-gradient(160deg, var(--indigo-500), var(--violet-500));
+  border: 0;
+  color: #fff;
+  border-radius: 16px 16px 5px 16px;
+}
+.mc-msg[data-message-role="user"] .mc-md code { background: rgb(255 255 255 / 20%); color: #fff; }
+.mc-msg[data-message-role="user"] .mc-md a { color: #fff; text-decoration: underline; }
+.mc-process {
+  color: var(--fg-secondary);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.mc-process > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.mc-process-label { font-weight: 500; color: var(--fg-primary); }
+.mc-process-timing { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); }
+.mc-process-steps { margin: 6px 0 0; padding-left: 18px; }
+.mc-process-steps b { font-weight: 500; }
+.mc-process-steps pre { white-space: pre-wrap; margin: 2px 0 0; font-family: inherit; }
+.mc-process-steps li[data-status="failed"] { color: var(--fg-error); }
 .mc-md > :first-child { margin-top: 0; }
 .mc-md > :last-child { margin-bottom: 0; }
 .mc-md pre, .mc-md code {
@@ -108,7 +189,7 @@
 .mc-btn--primary { background: var(--bg-brand); color: var(--fg-on-brand); }
 .mc-btn--primary:hover { background: var(--bg-brand-hover); }
 .mc-btn:disabled { background: var(--bg-disabled); color: var(--fg-tertiary); cursor: default; }
-.mc-btn:focus-visible, .mc-select:focus-visible {
+.mc-btn:focus-visible, .mc-select:focus-visible, .mc-copy:focus-visible {
   outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
 }

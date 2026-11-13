@@ -60,7 +60,7 @@ test("switch: default vue; query beats storage; junk values ignored", () => {
   assert.equal(chatUi("", { getItem: () => { throw new Error("blocked"); } }), "vue");
 });
 
-test("adapter: user items split turns; process → reasoning, answer → text; hidden lanes dropped", () => {
+test("adapter: user items split turns; process → one data-process part, answer → text; hidden lanes dropped", () => {
   const messages = toThreadMessages(stateOf([
     item("u1", { role: "user", content: "hi" }),
     item("t1", { lane: "process", title: "思考过程", content: "plan", userReadable: true }),
@@ -70,10 +70,35 @@ test("adapter: user items split turns; process → reasoning, answer → text; h
     item("e1", { lane: "system", status: "failed", content: "boom" }),
   ]));
   assert.deepEqual(messages.map((m) => [m.id, m.role]), [["u1", "user"], ["t1", "assistant"], ["u2", "user"], ["e1", "assistant"]]);
-  assert.deepEqual(messages[1].content, [{ type: "reasoning", text: "思考过程\nplan" }, { type: "text", text: "**hello**" }]);
+  const [process, answer] = messages[1].content as readonly { type: string; data?: { summary: string; steps: { title: string; content: string }[] } }[];
+  assert.equal(process.type, "data-process");
+  assert.equal(process.data?.summary, "1 个步骤 · 已完成");
+  assert.deepEqual(process.data?.steps.map((step) => [step.title, step.content]), [["思考过程", "plan"]]);
+  assert.deepEqual(answer, { type: "text", text: "**hello**" });
   assert.deepEqual(messages[1].status, { type: "complete", reason: "stop" });
   assert.deepEqual(messages[3].status, { type: "incomplete", reason: "error" });
   assert.equal((messages[3].metadata?.custom as { failed: boolean }).failed, true);
+});
+
+test("adapter: contiguous process steps merge into one 执行过程 summary with the run's total time", () => {
+  const at = (s: number) => `2026-11-13T00:00:${String(s).padStart(2, "0")}Z`;
+  const proc = (id: string, s: number, over: Partial<ConversationItem> = {}) =>
+    item(id, { lane: "process", role: "assistant", kind: "status", userReadable: true, timestamp: at(s), ...over });
+  const state = stateOf([
+    item("u1", { role: "user", content: "hi", timestamp: at(0) }),
+    proc("q", 1, { title: "排队等待" }),
+    proc("i", 2, { title: "Agent 初始化" }),
+    item("a1", { content: "done", kind: "result", timestamp: at(12) }),
+    proc("late", 13, { title: "思考过程" }),
+  ]);
+  const [, reply] = toThreadMessages(state, { locale: "zh-CN", nowMs: Date.parse(at(30)) });
+  const parts = reply.content as readonly { type: string; data?: { summary: string; timing: string; steps: unknown[] } }[];
+  assert.deepEqual(parts.map((p) => p.type), ["data-process", "text"], "late process joins the run before the answer");
+  assert.equal(parts[0].data?.summary, "3 个步骤 · 已完成");
+  assert.equal(parts[0].data?.steps.length, 3);
+  assert.equal(parts[0].data?.timing, "总耗时 12.0 秒");
+  const en = toThreadMessages(state, { locale: "en-US", nowMs: Date.parse(at(30)) })[1].content as readonly { data?: { summary: string; timing: string } }[];
+  assert.deepEqual([en[0].data?.summary, en[0].data?.timing], ["3 steps · Completed", "Total time 12.0s"]);
 });
 
 function streamingAdapter() {
@@ -181,4 +206,51 @@ test("component: assistant-ui renders the converted Core history through Externa
   const html = renderToString(h(App));
   assert.match(html, /data-role="user"[^>]*>.*question/s);
   assert.match(html, /data-role="assistant"[^>]*>.*answer \*\*bold\*\*/s);
+});
+
+test("ChatApp message rows: avatar, author, time, copy button and merged 执行过程 row (react-dom/server)", async (t0) => {
+  // DOMPurify is browser-only; under SSR strip tags like messageAttachmentDisplay.test does.
+  const DOMPurify = (await import("dompurify")).default;
+  const sanitize = DOMPurify.sanitize;
+  DOMPurify.sanitize = ((text: string) => text.replace(/<[^>]*>/g, "")) as typeof DOMPurify.sanitize;
+  t0.after(() => { DOMPurify.sanitize = sanitize; });
+  const { MessageRow } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof import("../src/chat-react/ChatApp.tsx");
+  const { createElement: h } = React;
+  const t = (key: string) => ({ "conversation.you": "你", "home.greeting": "NucleAgent", "common.copy": "复制", "chatReact.process": "执行过程" })[key] ?? key;
+  const state = stateOf([
+    item("u1", { role: "user", content: "question" }),
+    item("p1", { lane: "process", title: "排队等待", userReadable: true }),
+    item("p2", { lane: "process", title: "Agent 初始化", userReadable: true }),
+    item("a1", { content: "answer" }),
+  ]);
+  function App() {
+    const runtime = aui.useExternalStoreRuntime(externalStore(state, { send: async () => {}, stop: async () => {} }));
+    return h(aui.AssistantRuntimeProvider, { runtime },
+      h(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => h(MessageRow, { role: message.role, t })));
+  }
+  const html = renderToString(h(App));
+  assert.match(html, /data-message-role="user".*class="mc-avatar"[^>]*>你<.*class="mc-author">你<.*class="mc-time">2026-11-13 \d\d:00:00</s);
+  assert.match(html, /data-message-role="assistant".*class="mc-author">NucleAgent</s);
+  assert.equal(html.match(/<button[^>]*class="mc-copy"[^>]*aria-label="复制"/g)?.length, 2);
+  assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one row");
+  assert.match(html, /aria-label="执行过程 · 2 个步骤 · 已完成"/);
+  assert.doesNotMatch(html, /lucide/);
+});
+
+test("copyRawBody: raw text, clipboard failure is reported, stale or revalidating results are dropped", async (t) => {
+  const { copyRawBody } = await vite.ssrLoadModule("/src/addons/conversation/components/conversation/messageCopy.ts");
+  const { revalidating } = await vite.ssrLoadModule("/src/addons/platform-api/session/embeddedAuthorization.ts");
+  const calls: string[] = [];
+  let fail = false;
+  const original = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard: { writeText: async (v: string) => { calls.push(v); if (fail) throw new Error("denied"); } } } });
+  t.after(() => original ? Object.defineProperty(globalThis, "navigator", original) : Reflect.deleteProperty(globalThis, "navigator"));
+  assert.equal(await copyRawBody("**raw** <b>", () => true), "copied");
+  fail = true;
+  assert.equal(await copyRawBody("x", () => true), "error");
+  assert.equal(await copyRawBody("x", () => false), undefined, "unmounted/changed message gets no feedback");
+  revalidating.value = true;
+  try { assert.equal(await copyRawBody("y", () => true), undefined); } finally { revalidating.value = false; }
+  assert.equal(await copyRawBody("", () => true), undefined);
+  assert.deepEqual(calls, ["**raw** <b>", "x", "x"]);
 });

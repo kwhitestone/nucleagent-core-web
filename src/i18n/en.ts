@@ -199,6 +199,7 @@ export default {
     pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task. Enter to send, Shift + Enter for a new line",
     loading: "Loading conversation…",
+    process: "Process",
   },
   model: {
     typeMismatch: "{model} is a model of type \"{type}\"; chats and tasks need a chat model. Please pick another.",

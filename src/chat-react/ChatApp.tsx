@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider, AuiIf, ComposerPrimitive, MessagePrimitive, ThreadPrimitive,
-  useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
+  useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { listProviders, listAllTypedModels, type Provider } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
@@ -11,8 +11,11 @@ import { executionBackendCompatibility } from "@/addons/conversation/composables
 import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
 import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
 import { createConversationState } from "@/addons/conversation/task-conversation/core";
+import { copyRawBody, formatMessageTime, type CopyState } from "@/addons/conversation/components/conversation/messageCopy";
+import type { ConversationLocale } from "@/addons/conversation/task-conversation/core";
 import { toast } from "@/composables/useToast";
 import { externalStore } from "./externalStore";
+import type { ProcessPartData } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { useCoreConversation } from "./useCoreConversation";
 import "./chat.css";
@@ -21,6 +24,7 @@ export type Translate = (key: string, named?: Record<string, unknown>) => string
 export interface ChatProps {
   conversationId?: string;
   t: Translate;
+  locale?: ConversationLocale;
   navigate(path: string): void;
   create(payload: CreateConversationRequest): Promise<Conversation>;
 }
@@ -32,12 +36,13 @@ export function ChatApp(props: ChatProps) {
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? "消息格式异常，已跳过一条更新" : modelErrorMessage(error, t)), [t]);
   const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
+  const view = { locale: props.locale ?? "zh-CN", nowMs: useClock(!!core && core.state.status === "running") };
 
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
     ? externalStore(core?.state ?? EMPTY, {
       send: (text) => core ? core.controller.send(text) : Promise.reject(new Error(t("chatReact.loading"))),
       stop: () => core?.controller.stop() ?? Promise.resolve(),
-    })
+    }, view)
     : externalStore(EMPTY, {
       async send(input) {
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
@@ -64,7 +69,7 @@ export function ChatApp(props: ChatProps) {
           <AuiIf condition={(s) => s.thread.isEmpty}>
             <p className="mc-empty">{conversationId && !core ? t("chatReact.loading") : t("conversation.empty")}</p>
           </AuiIf>
-          <ThreadPrimitive.Messages>{({ message }) => <Message role={message.role} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
         </ThreadPrimitive.Viewport>
         <ComposerPrimitive.Root className="mc-composer">
           <ComposerPrimitive.Input
@@ -87,16 +92,107 @@ export function ChatApp(props: ChatProps) {
   );
 }
 
-function Message({ role }: { role: string }) {
+/** Ticks once a second while a run is active so "已用 N 秒" moves, like the Vue view's process clock. */
+function useClock(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    if (!active) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+const AssistantMark = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" /><path d="M12 22V12" /><path d="M4 7l8 5 8-5" />
+  </svg>
+);
+const CopyMark = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="8" y="8" width="14" height="14" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </svg>
+);
+
+/** Raw text of a message (what "复制" puts on the clipboard, like MessageItem.vue). */
+const rawBody = (content: readonly { type: string; text?: string }[]) =>
+  content.filter((p) => p.type === "text").map((p) => p.text ?? "").join("\n\n");
+
+function CopyButton({ id, body, t }: { id: string; body: string; t: Translate }) {
+  const [state, setState] = useState<CopyState>("");
+  const [copying, setCopying] = useState(false);
+  const live = useRef({ mounted: true, id, body });
+  live.current.id = id; live.current.body = body;
+  useEffect(() => { live.current.mounted = true; return () => { live.current.mounted = false; }; }, []);
+  useEffect(() => setState(""), [id, body]);
+  async function copy() {
+    if (copying) return;
+    setCopying(true); setState("");
+    const current = () => live.current.mounted && live.current.id === id && live.current.body === body;
+    try {
+      const result = await copyRawBody(body, current);
+      if (result) setState(result);
+    } finally {
+      if (live.current.mounted) setCopying(false);
+    }
+  }
+  return (
+    <>
+      <button type="button" className="mc-copy" aria-label={t("common.copy")} title={t("common.copy")} disabled={copying} onClick={copy}><CopyMark /></button>
+      <span className="mc-copy-status" role="status">{state === "copied" ? t("common.copied") : state === "error" ? t("common.operationFailed") : ""}</span>
+    </>
+  );
+}
+
+function ProcessGroup({ data, t }: { data: ProcessPartData; t: Translate }) {
+  const title = t("chatReact.process");
+  return (
+    <details className="mc-process" data-status={data.status} open={data.status === "streaming" || data.status === "pending"}>
+      <summary aria-label={`${title} · ${data.summary}`}>
+        <span className="mc-process-label">{title}</span>
+        <span className="mc-process-summary">{data.summary}</span>
+        {data.timing && <span className="mc-process-timing">{data.timing}</span>}
+      </summary>
+      <ol className="mc-process-steps">
+        {data.steps.map((step) => (
+          <li key={step.id} data-status={step.status}>
+            {step.title && <b>{step.title}</b>}
+            {step.content && <pre>{step.content}</pre>}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+export function MessageRow({ role, t }: { role: string; t: Translate }) {
+  const id = useAuiState((s) => s.message.id);
+  const createdAt = useAuiState((s) => s.message.createdAt);
+  const body = useAuiState((s) => rawBody(s.message.content));
+  const isUser = role === "user";
+  const time = formatMessageTime(createdAt?.toISOString());
   return (
     <MessagePrimitive.Root className="mc-msg" data-message-role={role}>
-      <MessagePrimitive.Parts>
-        {({ part }) => part.type === "text"
-          ? <div className="mc-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(part.text) }} />
-          : part.type === "reasoning"
-            ? <details className="mc-reasoning"><summary>{part.text.split("\n")[0]}</summary><pre>{part.text.split("\n").slice(1).join("\n")}</pre></details>
-            : null}
-      </MessagePrimitive.Parts>
+      <div className="mc-avatar" aria-hidden="true">{isUser ? t("conversation.you") : <AssistantMark />}</div>
+      <div className="mc-main">
+        <div className="mc-header">
+          <span className="mc-author">{isUser ? t("conversation.you") : t("home.greeting")}</span>
+          {time && <span className="mc-time">{time}</span>}
+          {body && <CopyButton id={id} body={body} t={t} />}
+        </div>
+        <div className="mc-bubble">
+          <MessagePrimitive.Parts>
+            {({ part }) => part.type === "text"
+              ? <div className="mc-md" dangerouslySetInnerHTML={{ __html: renderMarkdown(part.text) }} />
+              : part.type === "data" && part.name === "process"
+                ? <ProcessGroup data={part.data as ProcessPartData} t={t} />
+                : part.type === "reasoning"
+                  ? <details className="mc-reasoning"><summary>{part.text.split("\n")[0]}</summary><pre>{part.text.split("\n").slice(1).join("\n")}</pre></details>
+                  : null}
+          </MessagePrimitive.Parts>
+        </div>
+      </div>
     </MessagePrimitive.Root>
   );
 }
