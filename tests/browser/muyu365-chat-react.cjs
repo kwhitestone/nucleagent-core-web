@@ -112,9 +112,9 @@ async function run(context, mode) {
   const iframe = s.page.locator(`iframe[src^="${CORE}"]`).first();
   check(`${mode}: switch selected the ${mode} view`, (await s.frame.locator("[data-chat-ui=react]").count() > 0) === (mode === "react"));
   if (mode === "react") {
-    await s.frame.locator("[data-testid=mc-executor] option").first().waitFor({ timeout: 30_000 }).catch(() => {});
-    const groups = await s.frame.locator("[data-testid=mc-model] optgroup, [data-testid=mc-executor] optgroup")
-      .evaluateAll((els) => els.map((e) => ({ kind: e.dataset.kind, n: e.querySelectorAll("option").length })));
+    await s.frame.locator("[data-testid=mc-model-menu] [data-kind=executor] [role=menuitemradio]").first().waitFor({ state: "attached", timeout: 30_000 }).catch(() => {});
+    const groups = await s.frame.locator("[data-testid=mc-model-menu] [data-kind]")
+      .evaluateAll((els) => els.map((e) => ({ kind: e.dataset.kind, n: e.querySelectorAll("[role=menuitemradio]").length })));
     check("react: grouped picker (chat/image/video/executor from Toolgate types + Core)", groups.some((g) => g.kind === "chat") && groups.some((g) => g.kind === "executor"), JSON.stringify(groups));
     results.groups = groups;
     results.screens.push(await shot(iframe, "react-empty"));

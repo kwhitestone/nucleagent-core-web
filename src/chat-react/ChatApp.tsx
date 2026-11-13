@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -23,6 +23,10 @@ import { externalStore, sendAppend, type ChatController } from "./externalStore"
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
+import { composerActions, moveFocus } from "./composerState";
+import {
+  AssistantMark, CheckMark, ChevronMark, CopyMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
+} from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
 import { storageAttachmentAdapter } from "./attachments";
 import { toSuggestions } from "./suggestions";
@@ -46,14 +50,16 @@ const EMPTY = createConversationState("new");
 const STRINGS: Record<ConversationLocale, Record<string, string>> = {
   "zh-CN": {
     stop: "停止", executor: "目鱼执行器", mediaLater: "（MVP 未接入）", pickerLabel: "模型与执行器",
-    newPlaceholder: "描述你的任务，Enter 发送，Shift + Enter 换行", loading: "正在加载对话…", process: "执行过程",
+    newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
+    genImage: "生成图片", genVideo: "生成视频", mediaLaterTip: "生图 / 生视频本期未接入 React 聊天，请在旧版界面使用", attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
     query: "查询", sources: "来源", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
   },
   "en-US": {
     stop: "Stop", executor: "Executors", mediaLater: " (not in MVP)", pickerLabel: "Model and executor",
-    newPlaceholder: "Describe your task. Enter to send, Shift + Enter for a new line", loading: "Loading conversation…", process: "Process",
+    newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",
+    genImage: "Generate image", genVideo: "Generate video", mediaLaterTip: "Image / video generation is not in the React chat yet; use the classic view", attach: "Add attachment", loading: "Loading conversation…", process: "Process",
     queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",
     reload: "Regenerate", toBottom: "Scroll to bottom", earlier: "Load earlier messages", running: "Running", done: "Done", failed: "Failed",
     query: "Query", sources: "Sources", mediaPending: "Generating…", mediaFailed: "Generation failed", thinking: "Thinking…", greeting: "What can I help you finish today?",
@@ -117,36 +123,8 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
-            <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
-              <ComposerPrimitive.Root className="mc-composer">
-                <ComposerAttachmentChips t={t} />
-                <ComposerPrimitive.Queue>
-                  {() => (
-                    <div className="mc-queued" data-testid="mc-queued">
-                      <span className="mc-queued-label">{t("chatReact.queued")}</span>
-                      <QueueItemPrimitive.Text className="mc-queued-text" />
-                      <QueueItemPrimitive.Remove className="mc-chip-remove" aria-label={t("chatReact.queuedRemove")}>×</QueueItemPrimitive.Remove>
-                    </div>
-                  )}
-                </ComposerPrimitive.Queue>
-                <ComposerPrimitive.Input
-                  className="mc-input" rows={2} autoFocus
-                  placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")}
-                />
-                <div className="mc-toolbar">
-                  <AttachButton t={t} />
-                  <ModelGroupPicker t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-                    backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-                  <AuiIf condition={(s) => !s.thread.isRunning}>
-                    <ComposerPrimitive.Send className="mc-btn mc-btn--primary" data-testid="mc-send">{t("common.send")}</ComposerPrimitive.Send>
-                  </AuiIf>
-                  <AuiIf condition={(s) => s.thread.isRunning}>
-                    <ComposerPrimitive.Send className="mc-btn" data-testid="mc-send">{t("common.send")}</ComposerPrimitive.Send>
-                    <ComposerPrimitive.Cancel className="mc-btn mc-btn--primary" data-testid="mc-stop">{t("chatReact.stop")}</ComposerPrimitive.Cancel>
-                  </AuiIf>
-                </div>
-              </ComposerPrimitive.Root>
-            </ComposerPrimitive.AttachmentDropzone>
+            <Composer t={t} settings={settings}
+              placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
@@ -197,14 +175,6 @@ function useClock(active: boolean) {
   return now;
 }
 
-const Icon = ({ d, size = 14 }: { d: ReactNode; size?: number }) => (
-  <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
-);
-const AssistantMark = () => <Icon size={15} d={<><path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" /><path d="M12 22V12" /><path d="M4 7l8 5 8-5" /></>} />;
-const CopyMark = () => <Icon d={<><rect x="8" y="8" width="14" height="14" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>} />;
-const ReloadMark = () => <Icon d={<><path d="M21 12a9 9 0 11-3-6.7L21 8" /><path d="M21 3v5h-5" /></>} />;
-const ClipMark = () => <Icon size={16} d={<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />} />;
-
 /**
  * aui's copy action (text parts joined, stale-message guard, isCopied feedback) writing through the
  * shared session-guarded copyRawBody, so nothing is copied while the session revalidates (same as MessageItem.vue).
@@ -227,15 +197,74 @@ function CopyAction({ t }: { t: Translate }) {
   );
 }
 
-/** Paperclip button; the cap matches Core's MAX_ATTACHMENTS like AttachmentPicker.vue's `max`. */
+/** Round "+" attach button; the cap matches Core's MAX_ATTACHMENTS like AttachmentPicker.vue's `max`. */
 function AttachButton({ t }: { t: Translate }) {
   const count = useAuiState((s) => s.composer.attachments.length);
   const uploading = useAuiState((s) => s.composer.attachments.some((a) => a.status.type === "running"));
+  const label = uploading ? t("common.attachmentUploading") : t("chatReact.attach");
   return (
-    <ComposerPrimitive.AddAttachment className="mc-attach" data-testid="mc-attach" title={t("common.attachment")} aria-label={t("common.attachment")}
-      disabled={count >= MAX_ATTACHMENTS}>
-      <ClipMark />{uploading ? <span>{t("common.attachmentUploading")}</span> : count > 0 ? <span className="mc-attach-count">{count}</span> : null}
+    <ComposerPrimitive.AddAttachment className="mc-round" data-testid="mc-attach" title={label} aria-label={label}
+      data-busy={uploading || undefined} disabled={count >= MAX_ATTACHMENTS}>
+      <PlusMark />
     </ComposerPrimitive.AddAttachment>
+  );
+}
+
+/** Old-Vue entry points kept visible; generation is not wired in the React MVP (no paid calls), so they only explain why. */
+function MediaPill({ kind, t }: { kind: "image" | "video"; t: Translate }) {
+  const tip = t("chatReact.mediaLaterTip");
+  return (
+    <button type="button" className="mc-pill mc-pill--off" aria-disabled="true" title={tip} data-testid={`mc-gen-${kind}`}
+      onClick={() => toast.info(tip)}>
+      {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(kind === "image" ? "chatReact.genImage" : "chatReact.genVideo")}</span>
+    </button>
+  );
+}
+
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick">;
+
+/**
+ * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
+ * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
+ */
+export function Composer({ t, settings, placeholder }: { t: Translate; settings: Settings; placeholder: string }) {
+  const running = useAuiState((s) => s.thread.isRunning);
+  const empty = useAuiState((s) => s.composer.isEmpty);
+  const actions = composerActions(running, empty);
+  return (
+    <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
+      <ComposerPrimitive.Root className="mc-composer">
+        <ComposerAttachmentChips t={t} />
+        <ComposerPrimitive.Queue>
+          {() => (
+            <div className="mc-queued" data-testid="mc-queued">
+              <span className="mc-queued-label">{t("chatReact.queued")}</span>
+              <QueueItemPrimitive.Text className="mc-queued-text" />
+              <QueueItemPrimitive.Remove className="mc-chip-remove" aria-label={t("chatReact.queuedRemove")} title={t("chatReact.queuedRemove")}>×</QueueItemPrimitive.Remove>
+            </div>
+          )}
+        </ComposerPrimitive.Queue>
+        <ComposerPrimitive.Input className="mc-input" minRows={1} maxRows={8} autoFocus placeholder={placeholder} aria-label={placeholder} />
+        <div className="mc-toolbar">
+          <AttachButton t={t} />
+          <MediaPill kind="image" t={t} />
+          <MediaPill kind="video" t={t} />
+          <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
+            backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
+          <span className="mc-spacer" />
+          {actions.includes("send") && (
+            <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
+          )}
+          {actions.includes("queue") && (
+            <ComposerPrimitive.Send className="mc-round" data-testid="mc-send" aria-label={t("chatReact.queueSend")} title={t("chatReact.queueSend")}><SendMark /></ComposerPrimitive.Send>
+          )}
+          {actions.includes("stop") && (
+            <ComposerPrimitive.Cancel className="mc-send mc-send--stop" data-testid="mc-stop" aria-label={t("chatReact.stop")} title={t("chatReact.stop")}><StopMark /></ComposerPrimitive.Cancel>
+          )}
+        </div>
+      </ComposerPrimitive.Root>
+      <p className="mc-hint">{t("chatReact.hint")}</p>
+    </ComposerPrimitive.AttachmentDropzone>
   );
 }
 
@@ -389,34 +418,65 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
   );
 }
 
-function ModelGroupPicker(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void }) {
+/**
+ * Model + executor menu over modelGroups.ts (chat / image / video / executor). A popover of
+ * menuitemradio buttons: arrows/Home/End move, Enter/Space pick, Escape or an outside click closes.
+ * Image/video models are listed but not pickable in the MVP (no paid calls).
+ */
+export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean }) {
   const { t, groups } = props;
+  const [open, setOpen] = useState(props.defaultOpen ?? false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
   const options = groups.flatMap((g) => g.options);
+  const model = options.find((o) => o.value === props.value)?.label.split(" · ").pop() ?? t("common.modelDefault");
+  const executor = options.find((o) => o.value === backendValue)?.label;
   const label = (g: Group) => (g.kind === "executor" ? t("chatReact.executor") : t(`model.types.${g.kind}`));
-  const pick = (value: string) => props.onPick(options.find((o) => o.value === value)?.choice ?? null);
-  // Two selects over one grouped catalog: a conversation stores model and executor separately.
+  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]:not([aria-disabled=true])") ?? [])];
+
+  useEffect(() => {
+    if (!open) return;
+    (items().find((b) => b.getAttribute("aria-checked") === "true") ?? items()[0])?.focus();
+    const close = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  const shut = () => { setOpen(false); trigger.current?.focus(); };
+  const choose = (choice: Choice | null) => { shut(); props.onPick(choice); };
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!open) return;
+    if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); shut(); return; }
+    const list = items();
+    const next = moveFocus(list.length, list.indexOf(document.activeElement as HTMLButtonElement), e.key);
+    if (next !== null) { e.preventDefault(); list[next]!.focus(); }
+  };
+  const item = (key: string, text: string, checked: boolean, onSelect: (() => void) | null) => (
+    <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked}
+      aria-disabled={onSelect ? undefined : true} onClick={onSelect ?? undefined}>
+      <span className="mc-menu-text">{text}</span>{checked && <CheckMark size={14} />}
+    </button>
+  );
   return (
-    <div className="mc-picker" role="group" aria-label={t("chatReact.pickerLabel")}>
-      <select className="mc-select" data-testid="mc-model" value={props.value} disabled={props.disabled} onChange={(e) => pick(e.target.value)}>
-        <option value="">{t("common.modelDefault")}</option>
-        {groups.filter((g) => g.kind !== "executor").map((g) => (
-          <optgroup key={g.kind} label={label(g)} data-kind={g.kind}>
-            {g.options.map((o) => (
-              // shortcut: image/video only listed; generation is not wired in the MVP (no paid calls).
-              <option key={o.value} value={o.value} disabled={g.kind !== "chat"}>{o.label}{g.kind !== "chat" ? t("chatReact.mediaLater") : ""}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-      {groups.filter((g) => g.kind === "executor").map((g) => (
-        <select key="executor" className="mc-select" data-testid="mc-executor" aria-label={label(g)}
-          value={props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : ""}
-          disabled={props.disabled} onChange={(e) => pick(e.target.value)}>
-          <optgroup label={label(g)} data-kind="executor">
-            {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </optgroup>
-        </select>
-      ))}
+    <div className="mc-model" ref={root} onKeyDown={onKeyDown}>
+      <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
+        title={t("chatReact.pickerLabel")} disabled={props.disabled} onClick={() => setOpen((v) => !v)}>
+        <span className="mc-model-name">{model}</span>{executor && <span className="mc-model-exec">· {executor}</span>}<ChevronMark size={12} />
+      </button>
+      <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
+        {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
+        {groups.map((g) => {
+          const media = g.kind === "image" || g.kind === "video";
+          return (
+            <div key={g.kind} role="group" aria-label={label(g)} data-kind={g.kind} className="mc-menu-group">
+              <div className="mc-menu-label" aria-hidden="true">{label(g)}{media ? t("chatReact.mediaLater") : ""}</div>
+              {g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value),
+                media ? null : () => choose(o.choice)))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
