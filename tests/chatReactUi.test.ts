@@ -211,7 +211,19 @@ test("file chips: kind by MIME then extension; verified → download button with
   const pending = renderToString(React.createElement(app.FileChipView, { file: { id: "2", name: "x.md", verified: false }, t }));
   assert.match(pending, /^<span class="mc-chip" data-verified="false"/);
   assert.doesNotMatch(pending, /<button/);
-  assert.match(pending, /common.attachmentVerificationFailed/);
+  assert.match(pending, /chatReact.attachmentPending/);
+});
+
+test("snapshot reconciliation marks attachments pending without asserting verification failure", async () => {
+  const { toFileChip } = await vite.ssrLoadModule("/src/chat-react/attachments.ts") as typeof import("../src/chat-react/attachments.ts");
+  const original = stateOf([item("user", { role: "user", attachments: [{ id: "file", name: "image.png", metadata: { verification: "verified" } }] })]);
+  const pending = reducer.reduceConversation(original, { type: "connection.changed", status: "connecting" });
+  const chip = toFileChip(pending.items.user!.attachments![0]!);
+  assert.equal(chip.verified, false);
+  const html = renderToString(React.createElement(app.FileChipView, { file: chip, t }));
+  assert.match(html, /chatReact.attachmentPending/);
+  assert.doesNotMatch(html, /attachmentVerificationFailed|<button/);
+  assert.equal(toFileChip(original.items.user!.attachments![0]!).verified, true);
 });
 
 test("layout: the shell-button mock lives only in the selfcheck; product CSS keeps a fixed top band and a 520px layout", () => {

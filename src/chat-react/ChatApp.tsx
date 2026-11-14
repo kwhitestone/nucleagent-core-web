@@ -9,7 +9,7 @@ import { formatProcessDuration } from "@/addons/conversation/task-conversation/v
 import {
   ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
 } from "./auiPrimitives";
-import { listProviders, listAllTypedModels, type Provider } from "@/contracts/model-catalog";
+import { listProviders, listAllTypedModels, type Provider, type TypedModel } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
 import { freshDownloadUrl } from "@/addons/conversation/api/media";
@@ -33,6 +33,7 @@ import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type File
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
+import { loadChatStrategy, initialChatModel, measurementHint, imageGuidance, type ChatStrategy } from "./chatStrategy";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -77,6 +78,7 @@ export function ChatApp(props: ChatProps) {
     ? externalStore(core?.state ?? EMPTY, controller, view, attachments, slot)
     : { ...externalStore(EMPTY, {
       async send(input, files) {
+        if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
         try {
           const created = await props.create({
@@ -209,13 +211,14 @@ function MediaPill({ kind, t }: { kind: "image" | "video"; t: Translate }) {
   );
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick">;
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { imageHint?: string; modelHint?: string };
 
 /**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 export function Composer({ t, settings, placeholder }: { t: Translate; settings: Settings; placeholder: string }) {
+  const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
   const actions = composerActions(running, empty);
@@ -223,6 +226,7 @@ export function Composer({ t, settings, placeholder }: { t: Translate; settings:
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <ComposerPrimitive.Root className="mc-composer">
         <ComposerAttachmentChips t={t} />
+        {hasImage && settings.imageHint && <p className="mc-hint" role="status">{settings.imageHint}</p>}
         <ComposerPrimitive.Queue>
           {() => (
             <div className="mc-queued" data-testid="mc-queued">
@@ -241,7 +245,7 @@ export function Composer({ t, settings, placeholder }: { t: Translate; settings:
             backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
           <span className="mc-spacer" />
           {actions.includes("send") && (
-            <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
+            <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
           )}
           {actions.includes("queue") && (
             <ComposerPrimitive.Send className="mc-round" data-testid="mc-send" aria-label={t("chatReact.queueSend")} title={t("chatReact.queueSend")}><SendMark /></ComposerPrimitive.Send>
@@ -252,6 +256,7 @@ export function Composer({ t, settings, placeholder }: { t: Translate; settings:
         </div>
       </ComposerPrimitive.Root>
       <p className="mc-hint">{t("chatReact.hint")}</p>
+      {settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
     </ComposerPrimitive.AttachmentDropzone>
   );
 }
@@ -286,7 +291,7 @@ export function FileChipView({ file, t }: { file: FileChip; t: Translate }) {
   const icon = <span className="mc-chip-icon"><FileMark kind={fileKind(file.name, file.mimeType)} /></span>;
   const size = file.size ? <span className="mc-chip-meta">{formatSize(file.size)}</span> : null;
   if (!file.verified) {
-    return <span className="mc-chip" data-verified="false" title={file.name}>{icon}<span className="mc-chip-name">{file.name}</span>{size}<span className="mc-chip-meta" role="status">{t("common.attachmentVerificationFailed")}</span></span>;
+    return <span className="mc-chip" data-verified="false" title={file.name}>{icon}<span className="mc-chip-name">{file.name}</span>{size}<span className="mc-chip-meta" role="status">{t("chatReact.attachmentPending")}</span></span>;
   }
   const download = () => {
     setBusy(true);
@@ -628,27 +633,47 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
 }
 
 /** Model + executor of this conversation (or of the next new one); PATCH on change like Conversation.vue. */
-function useSettings(conversationId: string | undefined, t: Translate) {
+export function useSettings(conversationId: string | undefined, t: Translate) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [backends, setBackends] = useState<ExecutionBackendOption[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [model, setModel] = useState<ModelChoice | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
+  const [strategy, setStrategy] = useState<ChatStrategy | null>(null);
+  const [models, setModels] = useState<TypedModel[]>([]);
+  const selectionRevision = useRef(0);
 
   useEffect(() => {
     let live = true;
+    const revision = selectionRevision.current;
     setBusy(true);
     void Promise.all([
       listProviders().catch(() => [] as Provider[]),
       listAllTypedModels().catch(() => null),
       listExecutionBackends().catch(() => [] as ExecutionBackendOption[]),
       conversationId ? getConversation(conversationId).catch(() => null) : Promise.resolve(null),
-    ]).then(([p, typed, b, conversation]) => {
+      loadChatStrategy(window.location.origin),
+    ]).then(([p, typed, b, conversation, policy]) => {
       if (!live) return;
-      setProviders(p); setBackends(b); setGroups(modelGroups(p, typed, b));
-      setModel(conversation ? conversationModelChoice(conversation) : null);
-      setBackend(conversation?.executionBackend?.trim() || b.find((x) => x.default)?.id || b[0]?.id || null);
+      const nextBackend = conversation?.executionBackend?.trim() || b.find((x) => x.default)?.id || b[0]?.id || null;
+      const chatModels = typed?.chat ?? [];
+      const nextGroups = modelGroups(p, typed, b);
+      setProviders(p); setBackends(b); setModels(chatModels); setStrategy(policy);
+      setGroups(policy ? nextGroups.map((group) => group.kind !== "chat" ? group : {
+        ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(policy, option.choice.model)}` })),
+      }) : nextGroups);
+      if (selectionRevision.current === revision) {
+        setModel(initialChatModel({
+          strategy: policy, conversationId, selected: conversation ? conversationModelChoice(conversation) : null,
+          explicit: false, backend: nextBackend, models: chatModels,
+          allowed: (candidate) => {
+            const option = b.find((entry) => entry.id === nextBackend);
+            return !!option && executionBackendCompatibility(option, candidate, p).allowed;
+          },
+        }));
+        setBackend(nextBackend);
+      }
       setBusy(false);
     });
     return () => { live = false; };
@@ -664,6 +689,7 @@ function useSettings(conversationId: string | undefined, t: Translate) {
     const nextBackend = choice?.kind === "executor" ? choice.backend : backend;
     if (choice && choice.kind !== "chat" && choice.kind !== "executor") return;
     if (!allowedFor(nextModel, nextBackend)) { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
+    selectionRevision.current += 1;
     if (!conversationId || !nextBackend) { setModel(nextModel); setBackend(nextBackend); return; }
     setBusy(true);
     try {
@@ -678,5 +704,6 @@ function useSettings(conversationId: string | undefined, t: Translate) {
     }
   }
 
-  return { groups, model, backend, busy, pick, allowed: allowedFor(model, backend) };
+  return { groups, model, backend, busy, pick, allowed: allowedFor(model, backend),
+    imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }
