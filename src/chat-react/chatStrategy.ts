@@ -18,12 +18,25 @@ const strategySchema = z.object({
 });
 export type ChatStrategy = z.infer<typeof strategySchema>;
 
+const cache = new Map<string, { value: ChatStrategy | null; request: Promise<ChatStrategy | null> }>();
+export const cachedChatStrategy = (origin: string) => cache.get(origin)?.value ?? null;
+
+export function preloadChatStrategy(origin: string): Promise<ChatStrategy | null> {
+  const existing = cache.get(origin);
+  if (existing) return existing.request;
+  const entry = { value: null as ChatStrategy | null, request: loadChatStrategy(origin) };
+  cache.set(origin, entry);
+  void entry.request.then((value) => { entry.value = value; });
+  return entry.request;
+}
+
 export function parseChatStrategy(value: unknown, origin: string): ChatStrategy | null {
   const parsed = strategySchema.safeParse(value);
   return parsed.success && parsed.data.origin === origin ? parsed.data : null;
 }
 
 export async function loadChatStrategy(origin: string, fetcher: typeof fetch = fetch): Promise<ChatStrategy | null> {
+  if (fetcher === fetch && cache.has(origin)) return cache.get(origin)!.request;
   try {
     const response = await fetcher(`${origin}/chat-strategy.json`, {
       credentials: "omit", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(2000),

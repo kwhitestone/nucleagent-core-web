@@ -83,6 +83,13 @@ mkdir -p /etc/nucleagent
 printf '%s}\n' "$json" > /etc/nucleagent/runtime-config.json
 chmod 0644 /etc/nucleagent/runtime-config.json
 
+if [ -n "${CHAT_STRATEGY_JSON-}" ]; then
+    printf '%s' "$CHAT_STRATEGY_JSON" > /etc/nucleagent/chat-strategy.json
+    chmod 0644 /etc/nucleagent/chat-strategy.json
+else
+    rm -f /etc/nucleagent/chat-strategy.json
+fi
+
 export CORE_UPSTREAM FRAME_ANCESTORS
 
 # Substitute only our own placeholders — nginx's own $uri, $proxy_host and

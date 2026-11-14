@@ -84,11 +84,62 @@ test("late strategy response cannot overwrite an explicit choice", async () => {
   }
   try {
     await React.act(async () => root.render(React.createElement(Harness)));
-    assert.equal(settings.busy, true);
+    assert.equal(settings.busy, false, "optional config must not delay sending after the catalog is ready");
     await React.act(async () => settings.pick({ kind: "chat", model: selected }));
     await React.act(async () => resolveConfig(Response.json(config)));
     assert.equal(settings.busy, false);
     assert.deepEqual(settings.model, selected);
+  } finally {
+    globalThis.fetch = async () => Response.json(config);
+    await React.act(async () => root.unmount());
+  }
+});
+
+test("late configuration preserves the server default without a user selection", async () => {
+  const root = createRoot(document.createElement("div"));
+  let resolveConfig!: (response: Response) => void;
+  globalThis.fetch = () => new Promise((resolve) => { resolveConfig = resolve; });
+  function Harness() {
+    settings = app.useSettings(undefined, (key) => key);
+    return null;
+  }
+  try {
+    const started = performance.now();
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(settings.busy, false);
+    assert.equal(settings.model, null);
+    console.log(`pending config: catalog-ready/send-ready ${performance.now() - started}ms`);
+    await React.act(async () => resolveConfig(Response.json(config)));
+    assert.equal(settings.model, null);
+  } finally {
+    globalThis.fetch = async () => Response.json(config);
+    await React.act(async () => root.unmount());
+  }
+});
+
+test("failed configuration does not delay settings and preloaded policy is reused", async () => {
+  const root = createRoot(document.createElement("div"));
+  function Harness() {
+    settings = app.useSettings(undefined, (key) => key);
+    return null;
+  }
+  try {
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(settings.busy, false);
+    assert.equal(settings.model, null);
+    await React.act(async () => root.render(null));
+    let requests = 0;
+    globalThis.fetch = async () => { requests += 1; return Response.json(config); };
+    const loader = await vite.ssrLoadModule("/src/chat-react/chatStrategy.ts");
+    await loader.preloadChatStrategy(origin);
+    await loader.preloadChatStrategy(origin);
+    const started = performance.now();
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(settings.busy, false);
+    assert.deepEqual(settings.model, candidate);
+    assert.equal(requests, 1);
+    console.log(`preloaded config: catalog-ready/send-ready ${performance.now() - started}ms; fetches=${requests}`);
   } finally {
     globalThis.fetch = async () => Response.json(config);
     await React.act(async () => root.unmount());

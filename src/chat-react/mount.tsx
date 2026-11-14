@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ChatApp, type ChatProps } from "./ChatApp";
 import type { IslandStrings } from "./islandStringsZh";
+import { preloadChatStrategy } from "./chatStrategy";
 
 export type MountProps = Omit<ChatProps, "strings">;
 
@@ -10,6 +11,7 @@ export const loadIslandStrings = (locale: ChatProps["locale"]): Promise<IslandSt
 
 /** Entry of the lazily loaded React chunk; ChatHost.vue owns the element and lifecycle. */
 export function mount(element: HTMLElement, props: MountProps) {
+  void preloadChatStrategy(window.location.origin);
   const root = createRoot(element);
   let latest = 0;
   let dead = false;

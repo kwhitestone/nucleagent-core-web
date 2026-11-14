@@ -41,7 +41,11 @@ export default defineConfig(({ mode }) => {
     },
     // Folds sub-500 B shared chunks back so the React island's split does not add per-chunk gzip
     // overhead to the default (Vue) /chat and /c/:id paths (MUYU-365 plan §9: ≤ 1 KiB delta).
-    build: { rollupOptions: { output: { experimentalMinChunkSize: 500 } } },
+    build: {
+      minify: "terser",
+      terserOptions: { ecma: 2020, compress: { passes: 2 } },
+      rollupOptions: { output: { experimentalMinChunkSize: 500 } },
+    },
     server: {
       host,
       port,

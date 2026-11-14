@@ -30,13 +30,22 @@ function report(dist) {
   const chat = closure([...entry, ...find("Home"), ...find("Conversation")]);
   const home = sum(closure([...entry, ...find("Home")]));
   const conv = sum(closure([...entry, ...find("Conversation")]));
-  const reactRoots = [...find("ChatHost"), ...find("mount")];
+  const reactRoots = [...find("ChatHost"), ...find("mount"), ...find("islandStringsZh"), ...find("islandStringsEn")];
   const react = reactRoots.length ? closure(reactRoots) : new Set();
+  for (const file of react) {
+    if (chat.has(file)) continue;
+    const source = readFileSync(join(assets, file), "utf8");
+    for (const match of source.matchAll(/import\(["']\.\/([^"']+\.js)["']\)/g)) {
+      for (const dependency of closure([match[1]])) react.add(dependency);
+    }
+  }
   const reactOnly = new Set([...react].filter((f) => !chat.has(f)));
-  return { all, entry: sum(entry), home, conv, chatDefault: sum(chat), reactOnly: sum(reactOnly), reactFiles: [...reactOnly] };
+  const reactCss = files.filter((file) => file.startsWith("mount-") && file.endsWith(".css"));
+  return { all, entry: sum(entry), home, conv, chatDefault: sum(chat), reactOnly: sum(reactOnly), reactFiles: [...reactOnly], reactCss: sum(reactCss) };
 }
 
-const [dist = "dist", base] = process.argv.slice(2);
+const [dist = "dist", base, strategy] = process.argv.slice(2);
+if (base && !existsSync(base)) throw new Error(`Missing baseline: ${base}`);
 const now = report(dist);
 console.log(`all JS              ${kb(now.all)}`);
 console.log(`default entry       ${kb(now.entry)}`);
@@ -44,9 +53,17 @@ console.log(`default /chat        ${kb(now.home)}`);
 console.log(`default /c/:id       ${kb(now.conv)}`);
 console.log(`default chat routes ${kb(now.chatDefault)}`);
 console.log(`React island extra  ${kb(now.reactOnly)}  (${now.reactFiles.join(", ")})`);
+console.log(`React CSS extra     ${kb(now.reactCss)}`);
+const strategyBytes = strategy ? gz(strategy) : 0;
+console.log(`strategy JSON       ${strategy ? kb(strategyBytes) : "not supplied; excluded"}`);
+console.log(`React JS+CSS+JSON   ${kb(now.reactOnly + now.reactCss + strategyBytes)} (both locales; shared default assets excluded)`);
+let passed = now.reactOnly <= 180 * 1024;
 if (base && existsSync(base)) {
   const was = report(base);
   console.log(`baseline /chat ${kb(was.home)} delta ${now.home - was.home} B; /c/:id ${kb(was.conv)} delta ${now.conv - was.conv} B; entry delta ${now.entry - was.entry} B`);
   console.log(`baseline default chat routes ${kb(was.chatDefault)}  delta ${now.chatDefault - was.chatDefault} B`);
   console.log(`baseline all JS              ${kb(was.all)}  delta ${kb(now.all - was.all)}`);
+  passed &&= ["home", "conv", "entry", "chatDefault"].every((key) => now[key] - was[key] <= 1024);
 }
+console.log(`JS budgets: ${passed ? "PASS" : "FAIL"} (React ≤180 KiB; ${base ? "each default delta ≤1 KiB" : "default baseline not supplied"})`);
+if (!passed) process.exitCode = 1;

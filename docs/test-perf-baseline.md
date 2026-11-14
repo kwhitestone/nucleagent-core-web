@@ -19,3 +19,22 @@ case takes 4.3 ms. It runs separately from the default unit glob.
 Run the unit command for commits and the separate integration command for this
 change before merge/release; Node parallelizes test files. Build with `npm run build`.
 This records the affected suites, not execution of every existing browser harness.
+
+2026-11-15 continuation, same WSL host and Node runner concurrency:
+
+| Revision | Suite / command | Tests | Pass / skip / fail | Total |
+|---|---|---:|---|---:|
+| Nonblocking strategy and production compression | `npm run test:unit` | 897 | 871 / 26 / 0 | 14.036 s |
+| Nonblocking strategy and startup JSON | `node --test tests/runtimeConfig.test.ts tests/integration/chatStrategySettings.test.ts` | 31 | 31 / 0 / 0 | 2.367 s |
+| Built configuration server | `NGINX_BINARY=<nginx> node --test tests/integration/chatStrategyServer.test.mjs` | 1 | 1 / 0 / 0 | 0.332 s |
+
+Unit count 896 → 897; inherited total 15.439 → 14.036 s. These single runs
+overlap builds and are not a speedup claim. The three slowest attributed unit
+durations are the existing drawer revocation fixture (6.104 s), React composer
+fixture (5.589 s), and source engine rows fixture (5.053 s); shared setup is charged
+to the first case. The new startup case is below one second.
+Settings integration grows from two to four cases; its shared Vite/JSDOM setup
+remains in the separate integration suite (1.648 s attributed to the first case).
+With configuration unresolved, the send-ready fixture completes in 1.460 ms;
+with preloaded configuration, 0.737 ms and one cached fetch. These are local
+component readiness measurements, not end-to-end model latency.

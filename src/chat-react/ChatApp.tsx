@@ -33,7 +33,7 @@ import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type File
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
-import { loadChatStrategy, initialChatModel, measurementHint, imageGuidance, type ChatStrategy } from "./chatStrategy";
+import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, type ChatStrategy } from "./chatStrategy";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -647,22 +647,24 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   useEffect(() => {
     let live = true;
     const revision = selectionRevision.current;
+    let policy = cachedChatStrategy(window.location.origin);
+    void loadChatStrategy(window.location.origin).then((loaded) => {
+      policy = loaded;
+      if (live) setStrategy(loaded);
+    });
     setBusy(true);
     void Promise.all([
       listProviders().catch(() => [] as Provider[]),
       listAllTypedModels().catch(() => null),
       listExecutionBackends().catch(() => [] as ExecutionBackendOption[]),
       conversationId ? getConversation(conversationId).catch(() => null) : Promise.resolve(null),
-      loadChatStrategy(window.location.origin),
-    ]).then(([p, typed, b, conversation, policy]) => {
+    ]).then(([p, typed, b, conversation]) => {
       if (!live) return;
       const nextBackend = conversation?.executionBackend?.trim() || b.find((x) => x.default)?.id || b[0]?.id || null;
       const chatModels = typed?.chat ?? [];
       const nextGroups = modelGroups(p, typed, b);
       setProviders(p); setBackends(b); setModels(chatModels); setStrategy(policy);
-      setGroups(policy ? nextGroups.map((group) => group.kind !== "chat" ? group : {
-        ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(policy, option.choice.model)}` })),
-      }) : nextGroups);
+      setGroups(nextGroups);
       if (selectionRevision.current === revision) {
         setModel(initialChatModel({
           strategy: policy, conversationId, selected: conversation ? conversationModelChoice(conversation) : null,
@@ -704,6 +706,9 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     }
   }
 
-  return { groups, model, backend, busy, pick, allowed: allowedFor(model, backend),
+  const labeledGroups = strategy ? groups.map((group) => group.kind !== "chat" ? group : {
+    ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, option.choice.model)}` })),
+  }) : groups;
+  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend),
     imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

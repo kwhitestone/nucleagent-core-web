@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,6 +25,7 @@ function render(overrides: Record<string, string>) {
         SHELL_ORIGIN: "https://shell.example.test", ...runtimeFixture(), ...overrides },
     });
     return { status: result.status, stderr: result.stderr,
+      strategy: existsSync(join(directory, "chat-strategy.json")) ? readFileSync(join(directory, "chat-strategy.json"), "utf8") : null,
       config: result.status === 0 ? readFileSync(output, "utf8") : "",
       runtime: result.status === 0 ? JSON.parse(readFileSync(join(directory, "runtime-config.json"), "utf8")) : null };
   } finally {
@@ -36,6 +37,17 @@ test("custom template is outside the base image automatic envsubst directory", (
   const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
   assert.match(dockerfile, /^COPY nginx\.conf\.template \/etc\/nginx\/runtime\.conf\.template$/m);
   assert.doesNotMatch(dockerfile, /^COPY .* \/etc\/nginx\/templates\//m);
+});
+
+test("startup exposes only the explicit public strategy input through its exact JSON location", () => {
+  assert.equal(render({}).strategy, null);
+  const strategy = JSON.stringify({ scope: "test-react-ordinary", origin: "https://test.example.com" });
+  const result = render({ CHAT_STRATEGY_JSON: strategy, SECRET: "private-fixture" });
+  assert.equal(result.strategy, strategy);
+  assert.doesNotMatch(result.strategy!, /private-fixture/);
+  assert.match(result.config, /location = \/chat-strategy\.json/);
+  assert.match(result.config, /alias \/etc\/nucleagent\/chat-strategy\.json/);
+  assert.equal("CHAT_STRATEGY_JSON" in result.runtime, false);
 });
 
 test("startup injects only public runtime keys, never process credentials", () => {
