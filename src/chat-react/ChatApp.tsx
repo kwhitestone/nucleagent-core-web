@@ -34,6 +34,7 @@ import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, type ChatStrategy } from "./chatStrategy";
+import { effortExperimentEnabled, withRequestEffort } from "./requestEffort";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -66,6 +67,7 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
+  const [lowEffort, setLowEffort] = useState(false);
 
   const controller: ChatController = {
     send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
@@ -81,12 +83,13 @@ export function ChatApp(props: ChatProps) {
         if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
         try {
-          const created = await props.create({
+          const created = await props.create(withRequestEffort({
             mode: "a2a_agent", input,
             model: settings.model?.model ?? "", providerId: settings.model?.providerId,
             executionBackend: settings.backend ?? undefined,
             ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
-          });
+          }, lowEffort));
+          setLowEffort(false); // this request only; the next one is back to the backend default
           props.navigate(`/c/${created.id}`);
         } catch (error) {
           toast.error(modelErrorMessage(error, t, t("home.createFailed")));
@@ -112,7 +115,7 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
-            <Composer t={t} settings={settings}
+            <Composer t={t} settings={settings} effort={!conversationId && effortExperimentEnabled() ? { low: lowEffort, toggle: () => setLowEffort((v) => !v) } : undefined}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
@@ -217,7 +220,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
-export function Composer({ t, settings, placeholder }: { t: Translate; settings: Settings; placeholder: string }) {
+export function Composer({ t, settings, placeholder, effort }: { t: Translate; settings: Settings; placeholder: string; effort?: { low: boolean; toggle(): void } }) {
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
@@ -243,6 +246,12 @@ export function Composer({ t, settings, placeholder }: { t: Translate; settings:
           <MediaPill kind="video" t={t} />
           <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
+          {effort && settings.backend === "codex" && (
+            // TEST experiment only (?chatEffort=low): label is deliberately not translated product copy.
+            <button type="button" className="mc-pill" data-testid="mc-effort-low" aria-pressed={effort.low} onClick={effort.toggle}>
+              {effort.low ? "✓ " : ""}TEST实验 effort=low（仅本次）
+            </button>
+          )}
           <span className="mc-spacer" />
           {actions.includes("send") && (
             <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
