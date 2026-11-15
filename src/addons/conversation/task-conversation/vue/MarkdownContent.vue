@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { renderMarkdown } from "../markdown";
+import { markdownToolImages, renderMarkdown } from "../markdown";
+import ToolImage from "./ToolImage.vue";
 import { openToolLink } from "@/addons/conversation/api/conversation";
 import { assertSafeDownloadUrl, isSealedToolLink } from "@/addons/conversation/api/downloadUrlPolicy";
 import { toast } from "@/composables/useToast";
@@ -10,6 +11,7 @@ const props = defineProps<{
 }>();
 
 const rendered = computed(() => renderMarkdown(props.content));
+const toolImages = computed(() => markdownToolImages(props.content));
 
 // MUYU-181: tool links carry sealed tickets, never credentials; the owner's real link
 // is fetched from Core at click time and opened without ever entering the page.
@@ -35,4 +37,5 @@ async function onClick(event: MouseEvent): Promise<void> {
 
 <template>
   <div class="atc-markdown" v-html="rendered" @click="onClick" />
+  <ToolImage v-for="image in toolImages" :key="image.src" :src="image.src" :alt="image.alt" />
 </template>

@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import MarkdownIt from "markdown-it";
+import { collectToolImages, type ToolImage } from "./vue/toolImages.ts";
 
 /** Shared by the Vue and React chat views: one sanitization policy for both. */
 const markdown = new MarkdownIt({
@@ -37,3 +38,6 @@ export const renderMarkdown = (content: string): string =>
     ],
     FORBID_ATTR: ["style"],
   });
+
+// MUYU-342: images never enter the sanitized HTML above; sealed tool images are listed for a dedicated view.
+export const markdownToolImages = (content: string): ToolImage[] => collectToolImages(markdown.parse(content, {}));
