@@ -26,6 +26,8 @@ import {
 } from "@/contracts/platform-runtime";
 import { configValue } from "@/runtimeConfig";
 import { listMyAgents, type MyAgent } from "../api/agent";
+import { listConversations } from "../api/conversation";
+import { createTitleSearch, parseSearchIntent } from "./historySearch";
 import { parseDeleteIntent } from "./conversationDelete";
 import { requestDelete } from "./useConversationDelete";
 
@@ -47,11 +49,14 @@ export function installShellBridge(router: Router): () => void {
   const store = useConversationStore();
   // "My agents" ride the sidebar projection; the shell never queries Core itself.
   const agents = ref<MyAgent[]>([]);
+  // Wide-screen sidebar title search: Core owns the request, the shell only renders the projection.
+  const search = createTitleSearch((q, beforeId) => listConversations({ q, beforeId, limit: 20 }));
   // Reset is synchronous: late requests from the previous identity must not
   // repopulate the shared history after logout or account/credential changes.
   const onSessionChange = () => {
     store.reset();
     agents.value = [];
+    search.query.value = "";
   };
   window.addEventListener(SESSION_CHANGE_EVENT, onSessionChange);
 
@@ -83,8 +88,8 @@ export function installShellBridge(router: Router): () => void {
     allowedHostOrigins: configValue("VITE_SHELL_ALLOWED_ORIGINS"),
     parent: window.parent,
     messages: {
-      toChild: ["auth", "view", "locale", "load-more", "delete"],
-      fromChild: ["auth-required", "conversations", "view-changed"],
+      toChild: ["auth", "view", "locale", "load-more", "delete", "search"],
+      fromChild: ["auth-required", "conversations", "view-changed", "search-results"],
     },
     onMessage(type, payload) {
       handleVerifiedMessage(type, payload);
@@ -140,6 +145,16 @@ export function installShellBridge(router: Router): () => void {
     if (type === "delete") {
       const intent = parseDeleteIntent(payload);
       if (intent) requestDelete(intent.conversationId);
+      return;
+    }
+
+    if (type === "search") {
+      const intent = parseSearchIntent(payload);
+      if (!intent || !getPlatformRuntime().getAccessToken()) return;
+      // Same query (shell reconnected): resend the current projection instead of refetching.
+      if (intent.action === "query") intent.q === search.query.value ? pushSearch() : (search.query.value = intent.q);
+      // A page/retry for an older query must not page the current one.
+      else if (intent.q === search.query.value) void (intent.action === "more" ? search.more() : search.retry());
       return;
     }
 
@@ -214,6 +229,24 @@ export function installShellBridge(router: Router): () => void {
     });
   }
 
+  function pushSearch(): void {
+    if (!getPlatformRuntime().getAccessToken()) return;
+    channel.send("search-results", {
+      source: "sub", type: "search-results",
+      sessionVersion: getPlatformRuntime().getSessionVersion(),
+      q: search.query.value,
+      conversations: search.results.value.map((c) => ({
+        id: c.id, title: c.title, status: c.status,
+        broadcastGroupId: broadcastGroupId(c), executionBackend: c.executionBackend,
+      })),
+      hasMore: search.hasMore.value, loading: search.loading.value, failed: search.failed.value,
+    });
+  }
+  const stopSearch = watch(
+    () => [search.query.value, search.results.value, search.hasMore.value, search.loading.value, search.failed.value],
+    pushSearch,
+  );
+
   // core → 壳：对话列表变化时推。
   const stopConversations = watch(
     () => [store.sorted, agents.value],
@@ -232,5 +265,6 @@ export function installShellBridge(router: Router): () => void {
     channel.dispose();
     stopConversations();
     stopRoute();
+    stopSearch();
   };
 }
