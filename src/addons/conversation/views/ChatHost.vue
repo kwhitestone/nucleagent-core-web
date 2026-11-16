@@ -23,6 +23,7 @@ const chatProps = (): MountProps => ({
   locale: locale.value === "en" ? "en-US" : "zh-CN",
   navigate: (path) => void router.push(path),
   create: (payload) => store.create(payload),
+  onFork: (conversation) => store.upsert(conversation),
 });
 
 onMounted(async () => {

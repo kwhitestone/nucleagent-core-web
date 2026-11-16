@@ -1,4 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
+import { persistedMessageID } from './messageActions.ts';
 import type { ReadonlyJSONValue } from "assistant-stream/utils";
 import { toFileChip } from "./attachments.ts";
 import type { ConversationItem, ConversationLocale } from "../addons/conversation/task-conversation/core/types.ts";
@@ -120,7 +121,8 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
     out.push({
       id: group[0].id, role: "assistant", content, status: statusOf(group),
       createdAt: new Date(group[0].timestamp),
-      metadata: { custom: { failed: group.some((i) => i.lane === "system" && i.status === "failed") } },
+      metadata: { custom: { failed: group.some((i) => i.lane === "system" && i.status === "failed"),
+        question: messageQuestion(user), feedbackMessageId: persistedMessageID([...group].reverse().find((item) => item.role === 'assistant' && item.lane === 'answer' && (item.kind === 'result' || item.kind === 'text'))?.id ?? '') } },
     });
     group = [];
   };
@@ -136,9 +138,14 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
         id: a.id, type: a.mimeType?.startsWith("image/") ? "image" : "file", name: a.name, contentType: a.mimeType,
         status: { type: "complete" as const }, content: [], chip: toFileChip(a),
       })) } : {}),
-      createdAt: new Date(item.timestamp), metadata: { custom: { pending: item.status === "pending" } },
+      createdAt: new Date(item.timestamp), metadata: { custom: { pending: item.status === "pending", question: messageQuestion(item) } },
     });
   }
   flush();
   return out;
+}
+
+function messageQuestion(item: ConversationItem | undefined) {
+  const id = persistedMessageID(item?.id ?? '');
+  return id && item && item.data?.clarifyResponse !== true ? { id, content: item.content, attachments: item.attachments?.map((attachment) => ({ fileId: attachment.id, name: attachment.name })) } : undefined;
 }

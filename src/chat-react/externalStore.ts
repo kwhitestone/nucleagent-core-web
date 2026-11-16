@@ -44,12 +44,6 @@ export function externalStore(
       }
     },
     onCancel: () => controller.stop(),
-    // 重新生成 = resend the question this reply answered (Core has no rerun endpoint; the adapter rejects it).
-    async onReload(parentId) {
-      const question = messages.find((m) => m.id === parentId && m.role === "user");
-      const text = Array.isArray(question?.content) ? question.content.map((p) => (p.type === "text" ? p.text : "")).join("") : "";
-      if (text) await controller.send(text, toConversationAttachments(question?.attachments));
-    },
     ...(controller.loadOlder ? { hasEarlier: state.hasOlder, onLoadEarlier: controller.loadOlder } : {}),
     ...(slot ? { queue: slot.adapter } : {}),
     ...(attachments ? { adapters: { attachments } } : {}),
