@@ -6,6 +6,7 @@ export const EN_STRINGS: IslandStrings = {
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model",
     profile: "Model preset", profileNote: "A chosen effort overrides the preset; temperature / top_p / max tokens are not adjustable yet", profileError: "Presets failed to load; reload to retry",
+    ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioError: "Could not load; expand again.",
     upstream: "Upstream",
     reasoning: "Thinking process",
     attachmentPending: "Attachment verification pending; download unavailable",

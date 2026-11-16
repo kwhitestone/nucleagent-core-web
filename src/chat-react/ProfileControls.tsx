@@ -4,7 +4,7 @@ import { CheckMark } from "./icons";
 import type { ProfileSelection } from "./modelProfile";
 import type { Translate } from "./ChatApp";
 
-interface Profile { id: string; displayName: string; enabled: boolean; reason?: string }
+interface Profile { id: string; displayName: string; enabled: boolean; reason?: string; efforts?: string[] }
 
 /** MUYU-408 profile choices, rendered only as slot content of the one Controls panel (ModelControls children). */
 export default function ProfileControls({ t, backend, providerId, model, scope, value, onChange }: {
@@ -33,7 +33,7 @@ export default function ProfileControls({ t, backend, providerId, model, scope, 
     {[{ id: "", displayName: t("chatReact.effortDefault"), enabled: true } as Profile, ...profiles].map((profile) =>
       <button key={profile.id} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
         aria-checked={selected === profile.id} disabled={!profile.enabled} title={profile.enabled ? undefined : profile.reason}
-        onClick={() => onChange({ scope, profileId: profile.id })}>
+        onClick={() => onChange({ scope, profileId: profile.id, efforts: profile.efforts })}>
         <span className="mc-menu-text">{profile.displayName}{profile.enabled || !profile.reason ? "" : `（${profile.reason}）`}</span>
         {selected === profile.id && <CheckMark size={14} />}
       </button>)}

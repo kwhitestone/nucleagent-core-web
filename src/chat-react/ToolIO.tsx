@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import type { Translate } from "./ChatApp";
 
-interface Page { available: boolean; content: string; nextOffset: number; revision: string; reason?: string }
+// `reason` from Core is Chinese prose; the view shows the dictionary's "not captured" instead.
+interface Page { available: boolean; content: string; nextOffset: number; revision: string }
 type Fields = Partial<Record<"input" | "output", Page>>;
 
-export default function ToolIO({ messageId }: { messageId: number }) {
+export default function ToolIO({ messageId, t }: { messageId: number; t: Translate }) {
+ const name = (field: string) => t(field === "input" ? "chatReact.ioInput" : "chatReact.ioOutput");
  const [open, setOpen] = useState(false);
  const [fields, setFields] = useState<Fields>({});
  const [busy, setBusy] = useState(false);
@@ -40,9 +43,9 @@ export default function ToolIO({ messageId }: { messageId: number }) {
   setOpen(!open);
  }
  return <div className="mc-tool-io">
-  <button type="button" aria-expanded={open} onClick={toggle}>完整工具输入输出 {open ? "⌃" : "⌄"}</button>
+  <button type="button" aria-expanded={open} onClick={toggle}>{t("chatReact.ioToggle")} {open ? "⌃" : "⌄"}</button>
   {open && <div>
-   {error && <p role="alert">无法读取，请重新展开。</p>}
+   {error && <p role="alert">{t("chatReact.ioError")}</p>}
    {(["input", "output"] as const).map(field => {
     const page = fields[field];
     if (!page) return null;
@@ -55,12 +58,12 @@ export default function ToolIO({ messageId }: { messageId: number }) {
       rendered = typeof value === "string" ? value : JSON.stringify(value, null, 2);
      } catch {}
     }
-    return <section key={field}><h4>{field === "input" ? "输入" : "输出"}</h4>
-     {!page.available ? <p>{page.reason}</p> : object ? <dl>{Object.entries(object).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl> : <pre>{rendered === "" ? "（空）" : rendered}</pre>}
-     {page.nextOffset >= 0 && <button type="button" disabled={busy} onClick={() => void load([field], true)}>加载更多{field === "input" ? "输入" : "输出"}</button>}
+    return <section key={field}><h4>{name(field)}</h4>
+     {!page.available ? <p>{t("chatReact.ioMissing")}</p> : object ? <dl>{Object.entries(object).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl> : <pre>{rendered === "" ? t("chatReact.ioEmpty") : rendered}</pre>}
+     {page.nextOffset >= 0 && <button type="button" disabled={busy} onClick={() => void load([field], true)}>{t("chatReact.ioMore")}{name(field)}</button>}
     </section>;
    })}
-   {busy && <p role="status">正在加载…</p>}
+   {busy && <p role="status">{t("common.loading")}</p>}
   </div>}
  </div>;
 }

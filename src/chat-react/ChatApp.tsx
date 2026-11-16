@@ -39,7 +39,7 @@ import { cap, defaultEffort, effortView, sentEffort, storedEffort, storeEffort, 
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
-import { profileRequest, type ProfileSelection } from "./modelProfile";
+import { profileEffortView, profileRequest, type ProfileSelection } from "./modelProfile";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -76,9 +76,14 @@ export function ChatApp(props: ChatProps) {
   const t = useMemo(() => withIslandStrings(props.t, props.strings), [props.t, props.strings]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
   const settings = useSettings(conversationId, t);
-  const effort = useEffort(settings);
   const [profile, setProfile] = useState<ProfileSelection | null>(null);
   const profileScope = `${conversationId ?? "new"}:${settings.backend}:${settings.model?.providerId}:${settings.model?.model}`;
+  // A profile picked for another conversation/backend/model must not come back when the user returns to it.
+  useEffect(() => setProfile(null), [profileScope]);
+  const measured = useEffort(settings);
+  // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
+  const offered = profileEffortView(measured.view, profile, profileScope);
+  const effort = { ...measured, view: offered, sent: sentEffort(measured.choice, offered) };
   // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
   const turn = profileRequest(profile, profileScope, effort.sent);
   const turnNow = useRef(turn);
@@ -473,7 +478,7 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
         </ul>
       )}
       {r?.content && <pre className="mc-step-detail">{r.content}</pre>}
-      {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} /></Suspense>}
+      {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} t={t} /></Suspense>}
     </Step>
   );
 }

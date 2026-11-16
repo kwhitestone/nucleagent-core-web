@@ -3,7 +3,8 @@ import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
-import { effortView } from "../src/chat-react/requestEffort.ts";
+import { effortView, sentEffort } from "../src/chat-react/requestEffort.ts";
+import { profileEffortView, profileRequest, type ProfileSelection } from "../src/chat-react/modelProfile.ts";
 
 // MUYU-408 on MUYU-406: profile choices are slot content of the one Controls panel, loaded on its first open.
 let vite: ViteDevServer;
@@ -15,6 +16,12 @@ let React: typeof import("react");
 let createRoot: typeof import("react-dom/client").createRoot;
 let sent: unknown;
 let fetched = 0;
+// Mirrors Core's /model-profiles rows; `efforts` is the per-profile whitelist for modelParams.reasoningEffort.
+let catalog = async (): Promise<unknown[]> => [
+  { id: "quick", displayName: "快速", enabled: true, efforts: ["low", "medium", "high"] },
+  { id: "thinking", displayName: "思考", enabled: true, efforts: ["low", "medium", "high"] },
+  { id: "long-context", displayName: "长上下文", enabled: false, reason: "unsupported", efforts: [] },
+];
 
 before(async () => {
   dom = new JSDOM("<div id='root'></div>");
@@ -25,11 +32,7 @@ before(async () => {
   await initializeRuntimeFixture(vite);
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({ http: {
-    get: async () => { fetched += 1; return { data: { data: [
-      { id: "quick", displayName: "快速", enabled: true },
-      { id: "thinking", displayName: "思考", enabled: true },
-      { id: "long-context", displayName: "长上下文", enabled: false, reason: "unsupported" },
-    ] } }; },
+    get: async () => { fetched += 1; return { data: { data: await catalog() } }; },
     post: async (_url: string, body: unknown) => { sent = body; return { data: { data: { id: 9 } } }; },
   } });
   api = await vite.ssrLoadModule("/src/addons/conversation/api/conversation.ts");
@@ -83,7 +86,7 @@ test("profiles are radio items of the single Controls menu and are fetched on it
     await React.act(async () => radios[6]!.click());
     await React.act(async () => radios[7]!.click());
     await React.act(async () => radios[4]!.click());
-    assert.deepEqual(selected, [{ scope, profileId: "thinking" }, { scope, profileId: "" }]);
+    assert.deepEqual(selected, [{ scope, profileId: "thinking", efforts: ["low", "medium", "high"] }, { scope, profileId: "", efforts: undefined }]);
     assert.equal(container.querySelector<HTMLElement>("[role=menu]")!.hidden, false, "choosing does not close the panel");
   } finally { await React.act(async () => root.unmount()); }
 });
@@ -95,4 +98,66 @@ test("one request carries the profile fields or the legacy effort, never both", 
   assert.deepEqual(sent, { input: "legacy", reasoningEffort: "high" });
   await api.followUp(9, "next");
   assert.deepEqual(sent, { input: "next" });
+});
+
+test("effort radios follow the selected profile whitelist across profile, model and async catalog changes", async () => {
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  const t = (key: string) => key;
+  const evidence = effortView("codex", { levels: ["low", "medium", "high"], effective: true, source: "fixture" });
+  const profiles = [
+    { id: "narrow", displayName: "narrow", enabled: true, efforts: ["low", "high"] },
+    { id: "full", displayName: "full", enabled: true, efforts: ["low", "medium", "high"] },
+    { id: "bare", displayName: "bare", enabled: true },
+    { id: "none", displayName: "none", enabled: true, efforts: [] },
+  ];
+  catalog = async () => profiles;
+  let turn: unknown;
+  // The same three lines ChatApp uses, with "medium" as the remembered choice for the model.
+  function Harness({ model }: { model: string }) {
+    const scope = `9:codex:7:${model}`;
+    const [profile, setProfile] = React.useState<ProfileSelection | null>(null);
+    const view = profileEffortView(evidence, profile, scope);
+    const sent = sentEffort("medium", view);
+    turn = profileRequest(profile, scope, sent);
+    return React.createElement(app.ModelControls, { t, value: sent, view, onChange: () => {}, defaultOpen: true },
+      React.createElement(app.ProfileSlot, { t, backend: "codex", providerId: 7, model, scope, value: profile, onChange: setProfile }));
+  }
+  const radios = () => [...container.querySelectorAll<HTMLButtonElement>("[role=menu] [role=menuitemradio]")];
+  // default/low/medium/high: "-" disabled, "*" checked.
+  const efforts = () => radios().slice(0, 4).map((radio) => `${radio.disabled ? "-" : "+"}${radio.getAttribute("aria-checked") === "true" ? "*" : ""}`);
+  const settle = async (count: number) => {
+    for (let i = 0; i < 20 && radios().length !== count; i++) await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    assert.equal(radios().length, count);
+  };
+  const choose = (name: string) => React.act(async () => radios().find((radio) => radio.textContent === name)!.click());
+  const OPEN = ["+", "+", "+*", "+"];
+  try {
+    await React.act(async () => root.render(React.createElement(Harness, { model: "gpt-6-astra" })));
+    await settle(9);
+    assert.deepEqual([efforts(), turn], [OPEN, "medium"], "no profile: evidence view only");
+    await choose("narrow");
+    assert.deepEqual([efforts(), turn], [["+*", "+", "-", "+"], { profileId: "narrow" }], "medium is outside this profile's whitelist");
+    await choose("full");
+    assert.deepEqual([efforts(), turn], [OPEN, { profileId: "full", modelParams: { reasoningEffort: "medium" } }]);
+    for (const unknown of ["bare", "none"]) {
+      await choose(unknown);
+      assert.deepEqual([efforts(), turn], [["+*", "-", "-", "-"], { profileId: unknown }], "unknown or empty whitelist: nothing is offered or sent");
+    }
+    // Model switch: the old selection is ignored at once, and nothing of the new catalog shows until it arrives.
+    let release!: () => void;
+    catalog = () => new Promise((resolve) => { release = () => resolve(profiles.slice(0, 1)); });
+    await React.act(async () => root.render(React.createElement(Harness, { model: "other" })));
+    await settle(5);
+    assert.deepEqual([efforts(), turn], [OPEN, "medium"]);
+    await React.act(async () => release());
+    await settle(6);
+    assert.deepEqual([efforts(), turn], [OPEN, "medium"], "a catalog that arrives late selects nothing by itself");
+    await choose("narrow");
+    assert.deepEqual([efforts(), turn], [["+*", "+", "-", "+"], { profileId: "narrow" }]);
+    catalog = async () => profiles;
+    await React.act(async () => root.render(React.createElement(Harness, { model: "gpt-6-astra" })));
+    await settle(9);
+    assert.deepEqual([efforts(), turn], [OPEN, "medium"], "a selection made for another model is not carried back");
+  } finally { await React.act(async () => root.unmount()); }
 });
