@@ -71,6 +71,9 @@ test("profiles are radio items of the single Controls menu and are fetched on it
       ["长上下文（unsupported）", "false", true, "mc-menu-item", -1],
     ]);
     assert.match(container.textContent!, /chatReact\.profileNote/);
+    const group = radios[4]!.closest("[role=group]")!;
+    assert.equal(document.getElementById(group.getAttribute("aria-labelledby")!)!.textContent, "chatReact.profile");
+    assert.equal(group.querySelectorAll("[role=menuitemradio]").length, 4, "profiles form their own radio group");
     // The panel's own keyboard handling reaches the slot items and skips the disabled one.
     radios[3]!.focus();
     await React.act(async () => radios[3]!.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import { CheckMark } from "./icons";
 import type { ProfileSelection } from "./modelProfile";
@@ -24,8 +24,10 @@ export default function ProfileControls({ t, backend, providerId, model, scope, 
   }, [scope, backend, providerId, model]);
   const profiles = catalog?.scope === scope && !error ? catalog.profiles : [];
   const selected = value?.scope === scope ? value.profileId : "";
-  return <>
-    <div className="mc-menu-label">{t("chatReact.profile")}</div>
+  const id = useId();
+  // Its own radio group, so assistive tech does not count these with the effort radios of the same menu.
+  return <div role="group" aria-labelledby={id}>
+    <div className="mc-menu-label" id={id}>{t("chatReact.profile")}</div>
     {/* shortcut: a failed load is retried only on a model/conversation change or reload; add a retry item if this shows up in TEST. */}
     {error && <p className="mc-menu-label" role="alert">{t("chatReact.profileError")}</p>}
     {[{ id: "", displayName: t("chatReact.effortDefault"), enabled: true } as Profile, ...profiles].map((profile) =>
@@ -36,5 +38,5 @@ export default function ProfileControls({ t, backend, providerId, model, scope, 
         {selected === profile.id && <CheckMark size={14} />}
       </button>)}
     <p className="mc-menu-label">{t("chatReact.profileNote")}</p>
-  </>;
+  </div>;
 }
