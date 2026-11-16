@@ -54,3 +54,12 @@ export function createTitleSearch(fetchPage: (q: string, beforeId?: number) => P
     retry: () => load(lastId()),
   };
 }
+
+/** Shell sidebar → { source:'shell', type:'search', action, q }. Core caps q at 80 chars. */
+export function parseSearchIntent(payload: unknown): { action: "query" | "more" | "retry"; q: string } | null {
+  if (!payload || typeof payload !== "object") return null;
+  const { source, type, action, q } = payload as Record<string, unknown>;
+  if (source !== "shell" || type !== "search" || (action !== "query" && action !== "more" && action !== "retry")) return null;
+  if (typeof q !== "string" || q.length > 80) return null;
+  return { action, q };
+}

@@ -105,3 +105,12 @@ test("task desk keeps its order and shows a separate search view", () => {
   assert.match(home, /data-testid="desk-search"/);
   assert.match(home, /v-for="c in \(search\.active\.value \? search\.results\.value : recent\)"/);
 });
+
+test("shell search intents are validated before they reach Core", async () => {
+  const { parseSearchIntent } = await import("../src/addons/conversation/composables/historySearch.ts");
+  assert.deepEqual(parseSearchIntent({ source: "shell", type: "search", action: "query", q: "季度" }), { action: "query", q: "季度" });
+  assert.deepEqual(parseSearchIntent({ source: "shell", type: "search", action: "more", q: "" }), { action: "more", q: "" });
+  for (const bad of [null, "x", { source: "sub", type: "search", action: "query", q: "a" },
+    { source: "shell", type: "search", action: "drop", q: "a" }, { source: "shell", type: "search", action: "query", q: 1 },
+    { source: "shell", type: "search", action: "query", q: "x".repeat(81) }]) assert.equal(parseSearchIntent(bad), null);
+});
