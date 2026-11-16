@@ -152,6 +152,7 @@ export default {
     emptyHistory: "还没有对话，从一次输入开始吧",
   },
   conversation: {
+    rename: { label: "重命名", failed: "重命名失败" },
     delete: {
       action: "删除",
       menu: "删除对话",
