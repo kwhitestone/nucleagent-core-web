@@ -89,6 +89,43 @@ test("queue snapshot and SSE position changes keep one independently timed proce
   assert.equal(updates[1].item.status, "complete");
 });
 
+test("queue lifecycle never regresses after authoritative completion, failure, cancellation or reconnect", async () => {
+  for (const phaseStatus of ["completed", "failed", "cancelled"]) {
+    for (const reconnect of [false, true]) {
+      const conversationId = 735 + ["completed", "failed", "cancelled"].indexOf(phaseStatus) * 2 + Number(reconnect);
+      const queued = message({ id: conversationId * 10, conversationId, senderType: "system", senderName: "agent.lifecycle.execution_queue", msgType: "status", metadata: {
+        step_id: "first", execution_phase: "execution_queue", phase_status: "running", duration_ms: 0,
+      } });
+      const settled = { ...queued, metadata: { ...queued.metadata, phase_status: phaseStatus, duration_ms: 80 } };
+      const ready = message({ id: queued.id + 1, conversationId, senderType: "system", senderName: "agent.lifecycle.agent_init", msgType: "status", metadata: {
+        step_id: "first", execution_phase: "agent_initialization", phase_status: "completed", duration_ms: 142,
+      } });
+      const thinking = message({ id: queued.id + 2, conversationId, senderName: "agent.thinking", msgType: "streaming", content: "", metadata: { step_id: "first", thinkingStatus: true } });
+      const generating = message({ id: queued.id + 3, conversationId, msgType: "streaming", content: "visible body", metadata: { step_id: "first" } });
+      const secondQueue = { ...queued, id: queued.id + 4, metadata: { ...queued.metadata, step_id: "second" } };
+      http.defaults.adapter = async (config: any) => ({ config, data: messageEnvelope(config, [reconnect ? settled : queued]), headers: {}, status: 200, statusText: "OK" });
+      const finished = { ...generating, msgType: phaseStatus === "failed" ? "error" : "result" };
+      const rows = [
+        ...(reconnect ? [queued] : []), settled, ready, thinking, generating, secondQueue,
+        queued, settled, queued, finished, queued,
+      ];
+      globalThis.fetch = (async () => new Response(rows.map(row =>
+        `id: ${row.id}\nevent: message-updated\ndata: ${JSON.stringify(row)}\n\n`).join(""),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      )) as typeof fetch;
+      const adapter = createConversationAdapter(() => String(conversationId));
+      const snapshot = await adapter.loadSnapshot({ conversationKey: String(conversationId), signal: new AbortController().signal });
+      const updates = [];
+      for await (const event of adapter.subscribe({ conversationKey: String(conversationId), cursor: snapshot.cursor, signal: new AbortController().signal })) updates.push(event);
+      const phases = updates.filter(event => event.item?.id === `msg-${queued.id}`);
+      assert.ok(phases.every(event => event.item.status === (phaseStatus === "completed" ? "complete" : phaseStatus)), `${phaseStatus}, reconnect=${reconnect}: late queue must not restart spinner`);
+      assert.ok(phases.every(event => event.item.data.phaseDurationMs === 80), "preserve measured backend duration");
+      assert.equal(updates.find(event => event.item?.id === `msg-${secondQueue.id}`)?.item.status, "streaming", "other step remains queued");
+      assert.equal(updates.find(event => event.item?.id === `msg-${generating.id}`)?.item.content, "visible body");
+    }
+  }
+});
+
 test("cancelled queue history freezes its own phase and never uses initialization labels", async () => {
   const queued = message({ id: 7311, conversationId: 731, senderType: "system", senderName: "execution_queue", msgType: "status", metadata: {
     step_id: "queue-cancel", execution_phase: "execution_queue", phase_status: "running", queue_position: 2,

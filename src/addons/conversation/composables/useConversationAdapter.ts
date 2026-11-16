@@ -421,6 +421,7 @@ export function createConversationAdapter(
   const navigation = conversationNavigation.forConversation(conversationKey);
 
   const versionTracker = createConversationStreamVersionTracker();
+  const settledPhaseSteps = new Map<number, unknown>();
   let cursorHighWater: string | undefined;
   let conversationStatusRevision = 0;
 
@@ -488,6 +489,7 @@ export function createConversationAdapter(
       answeredClarifyIds.clear();
       thinkingItemsByConversation.delete(key());
       executionPhaseItemsByConversation.delete(key());
+      settledPhaseSteps.clear();
       // 收集已回答的 clarify（快照里用户回答消息带 metadata.clarify_request_id）。
       for (const m of list) {
         const meta = m.metadata as Record<string, unknown> | undefined;
@@ -551,6 +553,7 @@ export function createConversationAdapter(
             : item;
         if (isExecutionPhase(m) && m.metadata?.phase_status === "running" &&
             settled.status === "streaming") executionPhaseItemsFor(key()).set(m.id, m);
+        if (isExecutionPhase(m) && settled.status !== "streaming") settledPhaseSteps.set(m.id, m.metadata?.step_id);
         return settled;
       });
       versionTracker.seed(items);
@@ -577,6 +580,7 @@ export function createConversationAdapter(
         cursorHighWater = advanceMessageCursor(cursorHighWater, ev.id);
         const msg = ev.message;
         if (ev.event === "message-deleted") {
+          settledPhaseSteps.delete(msg.id);
           // 删除帧的 data 只有 {id}（router.go writeSSEEvent 的 Deleted 分支），
           // 不能走 toItem —— msg 无 createdAt/content，timestamp undefined 会被
           // 事件 schema 拒绝，整条 remove 被丢（resequence 的旧行就永远留在
@@ -605,6 +609,13 @@ export function createConversationAdapter(
           continue;
         }
         if (!shouldEmit(msg)) continue;
+        if (isExecutionPhase(msg)) {
+          if (msg.metadata?.phase_status === "running" && settledPhaseSteps.has(msg.id) &&
+              settledPhaseSteps.get(msg.id) === msg.metadata?.step_id) continue;
+          if (["completed", "failed", "cancelled"].includes(String(msg.metadata?.phase_status))) {
+            settledPhaseSteps.set(msg.id, msg.metadata?.step_id);
+          }
+        }
         const id = `msg-${msg.id}`;
         if (ev.event === "message-attachments") {
           // Revalidation cannot settle a run or recreate a removed message.
@@ -715,6 +726,7 @@ export function createConversationAdapter(
               item: settledPhase,
             };
             executionPhaseItems.delete(m.id);
+            settledPhaseSteps.set(m.id, m.metadata?.step_id);
           }
           if (executionPhaseItems.size === 0) executionPhaseItemsByConversation.delete(key());
 
