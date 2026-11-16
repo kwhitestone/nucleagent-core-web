@@ -318,3 +318,18 @@ test("composer: effect note is visible text (not only a tooltip) once a level is
   assert.doesNotMatch(off, /mc-effort-note/);
   assert.match(off, /data-testid="mc-effort"/);
 });
+
+test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
+  const chat = { kind: "chat" as const, options: [
+    { value: "chat:1:a", label: "a", hint: "P", upstream: "AIHub", choice: { kind: "chat" as const, model: { providerId: 1, model: "a" } } },
+    { value: "chat:1:d", label: "d", hint: "P", choice: { kind: "chat" as const, model: { providerId: 1, model: "d" } } },
+  ] };
+  const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:a", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
+  assert.match(open, /<span class="mc-menu-text">a<span class="mc-menu-hint">P<\/span><\/span><span class="mc-menu-tag" data-testid="mc-upstream">AIHub<\/span>/);
+  assert.equal(open.match(/data-testid="mc-upstream"/g)?.length, 1, "no tag when the catalog has no upstream");
+  assert.match(open, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel · chatReact.upstream: AIHub"/);
+  assert.match(open, /mc-model-name">a<\/span><span class="mc-model-exec" data-testid="mc-model-upstream">· <!-- -->AIHub</);
+  const unknown = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:d", backend: null, disabled: false, onPick: () => {} }));
+  assert.match(unknown, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel"/);
+  assert.doesNotMatch(unknown, /mc-model-upstream/);
+});

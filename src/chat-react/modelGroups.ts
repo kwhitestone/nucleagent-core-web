@@ -6,13 +6,16 @@ export type GroupKind = "chat" | "image" | "video" | "executor";
 export type Choice =
   | { kind: "chat" | "image" | "video"; model: ModelChoice }
   | { kind: "executor"; backend: string };
-/** `label` is the model (or executor) name; `hint` the provider, shown as secondary text. */
-export interface Option { value: string; label: string; hint?: string; choice: Choice }
+/** `label` is the model (or executor) name; `hint` the provider; `upstream` the real gateway upstream, when the catalog says. */
+export interface Option { value: string; label: string; hint?: string; upstream?: string; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
 export const choiceValue = (c: Choice): string =>
   c.kind === "executor" ? `executor:${c.backend}` : `${c.kind}:${c.model.providerId}:${c.model.model}`;
+
+/** House names for Toolgate upstreams (TEST: 2 aihub-gateway, 3 everai-yunyi); others show their own name. */
+const UPSTREAM_NAMES: Record<string, string> = { "aihub-gateway": "AIHub", "everai-yunyi": "云一/everai" };
 
 /**
  * Plan §4 unified dropdown: chat / image / video model groups from the Toolgate typed
@@ -20,13 +23,17 @@ export const choiceValue = (c: Choice): string =>
  * Empty groups are dropped.
  */
 export function modelGroups(providers: Provider[], typed: Record<string, TypedModel[]> | null, backends: ExecutionBackendOption[]): Group[] {
-  const models = (["chat", "image", "video"] as const).map((kind): Group => ({
-    kind,
-    options: pickerOptions(providers, typed?.[kind] ?? null, kind).flatMap((g) => g.models.map((model) => {
-      const choice: Choice = { kind, model: { providerId: g.id, model } };
-      return { value: choiceValue(choice), label: model, hint: g.name, choice };
-    })),
-  }));
+  const models = (["chat", "image", "video"] as const).map((kind): Group => {
+    const upstreams = new Map((typed?.[kind] ?? []).filter((m) => m.upstream).map((m) => [`${m.providerId}:${m.model}`, m.upstream!]));
+    return {
+      kind,
+      options: pickerOptions(providers, typed?.[kind] ?? null, kind).flatMap((g) => g.models.map((model) => {
+        const choice: Choice = { kind, model: { providerId: g.id, model } };
+        const upstream = upstreams.get(`${g.id}:${model}`);
+        return { value: choiceValue(choice), label: model, hint: g.name, ...(upstream ? { upstream: UPSTREAM_NAMES[upstream] ?? upstream } : {}), choice };
+      })),
+    };
+  });
   const executors: Group = {
     kind: "executor",
     options: backends.map((b) => {

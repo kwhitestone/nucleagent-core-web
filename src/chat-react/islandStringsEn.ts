@@ -4,6 +4,7 @@ import type { IslandStrings } from "./islandStringsZh";
 export const EN_STRINGS: IslandStrings = {
     effort: "Reasoning effort", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model",
+    upstream: "Upstream",
     reasoning: "Thinking process",
     attachmentPending: "Attachment verification pending; download unavailable",
     stop: "Stop", executor: "Executors", mediaLater: "Coming soon", pickerLabel: "Model and executor",

@@ -46,6 +46,8 @@ export interface TypedModel {
   model: string;
   type: string;
   capabilities: string[];
+  /** Toolgate upstream name (route rule); only sent by a Core that forwards it (MUYU-365 gap2). Absent = unknown. */
+  upstream?: string;
 }
 
 export interface ModelCatalog {

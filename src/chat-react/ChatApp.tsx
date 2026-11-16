@@ -618,7 +618,8 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
   const trigger = useRef<HTMLButtonElement>(null);
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
   const options = groups.flatMap((g) => g.options);
-  const model = options.find((o) => o.value === props.value)?.label ?? t("common.modelDefault");
+  const current = options.find((o) => o.value === props.value);
+  const model = current?.label ?? t("common.modelDefault");
   const executor = options.find((o) => o.value === backendValue)?.label;
   const label = (g: Group) => (g.kind === "executor" ? t("chatReact.executor") : t(`model.types.${g.kind}`));
   const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]:not([aria-disabled=true])") ?? [])];
@@ -640,24 +641,25 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
     const next = moveFocus(list.length, list.indexOf(document.activeElement as HTMLButtonElement), e.key);
     if (next !== null) { e.preventDefault(); list[next]!.focus(); }
   };
-  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string) => (
+  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string, upstream?: string) => (
     <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked} onClick={onSelect}>
-      <span className="mc-menu-text">{text}{hint && <span className="mc-menu-hint">{hint}</span>}</span>{checked && <CheckMark size={14} />}
+      <span className="mc-menu-text">{text}{hint && <span className="mc-menu-hint">{hint}</span>}</span>
+      {upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{upstream}</span>}{checked && <CheckMark size={14} />}
     </button>
   );
   const media = groups.filter((g) => g.kind === "image" || g.kind === "video");
   return (
     <div className="mc-model" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
-        title={t("chatReact.pickerLabel")} disabled={props.disabled} onClick={() => setOpen((v) => !v)}>
-        <span className="mc-model-name">{model}</span>{executor && <span className="mc-model-exec">· {executor}</span>}<ChevronMark size={12} />
+        title={current?.upstream ? `${t("chatReact.pickerLabel")} · ${t("chatReact.upstream")}: ${current.upstream}` : t("chatReact.pickerLabel")} disabled={props.disabled} onClick={() => setOpen((v) => !v)}>
+        <span className="mc-model-name">{model}</span>{current?.upstream && <span className="mc-model-exec" data-testid="mc-model-upstream">· {current.upstream}</span>}{executor && <span className="mc-model-exec">· {executor}</span>}<ChevronMark size={12} />
       </button>
       <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
         {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
         <div role="group" aria-label={t("model.types.chat")} data-kind="chat" className="mc-menu-group">
           <div className="mc-menu-label" aria-hidden="true">{t("model.types.chat")}</div>
           {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
-          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint))}
+          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint, o.upstream))}
         </div>
         {/* Image/video are not pickable in the MVP (no paid calls): one disabled row, not a list. */}
         {media.length > 0 && (
