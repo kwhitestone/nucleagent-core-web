@@ -222,6 +222,13 @@ test("code blocks: header (language + copy) and table wrapper added after saniti
   assert.match(css, /\.mc-md table \{[^}]*width: 100%;/s, "table fills the column");
 });
 
+test("single newlines in a reply render as <br> like OWUI (marked breaks: true); paragraphs and code blocks unchanged", async () => {
+  const { renderMarkdown } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/markdown.ts") as typeof import("../src/addons/conversation/task-conversation/markdown.ts");
+  assert.equal(renderMarkdown("第一行\n第二行"), "<p>第一行<br>\n第二行</p>\n");
+  assert.equal(renderMarkdown("a\n\nb"), "<p>a</p>\n<p>b</p>\n");
+  assert.equal(renderMarkdown("```\nx\ny\n```"), "<pre><code>x\ny\n</code></pre>\n");
+});
+
 test("file chips: kind by MIME then extension; verified → download button with size; unverified → status only", async () => {
   const { fileKind, toFileChip } = await vite.ssrLoadModule("/src/chat-react/attachments.ts") as typeof import("../src/chat-react/attachments.ts");
   assert.deepEqual(["a.PNG", "b.pdf", "c.docx", "d.csv", "e.ts", "f.zip", "g.mp4", "h.bin", "noext"].map((n) => fileKind(n)),
