@@ -6,8 +6,8 @@ export interface SettlementEvidence extends TurnScope {
   revision: number;
 }
 /**
- * Where a future Core projection plugs in: every settlement row of one conversation the signed-in user owns.
- * Nothing implements it yet (no such endpoint exists), so production passes none and every turn stays UNKNOWN.
+ * Every settlement row of one conversation the signed-in user owns. Production passes Core's projection
+ * (addons/conversation/api/settlement.ts); without a reader every turn stays UNKNOWN.
  * Pass a stable function; a new identity re-reads.
  */
 export type SettlementReader = (conversationId: string, signal: AbortSignal) => Promise<readonly SettlementEvidence[]>;
@@ -20,8 +20,11 @@ export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
 
 export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; upstreams: readonly string[] }
 
+/** What every turn shows without authoritative evidence: no amount, never 0. */
+export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—", upstreams: [] };
+
 export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidence[] = []): TurnUsageView {
-  const unknown: TurnUsageView = { state: "unknown", points: "—", upstreams: [] };
+  const unknown = UNKNOWN_USAGE;
   if (!scope.conversationId || !scope.turnId) return unknown;
   const matching = evidence.filter((entry) => entry.conversationId === scope.conversationId && entry.turnId === scope.turnId);
   if (matching.some((entry) => !Number.isSafeInteger(entry.revision) || entry.revision < 0)) return unknown;

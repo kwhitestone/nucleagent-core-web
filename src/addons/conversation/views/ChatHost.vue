@@ -7,6 +7,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
+import { readSettlement } from "@/addons/conversation/api/settlement";
 import type { MountProps } from "@/chat-react/mount";
 
 const props = defineProps<{ id?: string }>();
@@ -23,6 +24,7 @@ const chatProps = (): MountProps => ({
   locale: locale.value === "en" ? "en-US" : "zh-CN",
   navigate: (path) => void router.push(path),
   create: (payload) => store.create(payload),
+  settlementReader: readSettlement,
 });
 
 onMounted(async () => {

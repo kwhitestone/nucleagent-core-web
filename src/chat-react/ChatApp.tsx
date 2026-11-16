@@ -35,7 +35,7 @@ import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
-import { defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
+import { cap, defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
@@ -77,8 +77,6 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
-  // shortcut: re-reads only when the run status changes or the page reloads; a receipt that lands after the run ended
-  // needs a push event or poll, to be chosen with the real Core projection.
   const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status);
 
   const controller: ChatController = {
@@ -287,7 +285,6 @@ function useEffort(settings: { model: ModelChoice | null; backend: string | null
   return { choice, view, sent: sentEffort(choice, view), set: (level: EffortChoice) => { storeEffort(key, level); bump((n) => n + 1); } };
 }
 
-const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const effortNote = (t: Translate, view: ReturnType<typeof effortView>) => `${t("chatReact.effort")} · ${t(`chatReact.effort${cap(view.note)}`)}`;
 
 function ComposerAttachmentChips({ t }: { t: Translate }) {
@@ -664,7 +661,8 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
 const NO_EVIDENCE: readonly SettlementEvidence[] = [];
 
 /**
- * One conversation's settlement rows through the injected reader, read again whenever `refresh` changes.
+ * One conversation's settlement rows through the injected reader, read again whenever `refresh` changes and,
+ * while a turn is still pending, after a growing wait (a receipt can land after the run ended).
  * Without a reader nothing is requested. A newer read cancels the older one; a failed or malformed read
  * drops what was shown instead of keeping a stale total.
  */
@@ -673,9 +671,21 @@ export function useSettlement(conversationId: string | undefined, read: Settleme
   useEffect(() => {
     if (!conversationId || !read) { setEvidence(NO_EVIDENCE); return; }
     const abort = new AbortController();
-    const show = (rows: unknown) => { if (!abort.signal.aborted) setEvidence(settlementRows(rows)); };
-    read(conversationId, abort.signal).then(show, () => show(null));
-    return () => abort.abort();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = (wait: number) => {
+      // A rejection (an Error) is no rows, like any other malformed result.
+      const show = (rows: unknown) => {
+        if (abort.signal.aborted) return;
+        const next = settlementRows(rows);
+        setEvidence(next);
+        // shortcut: 6 re-reads over ~3 min (3 s doubling), then pending stays until the run status changes or a
+        // reload; a failed read is not retried. Replace with a Core push event when one exists.
+        if (wait < 1e5 && next.some((row) => row.state === "pending")) timer = setTimeout(load, wait, wait * 2);
+      };
+      read(conversationId, abort.signal).then(show, show);
+    };
+    load(3000);
+    return () => { abort.abort(); clearTimeout(timer); };
   }, [conversationId, read, refresh]);
   return evidence;
 }

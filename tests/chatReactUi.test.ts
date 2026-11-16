@@ -604,6 +604,73 @@ test("settlement reader: a late receipt replaces pending on re-read; superseded,
   }
 });
 
+test("settlement reader: a pending turn is re-read after a growing wait until its receipt lands, at most 6 times, never after leaving", async (context) => {
+  const { turnUsage } = await import("../src/chat-react/turnUsage.ts");
+  const document = window.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
+  Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const { createRoot } = await import("react-dom/client");
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const row = (state: string, revision: number) => ({ conversationId: "7", turnId: "step-a", state, points: state === "settled" ? "4" : null, upstreams: ["alpha"], revision });
+  let resolvers: ((rows: unknown) => void)[] = [];
+  const reader = () => new Promise<never>((resolve) => resolvers.push(resolve as (rows: unknown) => void));
+  const Probe = ({ id }: { id: string }) => React.createElement(app.TurnUsage, { t, usage: turnUsage({ conversationId: id, turnId: "step-a" }, app.useSettlement(id, reader)) });
+  const settle = (rows: unknown) => React.act(async () => resolvers.at(-1)!(rows));
+  const wait = (ms: number) => React.act(async () => context.mock.timers.tick(ms));
+  const shown = () => container.querySelector("[data-testid=mc-turn-usage]")!.getAttribute("data-settlement");
+  const root = createRoot(container);
+  try {
+    await React.act(async () => root.render(React.createElement(Probe, { id: "7" })));
+    await settle([row("pending", 1)]);
+    await wait(2999);
+    assert.equal(resolvers.length, 1);
+    await wait(1);
+    assert.equal(resolvers.length, 2, "first re-read after 3 s");
+    await settle([row("pending", 2)]);
+    await wait(5999);
+    assert.equal(resolvers.length, 2, "the wait doubles");
+    await wait(1);
+    await settle([row("settled", 3)]);
+    assert.equal(shown(), "settled");
+    await wait(1e7);
+    assert.equal(resolvers.length, 3, "a settled read stops the re-reads");
+
+    // Leaving the conversation drops the scheduled re-read with it.
+    await React.act(async () => root.render(React.createElement(Probe, { id: "8" })));
+    await settle([{ ...row("pending", 1), conversationId: "8" }]);
+    assert.equal(shown(), "pending");
+    await React.act(async () => root.render(React.createElement(Probe, { id: "7" })));
+    resolvers = [];
+    await wait(1e7);
+    assert.equal(resolvers.length, 0);
+
+    // A receipt that never lands is asked for 6 more times, then left pending.
+    await React.act(async () => root.render(React.createElement(Probe, { id: "9" })));
+    for (let read = 1; read <= 7; read++) {
+      assert.equal(resolvers.length, read);
+      await settle([{ ...row("pending", read), conversationId: "9" }]);
+      await wait(1e7);
+    }
+    assert.equal(resolvers.length, 7);
+    assert.equal(shown(), "pending");
+    // A failed re-read drops the stale state and is not retried.
+    await React.act(async () => root.render(React.createElement(Probe, { id: "7" })));
+    await settle([row("pending", 1)]);
+    await wait(3000);
+    await React.act(async () => resolvers.at(-1)!(Promise.reject(new Error("offline"))));
+    assert.equal(shown(), "unknown");
+    await wait(1e7);
+    assert.equal(resolvers.length, 9);
+  } finally {
+    await React.act(async () => root.unmount());
+    container.remove();
+    Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
 test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
   const chat = { kind: "chat" as const, options: [
     { value: "chat:1:a", label: "a", hint: "P", upstream: "AIHub", choice: { kind: "chat" as const, model: { providerId: 1, model: "a" } } },
