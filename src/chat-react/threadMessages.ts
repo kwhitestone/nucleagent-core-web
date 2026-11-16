@@ -65,6 +65,15 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
   return { type: "reasoning", id: item.id, text: [item.title, item.content].filter(Boolean).join("\n"), providerMetadata: { core: { status: item.status } }, ...timing };
 }
 
+/**
+ * The reply's turn identity: Core's step_id (message metadata → runStepId) of its main-run rows.
+ * Never a message id. No step, or main-run rows naming different steps, gives none (usage stays UNKNOWN).
+ */
+function turnIdOf(group: readonly ConversationItem[]): string | undefined {
+  const steps = new Set(group.flatMap((i) => i.data?.mainRun !== false && typeof i.data?.runStepId === "string" && i.data.runStepId ? [i.data.runStepId] : []));
+  return steps.size === 1 ? [...steps][0] : undefined;
+}
+
 export interface ThreadOptions { locale: ConversationLocale; nowMs: number }
 
 function partsOf(group: readonly ConversationItem[], timing: string, locale: ConversationLocale, ttft?: TtftReadout): Part[] {
@@ -117,10 +126,11 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
     const timing = user ? timings.get(user.id) : undefined;
     const ttft = ttftReadout(group.find((i) => i.data?.serverTiming)?.data?.serverTiming, timing, !!user?.attachments?.length);
     const content = partsOf(group, executionTimingLabel(timing, options.locale), options.locale, ttft);
+    const turnId = turnIdOf(group);
     out.push({
       id: group[0].id, role: "assistant", content, status: statusOf(group),
       createdAt: new Date(group[0].timestamp),
-      metadata: { custom: { failed: group.some((i) => i.lane === "system" && i.status === "failed") } },
+      metadata: { custom: { failed: group.some((i) => i.lane === "system" && i.status === "failed"), ...(turnId ? { turnId } : {}) } },
     });
     group = [];
   };

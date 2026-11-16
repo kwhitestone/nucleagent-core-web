@@ -466,6 +466,84 @@ test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on 
   assert.doesNotMatch(show(turnUsage(scope)), /usagePending/);
 });
 
+test("each reply binds its usage to its own step_id; message ids, other turns and other conversations stay UNKNOWN", () => {
+  const rows = (conversationId: string) => render(stateOf([
+    item("user1", { role: "user", content: "one" }), item("answer1", { data: { runStepId: "step-a", mainRun: true } }),
+    item("user2", { role: "user", content: "two" }), item("answer2", { data: { runStepId: "step-b", mainRun: true } }),
+    item("user3", { role: "user", content: "three" }), item("answer3"),
+  ]), () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t, conversationId, evidence: [
+      { conversationId: "7", turnId: "step-a", state: "settled", points: "0", upstreams: ["aihub-gateway"], revision: 1 },
+      { conversationId: "7", turnId: "answer2", state: "settled", points: "5", upstreams: ["everai-yunyi"], revision: 1 },
+      { conversationId: "7", turnId: "", state: "settled", points: "7", upstreams: ["everai-yunyi"], revision: 1 },
+    ] })));
+  const html = rows("7");
+  assert.equal((html.match(/data-settlement="settled"/g) ?? []).length, 1);
+  assert.equal((html.match(/data-settlement="unknown"/g) ?? []).length, 2);
+  assert.match(html, /answer1[^]*data-settlement="settled"[^>]*>chatReact.points<!-- -->: <!-- -->0[^]*answer2/);
+  assert.doesNotMatch(html, /everai-yunyi|: <!-- -->[57]/);
+  assert.equal((rows("8").match(/data-settlement="unknown"/g) ?? []).length, 3);
+});
+
+test("settlement reader: a late receipt replaces pending on re-read; superseded, failed or malformed reads never show; refresh restores", async () => {
+  const { turnUsage } = await import("../src/chat-react/turnUsage.ts");
+  const document = window.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
+  Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const { createRoot } = await import("react-dom/client");
+  const scope = { conversationId: "7", turnId: "step-a" };
+  const row = (over: object = {}) => ({ ...scope, state: "settled", points: "0", upstreams: ["aihub-gateway"], revision: 2, ...over });
+  const reads: { id: string; signal: AbortSignal; resolve(rows: unknown): void; reject(error: Error): void }[] = [];
+  const reader = (id: string, signal: AbortSignal) => new Promise<never>((resolve, reject) => reads.push({ id, signal, resolve: resolve as (rows: unknown) => void, reject }));
+  function Probe({ tick, read }: { tick: number; read?: typeof reader }) {
+    return React.createElement(app.TurnUsage, { t, usage: turnUsage(scope, app.useSettlement("7", read, tick)) });
+  }
+  const draw = (root: import("react-dom/client").Root, tick: number, withReader = true) =>
+    React.act(async () => root.render(React.createElement(Probe, { tick, read: withReader ? reader : undefined })));
+  const settle = (index: number, rows: unknown) => React.act(async () => reads[index]!.resolve(rows));
+  const shown = () => container.querySelector("[data-testid=mc-turn-usage]")!;
+  let root = createRoot(container);
+  try {
+    await draw(root, 0, false);
+    assert.equal(reads.length, 0, "no reader, no read");
+    assert.equal(shown().getAttribute("data-settlement"), "unknown");
+    await draw(root, 0);
+    assert.deepEqual(reads.map((read) => read.id), ["7"]);
+    assert.equal(shown().getAttribute("data-settlement"), "unknown");
+    await settle(0, [row({ state: "pending", revision: 1 })]);
+    assert.equal(shown().getAttribute("data-settlement"), "pending");
+    await draw(root, 1);
+    await draw(root, 2);
+    assert.equal(reads[1]!.signal.aborted, true, "a newer read cancels the older one");
+    await settle(2, [row({ state: "pending", revision: 1 }), row()]);
+    assert.equal(shown().getAttribute("data-settlement"), "settled");
+    assert.match(shown().textContent!, /: 0 · chatReact.upstream: aihub-gateway/);
+    await settle(1, [row({ state: "pending", revision: 1 })]);
+    assert.equal(shown().getAttribute("data-settlement"), "settled", "the superseded read is ignored");
+    await draw(root, 3);
+    await React.act(async () => reads[3]!.reject(new Error("offline")));
+    assert.equal(shown().getAttribute("data-settlement"), "unknown", "a failed read drops the stale total");
+    for (const [tick, malformed] of [[4, null], [5, [null, row({ upstreams: undefined, revision: 3 }), row()]]] as const) {
+      await draw(root, tick);
+      await settle(tick, malformed);
+      assert.equal(shown().getAttribute("data-settlement"), "unknown");
+    }
+    await React.act(async () => root.unmount());
+    assert.equal(reads[5]!.signal.aborted, true);
+    root = createRoot(container);
+    await draw(root, 0);
+    await settle(6, JSON.parse(JSON.stringify([row()])));
+    assert.match(shown().textContent!, /: 0 · /);
+  } finally {
+    await React.act(async () => root.unmount());
+    container.remove();
+    Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
 test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
   const chat = { kind: "chat" as const, options: [
     { value: "chat:1:a", label: "a", hint: "P", upstream: "AIHub", choice: { kind: "chat" as const, model: { providerId: 1, model: "a" } } },

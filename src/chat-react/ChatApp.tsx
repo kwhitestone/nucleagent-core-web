@@ -38,6 +38,7 @@ import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint
 import { defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
+import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 
@@ -52,6 +53,8 @@ export interface ChatProps {
   create(payload: CreateConversationRequest): Promise<Conversation>;
   /** Island strings for `locale`, loaded by mount.tsx. */
   strings: IslandStrings;
+  /** Per-turn settlement source; none exists yet, so the host passes nothing and usage shows "—". */
+  settlementReader?: SettlementReader;
 }
 
 const EMPTY = createConversationState("new");
@@ -74,6 +77,9 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
+  // shortcut: re-reads only when the run status changes or the page reloads; a receipt that lands after the run ended
+  // needs a push event or poll, to be chosen with the real Core projection.
+  const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status);
 
   const controller: ChatController = {
     send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
@@ -117,7 +123,7 @@ export function ChatApp(props: ChatProps) {
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} conversationId={conversationId} evidence={evidence} />}</ThreadPrimitive.Messages>
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
             <Composer t={t} settings={settings} effort={effort}
@@ -561,8 +567,10 @@ function Parts({ t }: { t: Translate }) {
  * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
  * pointer), and always on the last reply.
  */
-export function MessageRow({ role, t }: { role: string; t: Translate }) {
+export function MessageRow({ role, t, conversationId = "", evidence }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[] }) {
   const createdAt = useAuiState((s) => s.message.createdAt);
+  // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
+  const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
   const failed = useAuiState((s) => (s.message.metadata.custom as { failed?: boolean }).failed === true);
   const isLast = useAuiState((s) => s.message.isLast);
   const isUser = role === "user";
@@ -587,7 +595,7 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
           <ActionBarPrimitive.Reload className="mc-icon-btn" aria-label={t("chatReact.reload")} title={t("chatReact.reload")}><ReloadMark /></ActionBarPrimitive.Reload>
         )}
       </ActionBarPrimitive.Root>
-      {!isUser && <TurnUsage t={t} />}
+      {!isUser && <TurnUsage t={t} usage={turnUsage({ conversationId, turnId }, evidence)} />}
     </MessagePrimitive.Root>
   );
 }
@@ -668,6 +676,25 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
 }
 
 /** Model + executor of this conversation (or of the next new one); PATCH on change like Conversation.vue. */
+const NO_EVIDENCE: readonly SettlementEvidence[] = [];
+
+/**
+ * One conversation's settlement rows through the injected reader, read again whenever `refresh` changes.
+ * Without a reader nothing is requested. A newer read cancels the older one; a failed or malformed read
+ * drops what was shown instead of keeping a stale total.
+ */
+export function useSettlement(conversationId: string | undefined, read: SettlementReader | undefined, refresh?: unknown) {
+  const [evidence, setEvidence] = useState(NO_EVIDENCE);
+  useEffect(() => {
+    if (!conversationId || !read) { setEvidence(NO_EVIDENCE); return; }
+    const abort = new AbortController();
+    const show = (rows: unknown) => { if (!abort.signal.aborted) setEvidence(settlementRows(rows)); };
+    read(conversationId, abort.signal).then(show, () => show(null));
+    return () => abort.abort();
+  }, [conversationId, read, refresh]);
+  return evidence;
+}
+
 export function useSettings(conversationId: string | undefined, t: Translate) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [backends, setBackends] = useState<ExecutionBackendOption[]>([]);
