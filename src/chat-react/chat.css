@@ -173,6 +173,7 @@
 .mc-process-alert { display: inline-flex; color: var(--fg-error); }
 .mc-process[data-status="failed"] .mc-process-summary { color: var(--fg-error); font-weight: 500; }
 .mc-process-timing { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); white-space: nowrap; }
+.mc-process-ttft { margin: 0 12px 4px 40px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); }
 .mc-process[open] > .mc-step:last-child { margin-bottom: 8px; }
 .mc-process[data-hide-done] > .mc-step[data-state="done"] { display: none; }
 .mc-step-more { display: flex; align-items: center; gap: 6px; margin: 2px 6px 2px 40px; padding: 2px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-success); font: inherit; font-size: 12px; cursor: pointer; }

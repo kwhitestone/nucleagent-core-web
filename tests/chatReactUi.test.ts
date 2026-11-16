@@ -248,3 +248,22 @@ test("island strings: zh/en chunks have the same keys, mount picks the current l
   assert.doesNotMatch(readFileSync("src/chat-react/ChatApp.tsx", "utf8"), /ZH_STRINGS|EN_STRINGS|stop: "停止"/, "strings are not inlined in the island");
   assert.match(readFileSync("src/addons/conversation/views/ChatHost.vue", "utf8"), /import\("@\/chat-react\/islandStringsEn"\) : import\("@\/chat-react\/islandStringsZh"\)/, "host prefetches the strings chunk with the island");
 });
+
+test("process head: 首字 X 秒 · 总耗时 Y 秒 from server_timing; detail row carries raw ms; 401 turn shows — and only the total", () => {
+  const at = (sec: number) => `2026-11-16T01:53:${String(sec).padStart(2, "0")}Z`;
+  const st = { version: 2, first_body_write_ms: 2495, first_body_write_outcome: "written", agent_ready_ms: 789, attachments_prepared_ms: 547, run_return_ms: 3670 };
+  const turn = (u: string, end: number, serverTiming: Record<string, unknown>) => [
+    item(u, { role: "user", content: "q", timestamp: at(0), turnId: u }),
+    item(`${u}q`, { lane: "process", title: "排队结束", userReadable: true, timestamp: at(0), turnId: u, data: { executionPhase: "execution_queue", phaseStatus: "completed", phaseDurationMs: 40 } }),
+    item(`${u}a`, { kind: "result", content: "答", timestamp: at(end), turnId: u, data: { runTerminal: true, serverTiming } }),
+  ];
+  const html = render(stateOf(turn("u1", 4, st)), () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.match(html, /class="mc-process-timing">chatReact.firstToken 2.5chatReact.sec · 总耗时 4.0 秒</);
+  assert.match(html, /<p class="mc-process-ttft" data-queue-ms="40" data-agent-ms="789" data-first-ms="2535" data-first-source="server">/);
+  const failed = render(stateOf(turn("u2", 19, { ...st, first_body_write_ms: -1, first_body_write_outcome: "missing" })), () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.match(failed, /class="mc-process-timing">总耗时 19.0 秒</, "no first token → total only, never 首字 0");
+  assert.match(failed, /<p class="mc-process-ttft" data-queue-ms="40" data-agent-ms="789">[^<]*chatReact.firstToken —</);
+  assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
+});

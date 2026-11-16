@@ -4,6 +4,7 @@ import { toFileChip } from "./attachments.ts";
 import type { ConversationItem, ConversationLocale } from "../addons/conversation/task-conversation/core/types.ts";
 import { selectTurns, type ConversationState } from "../addons/conversation/task-conversation/core/reducer.ts";
 import { executionTimingLabel, executionTimings } from "../addons/conversation/task-conversation/vue/executionTiming.ts";
+import { ttftReadout, type TtftReadout } from "./ttft.ts";
 import { orderTurnItemsForDisplay, processGroupStatus, processGroupSummary, processItemForDisplay, processStepEndedAt, processToolDetails, resolveProcessStepDurationMs } from "../addons/conversation/task-conversation/vue/processPresentation.ts";
 
 type Status = NonNullable<ThreadMessageLike["status"]>;
@@ -27,6 +28,7 @@ export interface ProcessPartData {
   summary: string;
   timing: string;
   status: ConversationItem["status"];
+  ttft?: TtftReadout;
 }
 
 /** A media generation message (image/video task) and whether it failed. */
@@ -65,13 +67,13 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
 
 export interface ThreadOptions { locale: ConversationLocale; nowMs: number }
 
-function partsOf(group: readonly ConversationItem[], timing: string, locale: ConversationLocale): Part[] {
+function partsOf(group: readonly ConversationItem[], timing: string, locale: ConversationLocale, ttft?: TtftReadout): Part[] {
   const parts: Part[] = [];
   let run: ConversationItem[] = [];
   // A step ends when the next one starts; the last one when the next non-process item arrives (Vue's rule).
   const flush = (groupEnd?: string) => {
     if (!run.length) return;
-    const data: ProcessPartData = { summary: processGroupSummary(run, locale), timing, status: processGroupStatus(run) };
+    const data: ProcessPartData = { summary: processGroupSummary(run, locale), timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}) };
     parts.push({ type: "data-process", id: run[0].id, data }, ...run.map((step, i) => stepPart(step, run[i + 1]?.timestamp ?? groupEnd)));
     run = [];
   };
@@ -104,10 +106,12 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
   const out: ThreadMessageLike[] = [];
   const timings = executionTimings(state.loadedOrder.map((id) => state.items[id]!).filter(Boolean), { nowMs: options.nowMs, status: state.status });
   let group: ConversationItem[] = [];
-  let userId: string | undefined;
+  let user: ConversationItem | undefined;
   const flush = () => {
     if (!group.length) return;
-    const content = partsOf(group, executionTimingLabel(userId ? timings.get(userId) : undefined, options.locale), options.locale);
+    const timing = user ? timings.get(user.id) : undefined;
+    const ttft = ttftReadout(group.find((i) => i.data?.serverTiming)?.data?.serverTiming, timing, !!user?.attachments?.length);
+    const content = partsOf(group, executionTimingLabel(timing, options.locale), options.locale, ttft);
     out.push({
       id: group[0].id, role: "assistant", content, status: statusOf(group),
       createdAt: new Date(group[0].timestamp),
@@ -118,7 +122,7 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
   for (const item of selectTurns(state).flatMap((t) => t.items)) {
     if (item.role !== "user") { group.push(item); continue; }
     flush();
-    if (item.data?.clarifyResponse !== true) userId = item.id;
+    if (item.data?.clarifyResponse !== true) user = item;
     out.push({
       id: item.id, role: "user", content: [{ type: "text", text: item.content }],
       // Storage references only (fileId/name/mime/size), never file bytes; chips render from these.

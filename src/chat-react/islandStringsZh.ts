@@ -7,5 +7,6 @@ export const ZH_STRINGS = {
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
     query: "查询", sources: "来源", doneSteps: "步成功", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
+    firstToken: "首字", queue: "排队", upload: "上传附件", agentReady: "Agent 就绪", upstreamFirst: "上游首字", sec: " 秒", approx: "约 ", serverMeasured: "服务端计",
 };
 export type IslandStrings = Record<keyof typeof ZH_STRINGS, string>;

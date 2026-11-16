@@ -6,6 +6,7 @@ import { useActionBarCopy } from "@assistant-ui/core/react";
 import { useMessagePartText, useSmooth } from "@assistant-ui/react";
 import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
 import { formatProcessDuration } from "@/addons/conversation/task-conversation/vue/processPresentation";
+import { formatReadout } from "./ttft";
 import {
   ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
 } from "./auiPrimitives";
@@ -477,6 +478,7 @@ function ProcessFold({ indices, running, t, children }: { indices: readonly numb
   const [showDone, setShowDone] = useState(false);
   useEffect(() => { if (view.open) setOpen(true); }, [view.open]);
   const failed = head?.status === "failed";
+  const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
     <details className="mc-process" data-status={head?.status} data-hide-done={(view.hideDone && !showDone) || undefined} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
@@ -485,8 +487,9 @@ function ProcessFold({ indices, running, t, children }: { indices: readonly numb
         {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
         <span className="mc-process-label">{t("chatReact.process")}</span>
         <span className="mc-process-summary">{head?.summary}</span>
-        {head?.timing && <span className="mc-process-timing">{head.timing}</span>}
+        {(ttft?.head || head?.timing) && <span className="mc-process-timing">{[ttft?.head, head?.timing].filter(Boolean).join(" · ")}</span>}
       </summary>
+      {ttft && <p className="mc-process-ttft" {...Object.fromEntries(Object.entries(head!.ttft!).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v]))}>{ttft.detail}</p>}
       {view.hideDone && !showDone && (
         <button type="button" className="mc-step-more" onClick={() => setShowDone(true)}><CheckMark size={13} />{`${view.done} ${t("chatReact.doneSteps")}`}</button>
       )}
