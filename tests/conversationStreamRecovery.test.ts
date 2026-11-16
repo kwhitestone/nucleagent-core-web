@@ -126,6 +126,39 @@ test("queue lifecycle never regresses after authoritative completion, failure, c
   }
 });
 
+test("deleted thinking never returns from late frames, terminal settlement or reconnect", async () => {
+  for (const reconnect of [false, true]) {
+    const conversationId = 13790 + Number(reconnect);
+    const thinking = message({ id: 12053, conversationId, senderName: "agent.thinking", msgType: "streaming", content: "", metadata: { step_id: "first", thinkingStatus: true } });
+    const body = message({ id: 12055, conversationId, msgType: "streaming", content: "visible body", metadata: { step_id: "first" } });
+    const nextThinking = { ...thinking, id: 12057, metadata: { ...thinking.metadata, step_id: "second" } };
+    let snapshotRows = [thinking];
+    http.defaults.adapter = async (config: any) => ({ config, data: messageEnvelope(config, snapshotRows), headers: {}, status: 200, statusText: "OK" });
+    const encode = (event: string, row: Record<string, unknown>) => `id: ${row.id}\nevent: ${event}\ndata: ${JSON.stringify(row)}\n\n`;
+    const adapter = createConversationAdapter(() => String(conversationId));
+    const snapshot = await adapter.loadSnapshot({ conversationKey: String(conversationId), signal: new AbortController().signal });
+    globalThis.fetch = (async () => new Response(encode("message-deleted", { id: thinking.id }), { headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+    const removed = [];
+    for await (const event of adapter.subscribe({ conversationKey: String(conversationId), cursor: snapshot.cursor, signal: new AbortController().signal })) removed.push(event);
+    assert.equal(removed[0].type, "item.remove");
+    snapshotRows = [body];
+    if (reconnect) await adapter.loadSnapshot({ conversationKey: String(conversationId), signal: new AbortController().signal });
+    globalThis.fetch = (async () => new Response([
+      encode("message-created", body),
+      encode("message-updated", thinking),
+      encode("message-created", thinking),
+      encode("message-attachments", thinking),
+      encode("message-updated", { ...body, msgType: "result" }),
+      encode("message-created", nextThinking),
+    ].join(""), { headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+    const events = [];
+    for await (const event of adapter.subscribe({ conversationKey: String(conversationId), cursor: String(body.id), signal: new AbortController().signal })) events.push(event);
+    assert.ok(events.every(event => event.item?.id !== `msg-${thinking.id}` && event.streamId !== `msg-${thinking.id}`), "deleted thinking must not resurrect");
+    assert.equal(events.find(event => event.item?.id === `msg-${body.id}`)?.item.content, "visible body");
+    assert.equal(events.find(event => event.item?.id === `msg-${nextThinking.id}`)?.item.status, "streaming", "next step remains independent");
+  }
+});
+
 test("cancelled queue history freezes its own phase and never uses initialization labels", async () => {
   const queued = message({ id: 7311, conversationId: 731, senderType: "system", senderName: "execution_queue", msgType: "status", metadata: {
     step_id: "queue-cancel", execution_phase: "execution_queue", phase_status: "running", queue_position: 2,

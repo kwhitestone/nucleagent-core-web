@@ -422,6 +422,7 @@ export function createConversationAdapter(
 
   const versionTracker = createConversationStreamVersionTracker();
   const settledPhaseSteps = new Map<number, unknown>();
+  const deletedMessageIds = new Set<number>();
   let cursorHighWater: string | undefined;
   let conversationStatusRevision = 0;
 
@@ -580,6 +581,9 @@ export function createConversationAdapter(
         cursorHighWater = advanceMessageCursor(cursorHighWater, ev.id);
         const msg = ev.message;
         if (ev.event === "message-deleted") {
+          deletedMessageIds.add(msg.id);
+          thinkingItemsByConversation.get(key())?.delete(msg.id);
+          executionPhaseItemsByConversation.get(key())?.delete(msg.id);
           settledPhaseSteps.delete(msg.id);
           // 删除帧的 data 只有 {id}（router.go writeSSEEvent 的 Deleted 分支），
           // 不能走 toItem —— msg 无 createdAt/content，timestamp undefined 会被
@@ -608,7 +612,7 @@ export function createConversationAdapter(
           };
           continue;
         }
-        if (!shouldEmit(msg)) continue;
+        if (deletedMessageIds.has(msg.id) || !shouldEmit(msg)) continue;
         if (isExecutionPhase(msg)) {
           if (msg.metadata?.phase_status === "running" && settledPhaseSteps.has(msg.id) &&
               settledPhaseSteps.get(msg.id) === msg.metadata?.step_id) continue;
