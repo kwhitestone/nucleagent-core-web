@@ -363,6 +363,17 @@ test("composer: effect note is visible text (not only a tooltip) once a level is
   assert.match(off, /aria-label="chatReact.modelControls"/);
 });
 
+test("composer: one Controls menu; another issue's content goes into its slot, never a second entry", () => {
+  const html = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
+    effort: { choice: "", set: () => {}, sent: "", view: { disabled: false, off: [], note: "effective" } },
+    controls: React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false }, "profile-slot") }));
+  assert.equal((html.match(/class="mc-model mc-controls"/g) ?? []).length, 1);
+  assert.equal((html.match(/aria-label="chatReact.modelControls"/g) ?? []).length, 2, "one trigger + its one panel");
+  assert.match(html, /role="menu" aria-label="chatReact.modelControls"[^]*profile-slot/);
+  // Counted inside the Controls container only; the model menu beside it has its own radios.
+  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 5);
+});
+
 test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and disabled evidence", async () => {
   const document = window.document;
   Object.defineProperty(globalThis, "document", { configurable: true, value: document });
@@ -372,9 +383,9 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(container);
   const selected: string[] = [];
-  const draw = (view: ReturnType<typeof effortView>) => React.createElement(app.ModelControls, {
+  const draw = (view: ReturnType<typeof effortView>, slot?: React.ReactNode) => React.createElement(app.ModelControls, {
     t, value: "low", view, onChange: (value: string) => selected.push(value),
-  });
+  }, slot);
   const key = async (target: Element, value: string) => {
     await React.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true })));
   };
@@ -412,6 +423,20 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
     for (const radio of radios) assert.equal(radio.disabled, true);
     await key(trigger, "Escape");
     assert.equal(menu.hidden, true);
+    // Slot contract: content that uses menuitemradio joins the panel's roving focus and close keys.
+    await React.act(async () => root.render(draw(effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" }),
+      React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false, tabIndex: -1, "data-testid": "slot" }, "slot"))));
+    await React.act(async () => trigger.click());
+    const slot = container.querySelector<HTMLButtonElement>("[data-testid=slot]")!;
+    assert.equal(menu.contains(slot), true);
+    await key(document.activeElement!, "End");
+    assert.equal(document.activeElement, slot);
+    await React.act(async () => slot.click());
+    assert.deepEqual(selected, ["high"]);
+    assert.equal(menu.hidden, false);
+    await key(slot, "Escape");
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, trigger);
   } finally {
     await React.act(async () => root.unmount());
     container.remove();
@@ -433,6 +458,12 @@ test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on 
   assert.equal(show(turnUsage(scope, JSON.parse(JSON.stringify([receipt])))), settled);
   assert.doesNotMatch(show(turnUsage({ ...scope, turnId: "two" }, [receipt])), /aihub-gateway/);
   assert.match(show(turnUsage(scope, [receipt, { ...receipt, revision: 3, state: "unknown" }])), /data-settlement="unknown"/);
+  const pending = show(turnUsage(scope, [{ ...receipt, revision: 1, state: "pending" }]));
+  assert.match(pending, /data-settlement="pending"[^>]*title="chatReact.usagePending"/);
+  assert.match(pending, /: <!-- -->—<!-- --> · <!-- -->chatReact.usagePending</);
+  assert.doesNotMatch(pending, /aihub-gateway|: <!-- -->0/);
+  assert.match(show(turnUsage(scope)), /title="chatReact.usageUnknown"/);
+  assert.doesNotMatch(show(turnUsage(scope)), /usagePending/);
 });
 
 test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
