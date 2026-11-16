@@ -5,6 +5,19 @@ export interface SettlementEvidence extends TurnScope {
   upstreams: readonly string[];
   revision: number;
 }
+/**
+ * Where a future Core projection plugs in: every settlement row of one conversation the signed-in user owns.
+ * Nothing implements it yet (no such endpoint exists), so production passes none and every turn stays UNKNOWN.
+ * Pass a stable function; a new identity re-reads.
+ */
+export type SettlementReader = (conversationId: string, signal: AbortSignal) => Promise<readonly SettlementEvidence[]>;
+
+/** Trust boundary for a reader's result: a malformed row could be the newest revision, so it voids the whole read. */
+export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
+  return Array.isArray(raw) && raw.every((row) => row && typeof row.conversationId === "string" && typeof row.turnId === "string"
+    && Array.isArray(row.upstreams) && typeof row.revision === "number") ? raw : [];
+}
+
 export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; upstreams: readonly string[] }
 
 export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidence[] = []): TurnUsageView {

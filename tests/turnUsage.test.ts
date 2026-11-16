@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { turnUsage, type SettlementEvidence } from "../src/chat-react/turnUsage.ts";
+import { settlementRows, turnUsage, type SettlementEvidence } from "../src/chat-react/turnUsage.ts";
 
 const scope = { conversationId: "7", turnId: "turn-a" };
 const settled = (over: Partial<SettlementEvidence> = {}): SettlementEvidence => ({
@@ -47,4 +47,14 @@ test("late settlement, refresh and newer UNKNOWN revisions replace stale totals 
   assert.deepEqual(turnUsage(scope, JSON.parse(JSON.stringify([pending, late]))), turnUsage(scope, [late]));
   assert.equal(turnUsage(scope, [late, settled({ revision: 3, state: "unknown" })]).points, "—");
   assert.equal(turnUsage(scope, [late, { ...late, points: "9" }]).points, "—");
+});
+
+test("a reader result with any malformed row is dropped whole, so a broken newest revision cannot be skipped", () => {
+  const rows = [settled(), settled({ revision: 2, points: "3" })];
+  assert.equal(settlementRows(rows), rows);
+  for (const raw of [undefined, null, {}, "[]", [null], [...rows, { ...settled({ revision: 3 }), upstreams: undefined }],
+    [{ ...settled(), turnId: 7 }], [{ ...settled(), conversationId: 7 }], [{ ...settled(), revision: "2" }]]) {
+    assert.deepEqual(settlementRows(raw), []);
+  }
+  assert.equal(turnUsage(scope, settlementRows([{ ...settled(), state: "done" }])).points, "—");
 });

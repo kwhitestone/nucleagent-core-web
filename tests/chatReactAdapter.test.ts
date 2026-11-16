@@ -583,3 +583,18 @@ test("sealedLink: sealed tool links open via Core in a fresh no-opener tab; othe
   assert.equal(tabs[1].closed, true);
   assert.match(doc.body.textContent ?? "", /链接无法打开/);
 });
+
+test("assistant turn identity is Core's step_id, never a message id; absent or ambiguous steps give none", () => {
+  const data = (id: number, step?: string, senderName = "agent") => messageTimingData({ id, conversationId: 7, senderType: "agent", senderName,
+    msgType: "result", content: "x", metadata: step ? { step_id: step } : {}, createdAt: "2026-11-13T00:00:00Z" });
+  const turnOf = (items: ConversationItem[]) => (toThreadMessages(stateOf(items)).at(-1)!.metadata!.custom as { turnId?: string }).turnId;
+  const user = item("9000", { role: "user", content: "q" });
+  assert.equal(turnOf([user, item("9001", { data: data(9001, "step-a") })]), "step-a");
+  assert.equal(turnOf([user, item("9001", { lane: "process", userReadable: true, title: "p", data: data(9001, "step-a") }), item("9002", { data: data(9002, "step-a") })]), "step-a");
+  // A sub-agent's child step is not the turn; two main steps in one reply are ambiguous.
+  assert.equal(turnOf([user, item("9001", { data: data(9001, "child", "researcher") }), item("9002", { data: data(9002, "step-a") })]), "step-a");
+  assert.equal(turnOf([user, item("9001", { data: data(9001, "step-a") }), item("9002", { data: data(9002, "step-b") })]), undefined);
+  assert.equal(turnOf([user, item("9001", { data: data(9001) })]), undefined);
+  assert.equal(turnOf([user, item("9001")]), undefined);
+  assert.equal(turnOf([item("9001", { data: data(9001, "step-a") }), user]), undefined, "user rows carry no turn identity");
+});
