@@ -5,6 +5,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { composerActions, moveFocus } from "../src/chat-react/composerState.ts";
+import { effortView, sentEffort } from "../src/chat-react/requestEffort.ts";
 import type { ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
 
 // MUYU-365 leg 6: composer state machine, model menu, process row, hover action bar (react-dom/server).
@@ -52,6 +53,18 @@ function render(state: ReturnType<typeof stateOf>, child: () => import("react").
   return renderToString(React.createElement(App));
 }
 const settings = { groups: [], model: null, backend: null, busy: false, pick: async () => {} };
+
+test("effort capability states disable the rendered selector and suppress a remembered unsupported level", () => {
+  for (const evidence of [undefined, { levels: [], effective: false, source: "catalog:unsupported" }]) {
+    const view = effortView("codex", evidence);
+    const html = renderToString(React.createElement(app.EffortSelect, {
+      t, value: sentEffort("high", view), view, onChange: () => {},
+    }));
+    assert.match(html, /<select[^>]*disabled=""/);
+    assert.match(html, /<option value="" selected="">/);
+    assert.match(html, new RegExp(`chatReact.effort${evidence ? "Ineffective" : "Unverified"}`));
+  }
+});
 
 test("actual thinking has an independent default-closed fold, streaming label and escaped text", (context) => {
   const started = performance.now();
