@@ -298,7 +298,7 @@ test("effort select: levels from the view, unsupported levels disabled and label
   const html = (value: string, view: object) => renderToString(React.createElement(app.EffortSelect, { t, value, view, onChange: () => {} }));
   const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
   assert.match(partial, /<select[^>]*data-testid="mc-effort"[^>]*aria-label="chatReact.effort"[^>]*title="chatReact.effort · chatReact.effortIneffective"/);
-  assert.match(partial, /<option value="">chatReact.effort · common.modelDefault<\/option>/);
+  assert.match(partial, /<option value="">chatReact.effort · chatReact.effortDefault<\/option>/);
   assert.match(partial, /<option value="low" selected="">chatReact.effort · chatReact.effortLow<\/option>/);
   assert.match(partial, /<option value="high" disabled="">chatReact.effort · chatReact.effortHigh（chatReact.effortOff）<\/option>/);
   assert.doesNotMatch(partial, /value="medium" disabled/);

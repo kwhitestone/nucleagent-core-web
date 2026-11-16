@@ -290,7 +290,7 @@ export function EffortSelect({ t, value, view, onChange }: { t: Translate; value
   return (
     <select className="mc-pill mc-effort" data-testid="mc-effort" aria-label={name} title={note} disabled={view.disabled}
       value={value} onChange={(e) => onChange(e.currentTarget.value as EffortChoice)}>
-      <option value="">{`${name} · ${t("common.modelDefault")}`}</option>
+      <option value="">{`${name} · ${t("chatReact.effortDefault")}`}</option>
       {EFFORT_LEVELS.map((level) => {
         const off = !view.disabled && view.off.includes(level);
         return <option key={level} value={level} disabled={off}>{`${name} · ${t(`chatReact.effort${cap(level)}`)}${off ? `（${t("chatReact.effortOff")}）` : ""}`}</option>;
