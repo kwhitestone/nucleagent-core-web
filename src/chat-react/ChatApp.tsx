@@ -25,7 +25,7 @@ import { externalStore, sendAppend, type ChatController } from "./externalStore"
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
-import { composerActions, moveFocus } from "./composerState";
+import { composerActions } from "./composerState";
 import {
   AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
 } from "./icons";
@@ -36,7 +36,7 @@ import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
 import { defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
-import { ModelControls } from "./ModelControls";
+import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 export { ModelControls, TurnUsage };
@@ -607,33 +607,18 @@ export function MessageRow({ role, t, conversationId = "", evidence }: { role: s
  */
 export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean }) {
   const { t, groups } = props;
-  const [open, setOpen] = useState(props.defaultOpen ?? false);
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+  const { open, setOpen, root, trigger, close: shut, rove } = useMenu(props.defaultOpen);
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
   const options = groups.flatMap((g) => g.options);
   const current = options.find((o) => o.value === props.value);
   const model = current?.label ?? t("common.modelDefault");
   const executor = options.find((o) => o.value === backendValue)?.label;
   const label = (g: Group) => (g.kind === "executor" ? t("chatReact.executor") : t(`model.types.${g.kind}`));
-  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]:not([aria-disabled=true])") ?? [])];
-
-  useEffect(() => {
-    if (!open) return;
-    (items().find((b) => b.getAttribute("aria-checked") === "true") ?? items()[0])?.focus();
-    const close = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [open]);
-
-  const shut = () => { setOpen(false); trigger.current?.focus(); };
   const choose = (choice: Choice | null) => { shut(); props.onPick(choice); };
   const onKeyDown = (e: KeyboardEvent) => {
     if (!open) return;
     if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); shut(); return; }
-    const list = items();
-    const next = moveFocus(list.length, list.indexOf(document.activeElement as HTMLButtonElement), e.key);
-    if (next !== null) { e.preventDefault(); list[next]!.focus(); }
+    if (rove(e.key)) e.preventDefault();
   };
   const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string, upstream?: string) => (
     <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked} onClick={onSelect}>
