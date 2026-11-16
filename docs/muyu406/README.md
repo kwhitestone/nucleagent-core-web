@@ -1,6 +1,6 @@
 # MUYU-406 交接：模型 Controls、逐轮用量、体积
 
-最后更新 2026-11-16。分支 `feat/gap-selector-muyu406`，从 gap2 `782607e` 起的线性链，尾提交 `972ae229cacfa4e3c3aa614534061061060940d8`。
+最后更新 2026-11-16。分支 `feat/gap-selector-muyu406`，从 gap2 `782607e` 起的线性链，最后一个代码提交 `972ae229cacfa4e3c3aa614534061061060940d8`（其后只有本文档的提交）。
 
 **状态：未发布。** 远端最新 tag `v0.1.5`（`946d158`）不含 gap2 也不含本分支任何提交；`main` = `c0a82a7`，`master` = `37deaf7`。TEST/PRE/PROD 验收全部 NOT_RUN。
 
