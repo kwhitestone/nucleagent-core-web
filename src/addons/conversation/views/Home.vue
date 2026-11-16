@@ -26,6 +26,8 @@ import { useBindingSelection } from "@/addons/conversation/composables/useBindin
 import { useNarrow } from "@/composables/useNarrow";
 import { broadcastRoute } from "@/addons/conversation/composables/broadcastViewPolicy";
 import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskDesk";
+import { createTitleSearch } from "@/addons/conversation/composables/historySearch";
+import { listConversations } from "@/addons/conversation/api/conversation";
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
 import SuggestionChip from "@/components/SuggestionChip.vue";
@@ -141,6 +143,8 @@ const runSheet = ref(false);
 const modelLabel = ref("");
 const backendLabel = ref("");
 const recent = computed(() => deskOrder(store.sorted).slice(0, 30));
+// Title search is its own Core-paged view (newest first); it never reorders the desk list.
+const search = createTitleSearch((q, beforeId) => listConversations({ q, beforeId, limit: 20 }));
 const now = ref(Date.now());
 function openTask(conversation: (typeof store.sorted)[number]): void {
   void router.push(broadcastRoute(conversation) ?? `/c/${conversation.id}`);
@@ -190,10 +194,21 @@ onMounted(() => {
       <div class="desk-scroll">
         <h1 class="desk-title">{{ t('home.deskTitle') }}</h1>
         <p class="desk-lede">{{ t('home.deskLede') }}</p>
-        <p class="desk-glabel">{{ t('home.recent') }}</p>
-        <div v-if="recent.length" class="desk-list">
+        <input
+          v-model="search.query.value"
+          type="search"
+          class="desk-search"
+          data-testid="desk-search"
+          maxlength="80"
+          dir="auto"
+          :placeholder="t('home.searchPlaceholder')"
+          :aria-label="t('home.searchPlaceholder')"
+          @keydown.esc="search.query.value = ''"
+        />
+        <p class="desk-glabel" aria-live="polite">{{ search.active.value ? (search.loading.value ? t('common.loading') : t('home.searchResults')) : t('home.recent') }}</p>
+        <div v-if="(search.active.value ? search.results.value : recent).length" class="desk-list" :aria-busy="search.loading.value">
           <button
-            v-for="c in recent"
+            v-for="c in (search.active.value ? search.results.value : recent)"
             :key="c.id"
             type="button"
             class="desk-row"
@@ -209,7 +224,11 @@ onMounted(() => {
             </span>
           </button>
         </div>
-        <p v-else-if="store.loaded" class="desk-empty">{{ t('common.empty') }}</p>
+        <p v-if="search.active.value && search.failed.value" class="desk-empty" role="alert">
+          {{ t('home.searchFailed') }} <button type="button" class="desk-more" @click="search.retry()">{{ t('common.retry') }}</button>
+        </p>
+        <button v-else-if="search.active.value && search.hasMore.value && !search.loading.value" type="button" class="desk-more" data-testid="desk-search-more" @click="search.more()">{{ t('home.loadMore') }}</button>
+        <p v-else-if="search.active.value ? !search.loading.value && !search.results.value.length : !recent.length && store.loaded" class="desk-empty">{{ search.active.value ? t('home.searchEmpty') : t('common.empty') }}</p>
       </div>
 
       <div class="desk-composer">
@@ -466,6 +485,12 @@ onMounted(() => {
 .desk-row[data-status="failed"] .desk-dot { background: var(--rose-500); }
 .desk-row:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; }
 .desk-empty { color: var(--text-tertiary); font-size: 14px; }
+.desk-search {
+  width: 100%; min-height: 40px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 16px; outline: none;
+}
+.desk-search:focus { border-color: var(--teal-400); }
+.desk-more { margin-top: 8px; padding: 6px 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
 .desk-composer {
   flex: none; display: grid; gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border); background: var(--bg-card);
