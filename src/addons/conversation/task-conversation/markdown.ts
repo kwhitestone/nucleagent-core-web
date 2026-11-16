@@ -4,7 +4,7 @@ import MarkdownIt from "markdown-it";
 /** Shared by the Vue and React chat views: one sanitization policy for both. */
 const markdown = new MarkdownIt({
   html: false,
-  breaks: false,
+  breaks: true, // OWUI parity: marked breaks:true (chat/Messages/Markdown.svelte:23 @c38885a)
   linkify: true,
   typographer: false,
 });
