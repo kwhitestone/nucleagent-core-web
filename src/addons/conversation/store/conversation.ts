@@ -4,6 +4,7 @@ import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import {
   listConversations,
   createConversation as createConversationApi,
+  renameConversation,
 } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest } from "@/addons/conversation/api/types";
 import { createBroadcast as createBroadcastApi } from "../api/broadcast";
@@ -156,6 +157,13 @@ export const useConversationStore = defineStore("conversation", () => {
     removed.forEach(row => conversationNavigation.forConversation(String(row.id)).forget());
   }
 
+  /** MUYU-410: persist a user title; the row only changes once Core accepted it (shell sidebar follows via the bridge watch). */
+  async function rename(id: number, title: string): Promise<Conversation> {
+    const saved = await renameConversation(id, title);
+    conversations.value = conversations.value.map((c) => (c.id === id ? { ...c, title: saved.title } : c));
+    return saved;
+  }
+
   /** UI-IMPL-5: drop a deleted conversation and its compare group (Core soft-deletes the group). */
   function remove(id: number): void {
     const group = conversations.value.find((c) => c.id === id)?.state?.broadcastGroupId;
@@ -191,6 +199,7 @@ export const useConversationStore = defineStore("conversation", () => {
     // actions
     load,
     loadMore,
+    rename,
     create,
     createBroadcast,
     setBroadcastNotices,

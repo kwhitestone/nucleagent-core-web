@@ -160,6 +160,12 @@ export async function listDeletedConversations(): Promise<Conversation[]> {
   return response.data?.data ?? [];
 }
 
+/** PATCH /conversation/:id {title} — user rename; Core trims and enforces 1-80 runes (MUYU-410). */
+export async function renameConversation(conversationId: number | string, title: string): Promise<Conversation> {
+  const response = await http().patch<Envelope<Conversation>>(`${BASE}/${conversationId}`, { title });
+  return response.data?.data as Conversation;
+}
+
 /**
  * PATCH /conversation/:id — 切换对话使用的模型/提供商。
  *

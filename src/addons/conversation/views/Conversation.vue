@@ -53,6 +53,8 @@ import VideoConfirm from "@/addons/conversation/components/media/VideoConfirm.vu
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 import { requestDelete } from "@/addons/conversation/composables/useConversationDelete";
+import ConversationTitle from "@/addons/conversation/components/ConversationTitle.vue";
+import { useConversationStore } from "@/addons/conversation/store/conversation";
 
 const props = defineProps<{ id: string }>();
 const narrow = useNarrow();
@@ -63,6 +65,23 @@ const menuOpen = ref(false);
 function onMore(): void {
   if (narrow.value) moreOpen.value = true;
   else menuOpen.value = !menuOpen.value;
+}
+const titleEditor = ref<InstanceType<typeof ConversationTitle> | null>(null);
+const conversationStore = useConversationStore();
+function askRename(): void {
+  moreOpen.value = false;
+  menuOpen.value = false;
+  void titleEditor.value?.start();
+}
+async function rename(next: string): Promise<void> {
+  const id = props.id;
+  try {
+    const saved = await conversationStore.rename(Number(id), next);
+    if (props.id === id) title.value = saved.title ?? next;
+  } catch (error) {
+    toast.error(t("conversation.rename.failed"));
+    throw error;
+  }
 }
 function askDelete(): void {
   moreOpen.value = false;
@@ -351,7 +370,7 @@ function onError(error: Error): void {
       <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
       <header class="conv-head" :class="{ 'conv-head--wide': !narrow }" data-testid="conv-head">
         <div class="conv-head-text">
-          <strong>{{ title || t('common.untitled') }}</strong>
+          <ConversationTitle ref="titleEditor" :title="title" :save="rename" />
           <span v-if="status" class="conv-status" :data-status="status">
             {{ status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${status}`) }}
           </span>
@@ -360,6 +379,7 @@ function onError(error: Error): void {
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
         </button>
         <div v-if="menuOpen && !narrow" class="conv-menu" role="menu" @keydown.esc="menuOpen = false">
+          <button type="button" role="menuitem" data-testid="conv-rename" @click="askRename">{{ t('conversation.rename.label') }}</button>
           <button type="button" role="menuitem" class="conv-menu-danger" data-testid="conv-delete" @click="askDelete">{{ t('conversation.delete.menu') }}</button>
         </div>
       </header>
@@ -370,6 +390,7 @@ function onError(error: Error): void {
             <b>{{ t('home.runTitle') }}</b>
             <button type="button" class="osheet-done" @click="moreOpen = false">{{ t('common.done') }}</button>
           </div>
+          <button type="button" class="conv-sheet-rename" data-testid="conv-rename-narrow" @click="askRename">{{ t('conversation.rename.label') }}</button>
           <button type="button" class="conv-menu-danger conv-sheet-delete" data-testid="conv-delete-narrow" @click="askDelete">{{ t('conversation.delete.menu') }}</button>
           <div class="picker-group">
             <ModelPicker

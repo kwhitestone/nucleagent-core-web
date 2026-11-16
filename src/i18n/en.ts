@@ -152,6 +152,7 @@ export default {
     emptyHistory: "No conversations yet - start with a prompt",
   },
   conversation: {
+    rename: { label: "Rename", failed: "Rename failed" },
     delete: {
       action: "Delete",
       menu: "Delete conversation",
