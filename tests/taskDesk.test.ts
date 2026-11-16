@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { deskOrder, relativeTime } from "../src/addons/conversation/composables/taskDesk.ts";
 import { clearDraft, readDraft, saveDraft, DRAFT_KEY } from "../src/addons/conversation/composables/taskDraft.ts";
 
@@ -50,4 +51,10 @@ test("Q5 draft: round-trips, clears, and rejects junk instead of half-filling th
   }
   storage.setItem(DRAFT_KEY, JSON.stringify({ name: "x", skillIds: [1, -2, "3", 4.5] }));
   assert.deepEqual(readDraft(storage), { name: "x", desc: "", execMode: "auto", outputFormat: "markdown", templateName: "", skillIds: [1] });
+});
+
+// OWUI layout/Sidebar/ChatItem.svelte:588 renders history titles with dir="auto" so RTL/mixed titles keep their own direction.
+test("task desk: recent-task titles use dir=auto like OWUI history items", () => {
+  const home = readFileSync(new URL("../src/addons/conversation/views/Home.vue", import.meta.url), "utf8");
+  assert.match(home, /<span class="desk-row-title" dir="auto">/);
 });
