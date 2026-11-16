@@ -201,7 +201,7 @@ onMounted(() => {
             data-testid="desk-row"
             @click="openTask(c)"
           >
-            <span class="desk-row-title">{{ c.title || t('common.untitled') }}</span>
+            <span class="desk-row-title" dir="auto">{{ c.title || t('common.untitled') }}</span>
             <span class="desk-row-meta">
               <i class="desk-dot" aria-hidden="true" />
               <span>{{ c.status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${c.status}`) }}</span>
