@@ -29,6 +29,8 @@ export interface ListConversationsParams {
   limit?: number;
   /** Only this agent instance's sessions (still scoped to the caller). */
   agentId?: number;
+  /** Title-only search (trimmed, case-insensitive substring); blank = no filter. */
+  q?: string;
 }
 
 /** 列表响应：data 为本页对话，hasMore 指示是否还有下一页。 */
@@ -51,6 +53,7 @@ export async function listConversations(
       beforeId: params?.beforeId,
       limit: params?.limit,
       agentId: params?.agentId,
+      q: params?.q,
     },
   });
   return {
