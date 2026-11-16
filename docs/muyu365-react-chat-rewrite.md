@@ -786,3 +786,28 @@ Vue 侧**未重新截图**：Vue 视图依赖 Pinia/路由/i18n/SFC，不能用�
 - 第 6 棒 §20.3 的差距都还在：空态没有“最近任务”、生图/生视频无功能、没有图片内嵌预览、工具卡是通用样式、没有语法高亮、重新生成是追加而非替换、真实壳内没截图、没有浏览器内 E2E。
 - 本棒新增：“N 步成功”点开后不能再收回；对比度没用工具实测；体积余量很小（岛 0.12 KB，`/c/:id` 47 B）。
 - 岛文案 chunk 加载失败时，岛内标签会显示 key（`chatReact.xxx`）而不是空白（代码里 `shortcut:` 注释写明了）；还没实现重试。
+
+## 22. Gap first batch (2026-11-16, base 76a08118)
+
+- Actual visible model thinking has a separate, default-closed “思考过程” fold.
+  Only `.thinking` messages with `thinkingVisibility=summary|full`, nonempty
+  content and no `thinkingStatus` marker qualify. Transport heartbeats and hidden
+  reasoning retain the existing process presentation. Streaming shows a thinking
+  status; text is escaped and long content scrolls. The backend visibility policy
+  is unchanged. No reasoning is synthesized when the model supplies none.
+- The answer action is now “再次发送（新增一轮）” / “Send again (new turn)”. It
+  sends the selected original question with its Storage attachment references,
+  excluding attachment metadata and assistant-generated files. It appends a turn
+  through the existing controller; it does not replace history or create a fork.
+- Both changes have RED/GREEN coverage. Copy and stop were already implemented
+  and remain regression-covered, rather than being counted as new features.
+- Clean production measurement: island JS 177.38 → 177.55 KiB gzip, default-path
+  maximum increment 77 bytes; unchanged limits 180 KiB / 1 KiB pass. Island CSS
+  is separately reported at 4.09 KiB; JS+CSS is 181.64 KiB. Both locales count.
+- `scripts/muyu365-react-selfcheck.mjs` adds thinking and attachment scenes and
+  visibly labels every page as mock. Windows Chrome headless checks include a
+  native summary click and 520px layout. These static renders do not prove live
+  backend streaming, authentication, persistence or billing. TEST deployment and
+  authenticated acceptance remain a separate release task.
+- Feedback persistence, branch history, settled per-turn points and administrator
+  tool input/output require verified server contracts before frontend enablement.

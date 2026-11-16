@@ -70,6 +70,10 @@ try {
 
   // One page per screenshot. `open` = expand the 执行过程 folds; `menu` = open the model menu; `text` = composer draft.
   const SCENES = {
+    "mock-resend-attachments": { state: snapshot([
+      user("u1", 0, "mock：请总结附件", { attachments: [{ id: "mock-file", name: "mock-report.pdf", mimeType: "application/pdf", size: 2048, metadata: verified }] }),
+      item("a1", 3, { content: "mock：点击下方再次发送会新增一轮，保留原问题与附件引用。" }),
+    ], "completed") },
     "mock-thinking-streaming": { now: 4, state: snapshot([
       user("u1", 0, "mock：展示模型返回的可见思考"),
       proc("thought", 1, "思考过程", "mock 模型思考内容：先检查输入，再组织回答。", { status: "streaming", data: { thinking: true, modelThinking: true } }),

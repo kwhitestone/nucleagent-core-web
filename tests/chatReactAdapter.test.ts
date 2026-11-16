@@ -198,6 +198,24 @@ test("adapter: 重新生成 resends the question; earlier history pages through 
   assert.equal("onLoadEarlier" in externalStore(state, { send: async () => {}, stop: async () => {} }), false);
 });
 
+test("resend preserves the selected question and storage references without replaying output or file metadata", async () => {
+  const sent: unknown[] = [];
+  const state = stateOf([
+    item("u1", { role: "user", content: "Read this file", attachments: [{ id: "file-1", name: "report.pdf", mimeType: "application/pdf", metadata: { verification: "verified", privateField: "mock-only" } }] }),
+    item("a1", { content: "Answer", attachments: [{ id: "output", name: "result.txt" }] }),
+    item("u2", { role: "user", content: "Other question" }), item("a2"),
+  ]);
+  const store = externalStore(state, { send: async (...args) => { sent.push(args); }, stop: async () => {} });
+  await store.onReload!("u1", {} as never);
+  assert.deepEqual(sent, [["Read this file", [{ id: "file-1", name: "report.pdf", mimeType: "application/pdf" }]]]);
+  await store.onReload!("a1", {} as never);
+  await store.onReload!("missing", {} as never);
+  assert.equal(sent.length, 1);
+  const rejected = externalStore(state, { send: async () => { throw new Error("mock permission denied"); }, stop: async () => {} });
+  await assert.rejects(rejected.onReload!("u1", {} as never), /mock permission denied/);
+  assert.equal(state.items.u1!.attachments![0]!.metadata!.verification, "verified");
+});
+
 test("suggestions: home cards → aui suggestions (locale, prefill vs title, disabled and media cards dropped)", async () => {
   const { toSuggestions } = await vite.ssrLoadModule("/src/chat-react/suggestions.ts") as typeof import("../src/chat-react/suggestions.ts");
   const data = { items: [

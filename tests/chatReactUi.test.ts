@@ -53,7 +53,8 @@ function render(state: ReturnType<typeof stateOf>, child: () => import("react").
 }
 const settings = { groups: [], model: null, backend: null, busy: false, pick: async () => {} };
 
-test("actual thinking has an independent default-closed fold, streaming label and escaped text", () => {
+test("actual thinking has an independent default-closed fold, streaming label and escaped text", (context) => {
+  const started = performance.now();
   for (const status of ["streaming", "complete"] as const) {
     const state = stateOf([
       item("user", { role: "user", content: "Question" }),
@@ -73,6 +74,7 @@ test("actual thinking has an independent default-closed fold, streaming label an
     () => React.createElement(aui.ThreadPrimitive.Messages, null,
       ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.doesNotMatch(html, /mc-reasoning/);
+  context.diagnostic(`thinking render body: ${(performance.now() - started).toFixed(2)} ms; shared fixture excluded`);
 });
 
 test("composer state machine: idle send; running empty → stop only; running with text → queue + stop", () => {
@@ -263,6 +265,8 @@ test("island strings: zh/en chunks have the same keys, mount picks the current l
   const { EN_STRINGS: en } = await vite.ssrLoadModule("/src/chat-react/islandStringsEn.ts") as typeof import("../src/chat-react/islandStringsEn.ts");
   assert.equal(zh.process, "执行过程");
   assert.equal(en.process, "Process");
+  assert.equal(zh.reload, "再次发送（新增一轮）");
+  assert.equal(en.reload, "Send again (new turn)");
   assert.equal(zh.mediaLater, "即将开放");
   assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort());
   const mount = readFileSync("src/chat-react/mount.tsx", "utf8");

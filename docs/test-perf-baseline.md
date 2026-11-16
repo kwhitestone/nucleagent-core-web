@@ -38,3 +38,24 @@ remains in the separate integration suite (1.648 s attributed to the first case)
 With configuration unresolved, the send-ready fixture completes in 1.460 ms;
 with preloaded configuration, 0.737 ms and one cached fetch. These are local
 component readiness measurements, not end-to-end model latency.
+
+2026-11-16, gap first batch, Node 24.14.0 on the same WSL host, default file
+concurrency and existing shared Vite/JSDOM fixtures. No new dependencies or network calls.
+
+| Revision | Suite / command | Tests | Pass / skip / fail | Total |
+|---|---|---:|---|---:|
+| 76a08118 base | `npm run test:unit` | 907 | 881 / 26 / 0 | 13.388 s |
+| Visible thinking fold | `npm run test:unit` | 909 | 883 / 26 / 0 | 12.955 s |
+| Attachment-preserving resend | `npm run test:unit` | 910 | 884 / 26 / 0 | 11.827 s |
+| Resend RED | `node --test tests/chatReactAdapter.test.ts tests/chatReactUi.test.ts` | 36 | 34 / 0 / 2 | 5.306 s |
+| Resend GREEN | same scoped command | 36 | 36 / 0 / 0 | 5.363 s |
+
+Fast-suite count 907 → 910, duration 13.388 → 11.827 s (single runs, not a speedup
+claim). Slowest attributed tests at baseline: source engine rows 4.940 s, drawer
+revocation 4.698 s, first snapshot 4.405 s. Final: source engine rows 4.436 s,
+drawer revocation 4.169 s, thinking render 4.106 s. The thinking test is now first
+in its file and inherits the existing shared fixture setup cost; its diagnostic
+reports render-body time separately. No per-test Vite server is added.
+Type checking and production Vite build pass. Browser/other integration suites
+are not included in these counts; the local Chrome screenshots are explicitly
+mock, with no TEST backend acceptance claimed. Existing slow-fixture debt remains.

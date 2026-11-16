@@ -48,7 +48,7 @@ export function externalStore(
     async onReload(parentId) {
       const question = messages.find((m) => m.id === parentId && m.role === "user");
       const text = Array.isArray(question?.content) ? question.content.map((p) => (p.type === "text" ? p.text : "")).join("") : "";
-      if (text) await controller.send(text);
+      if (text) await controller.send(text, toConversationAttachments(question?.attachments));
     },
     ...(controller.loadOlder ? { hasEarlier: state.hasOlder, onLoadEarlier: controller.loadOlder } : {}),
     ...(slot ? { queue: slot.adapter } : {}),
