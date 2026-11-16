@@ -1,5 +1,6 @@
 /** zh-CN island strings: their own lazy chunk, downloaded only for Chinese sessions (island size budget, §21). */
 export const ZH_STRINGS = {
+    modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "未结算或结算数据未知", usageSettled: "本轮已结算",
     effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "该模型不支持",
     effortBackend: "仅 Codex 执行器支持", effortUnverified: "未实测该模型是否生效", effortIneffective: "已实测：对该模型不生效", effortEffective: "已实测：对该模型生效",
     upstream: "上游",

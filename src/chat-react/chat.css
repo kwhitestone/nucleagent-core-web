@@ -406,6 +406,13 @@
   box-shadow: var(--shadow-lg);
 }
 .mc-menu[hidden] { display: none; }
+.mc-controls .mc-menu { left: auto; right: 0; width: min(280px, calc(100vw - 32px)); }
+.mc-controls .mc-menu:not([hidden]) { animation: mc-controls-in 100ms ease-out; }
+.mc-controls .mc-menu-item:disabled { color: var(--fg-tertiary); cursor: not-allowed; background: transparent; }
+.mc-controls > button[aria-expanded="true"] { color: var(--fg-brand); background: var(--bg-brand-soft); }
+.mc-usage { display: block; color: var(--fg-tertiary); font-size: 12px; padding: 2px 0; overflow-wrap: anywhere; }
+@keyframes mc-controls-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .mc-controls .mc-menu:not([hidden]) { animation: none; } }
 .mc-menu-group + .mc-menu-group { border-top: 1px solid var(--border-divider, var(--border)); margin-top: 4px; padding-top: 4px; }
 /* Group titles: 12px/500 secondary, distinct from the tertiary disabled row. */
 .mc-menu-label { padding: 6px 8px 2px; font-size: 12px; font-weight: 500; color: var(--fg-secondary); }

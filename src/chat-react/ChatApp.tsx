@@ -35,7 +35,10 @@ import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
-import { defaultEffort, effortView, EFFORT_LEVELS, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
+import { defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
+import { ModelControls } from "./ModelControls";
+import { TurnUsage } from "./TurnUsage";
+export { ModelControls, TurnUsage };
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -248,7 +251,7 @@ export function Composer({ t, settings, placeholder, effort }: { t: Translate; s
           <MediaPill kind="video" t={t} />
           <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-          {effort && <EffortSelect t={t} value={effort.sent} view={effort.view} onChange={effort.set} />}
+          {effort && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} />}
           <span className="mc-spacer" />
           {actions.includes("send") && (
             <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
@@ -279,25 +282,6 @@ function useEffort(settings: { model: ModelChoice | null; backend: string | null
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const effortNote = (t: Translate, view: ReturnType<typeof effortView>) => `${t("chatReact.effort")} · ${t(`chatReact.effort${cap(view.note)}`)}`;
-
-/**
- * Native select (keyboard/screen reader for free). Levels the model lacks per measured evidence are
- * disabled and say so; the title states honestly whether effort is measured to take effect.
- */
-export function EffortSelect({ t, value, view, onChange }: { t: Translate; value: EffortChoice; view: ReturnType<typeof effortView>; onChange(level: EffortChoice): void }) {
-  const name = t("chatReact.effort");
-  const note = effortNote(t, view);
-  return (
-    <select className="mc-pill mc-effort" data-testid="mc-effort" aria-label={name} title={note} disabled={view.disabled}
-      value={value} onChange={(e) => onChange(e.currentTarget.value as EffortChoice)}>
-      <option value="">{`${name} · ${t("chatReact.effortDefault")}`}</option>
-      {EFFORT_LEVELS.map((level) => {
-        const off = !view.disabled && view.off.includes(level);
-        return <option key={level} value={level} disabled={off}>{`${name} · ${t(`chatReact.effort${cap(level)}`)}${off ? `（${t("chatReact.effortOff")}）` : ""}`}</option>;
-      })}
-    </select>
-  );
-}
 
 function ComposerAttachmentChips({ t }: { t: Translate }) {
   return (
@@ -602,6 +586,7 @@ export function MessageRow({ role, t }: { role: string; t: Translate }) {
           <ActionBarPrimitive.Reload className="mc-icon-btn" aria-label={t("chatReact.reload")} title={t("chatReact.reload")}><ReloadMark /></ActionBarPrimitive.Reload>
         )}
       </ActionBarPrimitive.Root>
+      {!isUser && <TurnUsage t={t} />}
     </MessagePrimitive.Root>
   );
 }
