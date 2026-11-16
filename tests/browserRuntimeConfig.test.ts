@@ -107,3 +107,14 @@ test("CHAT_UI_DEFAULT (MUYU-365) is optional: absent/empty → unset (old), only
       (error: Error) => /CHAT_UI_DEFAULT/.test(error.message) && !error.message.includes("private-fixture"));
   }
 });
+
+test("CHAT_EFFORT_DEFAULT (MUYU-365 gap2) is optional: only low|medium|high, never echoed", () => {
+  const base = runtimeFixture();
+  assert.equal("CHAT_EFFORT_DEFAULT" in parseRuntimeConfig(base, base.VITE_CORE_WEB_URL), false);
+  assert.equal("CHAT_EFFORT_DEFAULT" in parseRuntimeConfig({ ...base, CHAT_EFFORT_DEFAULT: "" }, base.VITE_CORE_WEB_URL), false);
+  for (const v of ["low", "medium", "high"]) assert.equal(parseRuntimeConfig({ ...base, CHAT_EFFORT_DEFAULT: v }, base.VITE_CORE_WEB_URL).CHAT_EFFORT_DEFAULT, v);
+  for (const value of ["minimal", "HIGH", "private-fixture", 1, null]) {
+    assert.throws(() => parseRuntimeConfig({ ...base, CHAT_EFFORT_DEFAULT: value }, base.VITE_CORE_WEB_URL),
+      (error: Error) => /CHAT_EFFORT_DEFAULT/.test(error.message) && !error.message.includes("private-fixture"));
+  }
+});

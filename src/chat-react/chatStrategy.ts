@@ -14,6 +14,8 @@ const strategySchema = z.object({
     date: z.iso.date(), versions: z.string().min(1), quality: z.string().min(1),
     thinking: z.object({ supported: z.boolean(), source: z.string().min(1) }).nullable(),
     vision: sampleSchema.nullable(),
+    // gap2: measured reasoning-effort evidence; absent = unverified (never assumed effective).
+    effort: z.object({ levels: z.array(z.enum(["low", "medium", "high"])).min(1), effective: z.boolean(), source: z.string().min(1) }).nullable().optional(),
   })).max(200),
 });
 export type ChatStrategy = z.infer<typeof strategySchema>;
@@ -48,6 +50,8 @@ export async function loadChatStrategy(origin: string, fetcher: typeof fetch = f
 const same = (left: ModelChoice, right: ModelChoice) => left.providerId === right.providerId && left.model === right.model;
 const evidenceFor = (strategy: ChatStrategy | null, model: ModelChoice | null) => model ? strategy?.measurements.find((entry) => same(entry, model)) : undefined;
 const qualifies = (sample: { n: number; medianMs: number } | undefined) => !!sample && sample.n >= 5 && sample.medianMs <= 2000;
+
+export const effortEvidence = (strategy: ChatStrategy | null, model: ModelChoice | null) => evidenceFor(strategy, model)?.effort ?? undefined;
 
 export function initialChatModel(input: {
   strategy: ChatStrategy | null; conversationId?: string; selected: ModelChoice | null; explicit: boolean;

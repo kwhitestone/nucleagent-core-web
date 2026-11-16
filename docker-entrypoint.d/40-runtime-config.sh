@@ -79,6 +79,12 @@ case "${CHAT_UI_DEFAULT-}" in
     old|react) json="$json,\"CHAT_UI_DEFAULT\":\"$CHAT_UI_DEFAULT\"" ;;
     *) printf '%s\n' 'CHAT_UI_DEFAULT must be old or react.' >&2; exit 1 ;;
 esac
+# MUYU-365 gap2 optional default reasoning effort (codex only in Core); only serialized when set.
+case "${CHAT_EFFORT_DEFAULT-}" in
+    '') ;;
+    low|medium|high) json="$json,\"CHAT_EFFORT_DEFAULT\":\"$CHAT_EFFORT_DEFAULT\"" ;;
+    *) printf '%s\n' 'CHAT_EFFORT_DEFAULT must be low, medium or high.' >&2; exit 1 ;;
+esac
 mkdir -p /etc/nucleagent
 printf '%s}\n' "$json" > /etc/nucleagent/runtime-config.json
 chmod 0644 /etc/nucleagent/runtime-config.json

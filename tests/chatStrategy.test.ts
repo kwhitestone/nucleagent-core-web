@@ -69,3 +69,13 @@ test("missing, malformed and failed optional config safely retain existing defau
     return Response.json(config);
   }), policy());
 });
+
+test("effort evidence is optional per measurement, validated, and only returned for that exact model", async () => {
+  const { effortEvidence } = await import("../src/chat-react/chatStrategy.ts");
+  assert.equal(effortEvidence(policy(), choice), undefined, "no evidence = unverified");
+  const effort = { levels: ["low", "medium"], effective: false, source: "TEST 2026-11-16 n=5" };
+  const strategy = parseChatStrategy({ ...config, measurements: [{ ...measurement, effort }] }, config.origin)!;
+  assert.deepEqual(effortEvidence(strategy, choice), effort);
+  assert.equal(effortEvidence(strategy, { providerId: 1, model: "other" }), undefined);
+  assert.equal(parseChatStrategy({ ...config, measurements: [{ ...measurement, effort: { ...effort, levels: ["minimal"] } }] }, config.origin), null);
+});

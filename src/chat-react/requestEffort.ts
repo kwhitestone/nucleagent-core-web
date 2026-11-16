@@ -1,16 +1,49 @@
-import type { CreateConversationRequest } from "@/addons/conversation/api/types";
+import { configValue } from "../runtimeConfig.ts";
 
 /**
- * MUYU-365 D18: TEST experiment entry for per-request reasoning effort low (Core `reasoningEffort`,
- * codex only). The toggle exists only when the page URL explicitly opts in with `?chatEffort=low`
- * (location.search or the shell's hash query); it is never persisted and never a product default.
+ * MUYU-365 gap2: per-request reasoning effort. Core (v0.1.11+) accepts `reasoningEffort` low|medium|high
+ * on create and follow-up for the codex backend only (400 otherwise); "" = omit = executor default.
  */
-export function effortExperimentEnabled(search = globalThis.location?.search ?? "", hash = globalThis.location?.hash ?? ""): boolean {
-  const q = hash.indexOf("?");
-  return new URLSearchParams(search).get("chatEffort") === "low" || (q >= 0 && new URLSearchParams(hash.slice(q + 1)).get("chatEffort") === "low");
+export const EFFORT_LEVELS = ["low", "medium", "high"] as const;
+export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+export type EffortChoice = EffortLevel | "";
+/** Measured per-model evidence (chat-strategy.json `effort`): levels accepted and whether effort changed anything. */
+export interface EffortEvidence { levels: EffortLevel[]; effective: boolean; source: string }
+export type EffortNote = "backend" | "unverified" | "ineffective" | "effective";
+
+const KEY = "nucleagent_chat_effort";
+const valid = (v: unknown): v is EffortChoice => v === "" || (EFFORT_LEVELS as readonly unknown[]).includes(v);
+
+/** Environment default (runtime-config CHAT_EFFORT_DEFAULT); anything else = backend default. */
+export function defaultEffort(read: () => string = () => configValue("CHAT_EFFORT_DEFAULT")): EffortChoice {
+  try { const v = read(); return valid(v) ? v : ""; } catch { return ""; }
 }
 
-/** Adds reasoningEffort=low to this one create request only when chosen and the backend accepts it (codex). */
-export function withRequestEffort<T extends CreateConversationRequest>(payload: T, low: boolean): T {
-  return low && payload.executionBackend === "codex" ? { ...payload, reasoningEffort: "low" } : payload;
+type Store = Pick<Storage, "getItem" | "setItem">;
+const readAll = (s: Store | undefined): Record<string, unknown> => {
+  try { const v = JSON.parse(s?.getItem(KEY) ?? "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; }
+};
+/** The user's last choice for this model ("providerId:model"), or undefined. */
+export function storedEffort(model: string, s: Store | undefined = globalThis.localStorage): EffortChoice | undefined {
+  const v = readAll(s)[model];
+  return valid(v) ? v : undefined;
+}
+export function storeEffort(model: string, level: EffortChoice, s: Store | undefined = globalThis.localStorage) {
+  try { s?.setItem(KEY, JSON.stringify({ ...readAll(s), [model]: level })); } catch { /* storage blocked: this page only */ }
+}
+
+/** What the selector may offer: non-codex → disabled; levels outside the evidence → off; note = honest effect label. */
+export function effortView(backend: string | null, evidence: EffortEvidence | undefined) {
+  if (backend !== "codex") return { disabled: true, off: [...EFFORT_LEVELS] as EffortLevel[], note: "backend" as EffortNote };
+  if (!evidence) return { disabled: false, off: [] as EffortLevel[], note: "unverified" as EffortNote };
+  return { disabled: false, off: EFFORT_LEVELS.filter((l) => !evidence.levels.includes(l)), note: (evidence.effective ? "effective" : "ineffective") as EffortNote };
+}
+
+/** Never send a level the view disables. */
+export const sentEffort = (choice: EffortChoice, view: ReturnType<typeof effortView>): EffortChoice =>
+  !view.disabled && choice && !view.off.includes(choice) ? choice : "";
+
+/** Adds reasoningEffort only for a chosen level on codex (Core rejects it elsewhere). */
+export function withRequestEffort<T extends object>(payload: T, level: EffortChoice, backend: string | null | undefined): T {
+  return level && backend === "codex" ? { ...payload, reasoningEffort: level } : payload;
 }

@@ -811,3 +811,21 @@ Vue 侧**未重新截图**：Vue 视图依赖 Pinia/路由/i18n/SFC，不能用�
   authenticated acceptance remain a separate release task.
 - Feedback persistence, branch history, settled per-turn points and administrator
   tool input/output require verified server contracts before frontend enablement.
+
+## 23. Gap2 (2026-11-16, base v0.1.4 = 3a69082)
+
+### 23.1 Reasoning effort selector
+- Composer select “思考强度 · 默认/低/中/高”. The level is sent as Core's per-turn
+  `reasoningEffort` on create **and** follow-up (Core v0.1.11+, codex only; any
+  other backend disables the select and nothing is sent). “默认” omits the field,
+  so the request body is byte-identical to before.
+- Default per environment: runtime-config `CHAT_EFFORT_DEFAULT` (low|medium|high,
+  optional; anything else fails startup like `CHAT_UI_DEFAULT`). The user's last
+  choice is remembered per model in localStorage `nucleagent_chat_effort`.
+- Honesty: per-model evidence is the optional `effort {levels, effective, source}`
+  of a `chat-strategy.json` measurement. Levels outside `levels` are disabled and
+  labelled “该模型不支持” and never sent. With no evidence the note says “未实测该
+  模型是否生效”; `effective:false` says “已实测：对该模型不生效” (e.g. deepseek,
+  whose reasoning is model-native). Core/Toolgate expose no per-model effort
+  capability yet (gap2 REPORT C③).
+- Replaces the D18 `?chatEffort=low` TEST experiment toggle.

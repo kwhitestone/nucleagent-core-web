@@ -293,3 +293,28 @@ test("process head: 首字 X 秒 · 总耗时 Y 秒 from server_timing; detail r
   assert.match(failed, /<p class="mc-process-ttft" data-queue-ms="40" data-agent-ms="789">[^<]*chatReact.firstToken —</);
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
 });
+
+test("effort select: levels from the view, unsupported levels disabled and labelled, honest effect note; non-codex disabled", () => {
+  const html = (value: string, view: object) => renderToString(React.createElement(app.EffortSelect, { t, value, view, onChange: () => {} }));
+  const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
+  assert.match(partial, /<select[^>]*data-testid="mc-effort"[^>]*aria-label="chatReact.effort"[^>]*title="chatReact.effort · chatReact.effortIneffective"/);
+  assert.match(partial, /<option value="">chatReact.effort · common.modelDefault<\/option>/);
+  assert.match(partial, /<option value="low" selected="">chatReact.effort · chatReact.effortLow<\/option>/);
+  assert.match(partial, /<option value="high" disabled="">chatReact.effort · chatReact.effortHigh（chatReact.effortOff）<\/option>/);
+  assert.doesNotMatch(partial, /value="medium" disabled/);
+  const other = html("", { disabled: true, off: ["low", "medium", "high"], note: "backend" });
+  assert.match(other, /<select[^>]*disabled=""[^>]*title="chatReact.effort · chatReact.effortBackend"|<select[^>]*title="chatReact.effort · chatReact.effortBackend"[^>]*disabled=""/);
+  assert.match(html("", { disabled: false, off: [], note: "unverified" }), /chatReact.effortUnverified/);
+  assert.match(html("", { disabled: false, off: [], note: "effective" }), /chatReact.effortEffective/);
+});
+
+test("composer: effect note is visible text (not only a tooltip) once a level is being sent", () => {
+  const base = { choice: "high" as const, set: () => {} };
+  const on = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
+    effort: { ...base, sent: "high", view: { disabled: false, off: [], note: "unverified" } } }));
+  assert.match(on, /data-testid="mc-effort-note">chatReact.effort · chatReact.effortUnverified</);
+  const off = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
+    effort: { ...base, sent: "", view: { disabled: true, off: ["low", "medium", "high"], note: "backend" } } }));
+  assert.doesNotMatch(off, /mc-effort-note/);
+  assert.match(off, /data-testid="mc-effort"/);
+});

@@ -103,6 +103,8 @@ export async function followUp(
   attachments?: AttachmentRef[],
   model?: ModelChoice,
   executionBackend?: ExecutionBackendId | string,
+  /** MUYU-365 gap2: Core per-turn effort (codex only); omitted = backend default. */
+  reasoningEffort?: "low" | "medium" | "high",
 ): Promise<Conversation> {
   toolCallCache.clear();
   // 无附件/未切换模型时不带对应字段，请求体与改动前逐字节一致。
@@ -113,6 +115,7 @@ export async function followUp(
     body.model = model.model;
   }
   if (executionBackend) body.executionBackend = executionBackend;
+  if (reasoningEffort) body.reasoningEffort = reasoningEffort;
   const response = await http().post<Envelope<Conversation>>(
     `${BASE}/${conversationId}/follow-up`,
     body,

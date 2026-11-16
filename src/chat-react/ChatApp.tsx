@@ -34,8 +34,8 @@ import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type File
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
-import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, type ChatStrategy } from "./chatStrategy";
-import { effortExperimentEnabled, withRequestEffort } from "./requestEffort";
+import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
+import { defaultEffort, effortView, EFFORT_LEVELS, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
 import "./chat.css";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -63,12 +63,14 @@ export function ChatApp(props: ChatProps) {
   const locale = props.locale ?? "zh-CN";
   const t = useMemo(() => withIslandStrings(props.t, props.strings), [props.t, props.strings]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
-  const core = useCoreConversation(conversationId, report);
   const settings = useSettings(conversationId, t);
+  const effort = useEffort(settings);
+  const effortNow = useRef(effort.sent);
+  effortNow.current = effort.sent;
+  const core = useCoreConversation(conversationId, report, () => effortNow.current);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
-  const [lowEffort, setLowEffort] = useState(false);
 
   const controller: ChatController = {
     send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
@@ -89,8 +91,7 @@ export function ChatApp(props: ChatProps) {
             model: settings.model?.model ?? "", providerId: settings.model?.providerId,
             executionBackend: settings.backend ?? undefined,
             ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
-          }, lowEffort));
-          setLowEffort(false); // this request only; the next one is back to the backend default
+          }, effort.sent, settings.backend));
           props.navigate(`/c/${created.id}`);
         } catch (error) {
           toast.error(modelErrorMessage(error, t, t("home.createFailed")));
@@ -116,7 +117,7 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} />}</ThreadPrimitive.Messages>
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
-            <Composer t={t} settings={settings} effort={!conversationId && effortExperimentEnabled() ? { low: lowEffort, toggle: () => setLowEffort((v) => !v) } : undefined}
+            <Composer t={t} settings={settings} effort={effort}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
@@ -221,7 +222,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
-export function Composer({ t, settings, placeholder, effort }: { t: Translate; settings: Settings; placeholder: string; effort?: { low: boolean; toggle(): void } }) {
+export function Composer({ t, settings, placeholder, effort }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort> }) {
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
@@ -247,12 +248,7 @@ export function Composer({ t, settings, placeholder, effort }: { t: Translate; s
           <MediaPill kind="video" t={t} />
           <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-          {effort && settings.backend === "codex" && (
-            // TEST experiment only (?chatEffort=low): label is deliberately not translated product copy.
-            <button type="button" className="mc-pill" data-testid="mc-effort-low" aria-pressed={effort.low} onClick={effort.toggle}>
-              {effort.low ? "✓ " : ""}TEST实验 effort=low（仅本次）
-            </button>
-          )}
+          {effort && <EffortSelect t={t} value={effort.sent} view={effort.view} onChange={effort.set} />}
           <span className="mc-spacer" />
           {actions.includes("send") && (
             <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
@@ -267,7 +263,39 @@ export function Composer({ t, settings, placeholder, effort }: { t: Translate; s
       </ComposerPrimitive.Root>
       <p className="mc-hint">{t("chatReact.hint")}</p>
       {settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
+      {effort?.sent && <p className="mc-hint" data-testid="mc-effort-note">{effortNote(t, effort.view)}</p>}
     </ComposerPrimitive.AttachmentDropzone>
+  );
+}
+
+/** Reasoning effort for the selected model (remembered per model, env default from runtime config). */
+function useEffort(settings: { model: ModelChoice | null; backend: string | null; effortEvidence?: ReturnType<typeof effortEvidence> }) {
+  const key = settings.model ? `${settings.model.providerId}:${settings.model.model}` : "default";
+  const [, bump] = useState(0);
+  const choice = storedEffort(key) ?? defaultEffort();
+  const view = effortView(settings.backend, settings.effortEvidence);
+  return { choice, view, sent: sentEffort(choice, view), set: (level: EffortChoice) => { storeEffort(key, level); bump((n) => n + 1); } };
+}
+
+const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
+const effortNote = (t: Translate, view: ReturnType<typeof effortView>) => `${t("chatReact.effort")} · ${t(`chatReact.effort${cap(view.note)}`)}`;
+
+/**
+ * Native select (keyboard/screen reader for free). Levels the model lacks per measured evidence are
+ * disabled and say so; the title states honestly whether effort is measured to take effect.
+ */
+export function EffortSelect({ t, value, view, onChange }: { t: Translate; value: EffortChoice; view: ReturnType<typeof effortView>; onChange(level: EffortChoice): void }) {
+  const name = t("chatReact.effort");
+  const note = effortNote(t, view);
+  return (
+    <select className="mc-pill mc-effort" data-testid="mc-effort" aria-label={name} title={note} disabled={view.disabled}
+      value={value} onChange={(e) => onChange(e.currentTarget.value as EffortChoice)}>
+      <option value="">{`${name} · ${t("common.modelDefault")}`}</option>
+      {EFFORT_LEVELS.map((level) => {
+        const off = !view.disabled && view.off.includes(level);
+        return <option key={level} value={level} disabled={off}>{`${name} · ${t(`chatReact.effort${cap(level)}`)}${off ? `（${t("chatReact.effortOff")}）` : ""}`}</option>;
+      })}
+    </select>
   );
 }
 
@@ -728,6 +756,6 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const labeledGroups = strategy ? groups.map((group) => group.kind !== "chat" ? group : {
     ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, option.choice.model)}` })),
   }) : groups;
-  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend),
+  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model),
     imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

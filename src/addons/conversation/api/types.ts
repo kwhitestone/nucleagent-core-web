@@ -124,8 +124,8 @@ export interface CreateConversationRequest {
   /** LLM 提供商 ID。与 model 成对提供，缺一后端会拒。 */
   providerId?: number;
   executionBackend?: ExecutionBackendId | string;
-  /** MUYU-365 TEST 实验：仅本次请求的推理强度（Core 只接受 codex）；省略 = 后端默认。 */
-  reasoningEffort?: "low";
+  /** MUYU-365：仅本次请求的推理强度（Core 只接受 codex）；省略 = 后端默认。 */
+  reasoningEffort?: "low" | "medium" | "high";
   /** 暂存执行模式/输出格式等前端-only 元数据（后端暂未持久化，预留给未来字段）。 */
   metadata?: Record<string, unknown>;
   /** 附件引用（先经 storage 上传拿到 fileId）。 */

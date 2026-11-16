@@ -75,6 +75,16 @@ test("startup serializes CHAT_UI_DEFAULT only when set to old|react", () => {
   }
 });
 
+test("startup serializes CHAT_EFFORT_DEFAULT only when set to low|medium|high", () => {
+  assert.equal("CHAT_EFFORT_DEFAULT" in render({}).runtime, false);
+  for (const v of ["low", "medium", "high"]) assert.equal(render({ CHAT_EFFORT_DEFAULT: v }).runtime.CHAT_EFFORT_DEFAULT, v);
+  for (const value of ["minimal", 'low","x":"y', "low\n"]) {
+    const rejected = render({ CHAT_EFFORT_DEFAULT: value });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /CHAT_EFFORT_DEFAULT/);
+  }
+});
+
 test("runtime CSP defaults to the shell and preserves nginx variables", () => {
   const result = render({});
   assert.equal(result.status, 0, result.stderr);
