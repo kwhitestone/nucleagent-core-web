@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { moveFocus } from "./composerState";
 import { CheckMark, ControlsMark } from "./icons";
-import { EFFORT_LEVELS, type EffortChoice, type effortView } from "./requestEffort";
+import { cap, EFFORT_LEVELS, type EffortChoice, type effortView } from "./requestEffort";
 import type { Translate } from "./ChatApp";
 
 /**
@@ -39,7 +39,7 @@ export function ModelControls({ t, value, view, onChange, children, disabled, de
 }) {
   const { open, setOpen, root, trigger, close, rove } = useMenu(defaultOpen, view.disabled);
   const id = useId();
-  const label = (suffix: string) => t(`chatReact.effort${suffix[0]!.toUpperCase()}${suffix.slice(1)}`);
+  const label = (suffix: string) => t(`chatReact.effort${cap(suffix)}`);
   return <div className="mc-model mc-controls" ref={root} onBlur={(event) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   }} onKeyDown={(event) => {

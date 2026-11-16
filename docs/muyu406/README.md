@@ -4,7 +4,7 @@
 
 **状态：未发布。** 远端最新 tag `v0.1.5`（`946d158`）不含 gap2 也不含本分支任何提交；`main` = `c0a82a7`，`master` = `37deaf7`。TEST/PRE/PROD 验收全部 NOT_RUN。
 
-**逐轮积分线上未接通。** 每条回答显示“积分：—”。前端已留好接入点，后端没有可读的逐轮结算接口（第 3 节）。
+**逐轮积分已接到 Core 投影，未在真实环境验证。** 前端读 `GET /api/v1/addons/conversation/{id}/settlement`（第 3.2 节）。该接口在 Core `feat/muyu406-turn-settlement`（`20cde0c`）和 Toolgate 同名分支（`f563900`），都未发布；没有它（404）时每条回答仍如实显示“积分：—”。
 
 ## 1. 本分支做了什么
 
@@ -88,23 +88,21 @@
 
 - 迟到回执：更高 revision 的 settled 覆盖 pending；更高 revision 的 unknown 把它退回未知。
 - Reader（`useSettlement`）：不传就不发请求；会话、reader 或运行状态变化时重读；新读取 abort 旧读取，晚到的旧结果丢弃；读取失败或任何一行不合形状，整次作废并清掉已显示的数值。
-- 宿主 `ChatHost.vue` 没有传 reader，**生产路径零调用**。
-- 已知限制：运行结束之后才到的回执，要刷新页面才显示。轮询还是推送等真实投影定了再选。
+- 迟到刷新：只要有一轮是 pending，就在 3 秒后重读，间隔每次翻倍，最多 6 次（约 3 分钟）；离开会话即取消。之后仍 pending 的要等运行状态变化或刷新页面。失败的读取不重试。
+- 宿主 `ChatHost.vue` 传 `readSettlement`（`src/addons/conversation/api/settlement.ts`）。每个 React 聊天会话打开时读一次。
 
-### 3.2 后端缺口（未落地，路径与 DTO 不存在）
+### 3.2 Core 投影与前端 reader
 
-以下是此前只读核对 Core 与 Toolgate 已 fetch 引用的结论，本次没有复核：
+接口（Core `addons/conversation/router/settlement.go`，owner 是会话用户，别人的会话 404，账本读不到 503）：
 
-1. **没有逐轮关联。** 铸 key 只带 `conversationId`；Core 把 Toolgate 返回的 `keyId` 丢弃，没有任何地方存 step ↔ key。
-2. **Core 读不到账本。** Toolgate 没有 S2S 账本读接口。浏览器直连 `GET /api/v1/usage/details` 需要 Toolgate 会话和 origin 白名单，且只到会话粒度。
-3. **明细行没有逐行积分。** 积分是展示换算，只有余额/钱包接口给总数；前端不能自己换算。
+`GET /api/v1/addons/conversation/{id}/settlement` → `{code, data: {unit: "credits", revision, turns: [{stepId, state, credits, upstreams[], callIds[], logicalRequestIds[], keyIds[], revision}]}}`
 
-要补的（归 Core 与 Toolgate owner）：
-- Core：保留 `keyId` 并与当时的 `step_id` 一起落库（一轮可有多把 key）；新增按会话 owner 校验的只读投影，按 `stepId` 分组，每组给 `stepId`、`state: pending|settled|unknown`、`points`（仅 settled，十进制字符串）、`upstreams[]`、`revision`（单调递增）。
-- Toolgate：给 Core 一条账本读路径并附逐行积分或换算率。
-- 陷阱：经济结算会把行的 `deducted_quota` 置 0，真实扣费在 `economy.total_deducted`，不能把 0 当真实 0。
+- `state`：`pending | settled | unknown`。`credits` 只在 settled 时是整数十进制字符串，其余为 `null`。`revision` 是 Toolgate 读账本的时间（Unix ms）。
+- 没有绑定记录的历史会话返回 `turns: []`，界面全部是“—”。
 
-接通时前端只做一件事：写一个 `SettlementReader`，把真实投影映射成 `SettlementEvidence`（`turnId` = `stepId`），在 `ChatHost.vue` 传给 `settlementReader`。
+`readSettlement` 的校验：`unit` 不是 `credits`、settled 的 `credits` 不是纯数字、非 settled 的 `credits` 不是 `null`、或响应体不是这个形状，整次读取拒绝。`stepId`、`upstreams`、`revision` 的形状由 `settlementRows` 和 `turnUsage` 把关：类型不对整次作废，值不对（空 id、空上游、`"07"`）只让那一轮显示“—”。前端不换算、不求和。
+
+映射：`turnId` = `stepId`，`points` = `credits`。
 
 ## 4. 体积
 
@@ -118,12 +116,14 @@
 | `07eafbe` | 179.27 KiB | — |
 | `ef5f530` | 179.29 KiB | — |
 | `f1af9a3` | 179.92 KiB（184237 B） | 83 B |
-| `972ae22` | **179.76 KiB（184073 B）** | **247 B** |
+| `972ae22` | 179.76 KiB（184073 B） | 247 B |
+| 接入 Core reader | **179.99 KiB（184311 B）** | **9 B** |
 
 - `972ae22` 回收 164 B：模型菜单和 Controls 各有一份开合/聚焦/外点/巡航代码，合成一个 `useMenu`。
+- 接入 reader 净增 238 B：reader 本身在 `ChatHost` chunk 里约 200 B，迟到刷新在 `mount` 里约 100 B；回收约 60 B（三处首字母大写合成 `cap`，两份未知用量字面量合成 `UNKNOWN_USAGE`）。reader 因此只查本合同独有的规则，形状检查复用 `settlementRows`。**余量只剩 9 B，岛内再加任何代码都要先回收。**
 - 按需加载试过，没有收益：把 `TurnUsage.tsx` 放到 `React.lazy` 后，岛 JS 变成 184713 B（180.38 KiB），比不拆多 640 B，门禁 FAIL。原因是组件本身只有约 500 B，新 chunk 的固定开销加 `lazy`/`Suspense` 胶水更大，而门禁照样把 lazy chunk 计入。没有提交。
 - 上限：本分支相对 gap2 的全部增量约 1.18 KiB。即使继续压，能回收的也到不了这个数。
-- **与 408 的组合仍然放不下。** 408 在自己基线上的增量此前实测约 1.71 KiB，本分支只剩 247 B。组合体积必须在组合候选上实测，超出部分由 408 按 2.2 收缩（删重复入口、CSS、effort select），不放宽门禁。
+- **与 408 的组合仍然放不下。** 408 在自己基线上的增量此前实测约 1.71 KiB，本分支只剩 9 B。组合体积必须在组合候选上实测，超出部分由 408 按 2.2 收缩（删重复入口、CSS、effort select），不放宽门禁。
 
 ## 5. 给 365 的集成顺序
 
@@ -134,7 +134,7 @@
 3. 作者：前三个提交作者是 `Codex <codex@localhost>`，主干至今没有这个作者。整合时 `git cherry-pick -x` 后重置作者，或整批 squash；不要 force 已推分支。
 4. 408 core-web 不能原样叠加，先按 2.2 适配或在合并时按 2.1 解冲突。
 5. 408 的 Core/executor 改动、Core 目录 `upstream` 字段透传、TEST 环境思考可见性开关：沿用此前交接，本次未复核。
-6. 逐轮积分后端差量（3.2）是独立后续批次，不挡本批；没有它时界面如实显示“积分：—”。
+6. 逐轮积分：先发 Toolgate `f563900`，再发 Core `20cde0c`，最后是本分支。顺序反了也不坏：接口不存在时读取失败，界面如实显示“积分：—”。
 7. 组合验证：`npm run test:unit`、`npm run build`、体积脚本对基线 dist。
 8. 发布：TEST → 真实域名验收（图标/面板/键盘/移动端、effort 禁用态、每轮“—”、408 profile 在同一面板内）→ PRE → PROD。
 
@@ -142,7 +142,7 @@
 
 | 阻断 | 归属 | 恢复条件 |
 |---|---|---|
-| 逐轮积分未接通 | Core / Toolgate owner | 3.2 落地并给出真实路径和 DTO，之后前端接 reader |
+| 逐轮积分未在真实环境验证 | 365 | Toolgate、Core、本分支都到 TEST 后，按真实一轮对账本核对 |
 | 组合体积放不下 | 365 与 408 | 408 收缩后在组合候选实测通过 |
 | 408 合同未确认消费 | 协调者 | 408 回报按 2.2 适配后的新 SHA |
 | 未发布、未验收 | 365 | 正式发布后逐环境验收 |

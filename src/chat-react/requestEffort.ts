@@ -4,6 +4,8 @@ import { configValue } from "../runtimeConfig.ts";
  * MUYU-365 gap2: per-request reasoning effort. Core (v0.1.11+) accepts `reasoningEffort` low|medium|high
  * on create and follow-up for the codex backend only (400 otherwise); "" = omit = executor default.
  */
+/** Island string keys join a prefix and a capitalised value: `effort` + "low" → chatReact.effortLow, `usage` + "pending". */
+export const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 export const EFFORT_LEVELS = ["low", "medium", "high"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 export type EffortChoice = EffortLevel | "";
