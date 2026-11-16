@@ -36,6 +36,10 @@ export default defineConfig(({ mode }) => {
         // MUYU-365: per-file aui primitives; the package's `XPrimitive` namespaces are not tree-shakable
         // (getter-based export objects pull every member). Valid for the exactly pinned 0.15.36 only.
         "@aui-dist": resolve(process.cwd(), "node_modules/@assistant-ui/react/dist"),
+        // MUYU-408: the island passes no voice/dictation adapter; these two @assistant-ui/core 0.3.35 session controllers
+        // are unreachable, so the bundle gets inert stand-ins (tests/auiSessionStubs.test.ts pins the contract).
+        "./voice-session.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/voice-session.ts"),
+        "./dictation-session.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/dictation-session.ts"),
         "@": resolve(process.cwd(), "src"),
       },
     },
@@ -44,7 +48,14 @@ export default defineConfig(({ mode }) => {
     build: {
       minify: "terser",
       terserOptions: { ecma: 2020, compress: { passes: 2 } },
-      rollupOptions: { output: { experimentalMinChunkSize: 500 } },
+      rollupOptions: { output: {
+        experimentalMinChunkSize: 500,
+        onlyExplicitManualChunks: true,
+        manualChunks(id) {
+          if (/\/src\/chat-react\/(ToolIO|ProfileControls)\.tsx$/.test(id)) return "chat-controls";
+          if (/\/src\/chat-react\/islandStrings(En|Zh)\.ts$/.test(id)) return "chat-strings";
+        },
+      } },
     },
     server: {
       host,

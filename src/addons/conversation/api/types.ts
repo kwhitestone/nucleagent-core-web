@@ -126,6 +126,9 @@ export interface CreateConversationRequest {
   executionBackend?: ExecutionBackendId | string;
   /** MUYU-365：仅本次请求的推理强度（Core 只接受 codex）；省略 = 后端默认。 */
   reasoningEffort?: "low" | "medium" | "high";
+  /** MUYU-408：模型预设及其显式参数；与上面的 reasoningEffort 二选一，同发 Core 返回 400。 */
+  profileId?: string;
+  modelParams?: { reasoningEffort?: "low" | "medium" | "high" };
   /** 暂存执行模式/输出格式等前端-only 元数据（后端暂未持久化，预留给未来字段）。 */
   metadata?: Record<string, unknown>;
   /** 附件引用（先经 storage 上传拿到 fileId）。 */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -39,9 +39,11 @@ import { cap, defaultEffort, effortView, sentEffort, storedEffort, storeEffort, 
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
+import { profileRequest, type ProfileSelection } from "./modelProfile";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
+import { getPlatformRuntime } from "@/contracts/platform-runtime";
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
 /** A home suggestion card resolved for the locale (suggestions.ts). */
@@ -60,9 +62,11 @@ export interface ChatProps {
 }
 
 const EMPTY = createConversationState("new");
+const ProfileControls = lazy(() => import("./ProfileControls"));
+const ToolIO = lazy(() => import("./ToolIO"));
 
 // Island-only strings stay out of the main i18n bundle (default-path size, plan §9) and out of the island:
-// only the current language's chunk is downloaded (islandStrings*.ts, loaded by mount.tsx).
+// locale tables share a lazy compressed chunk (loaded by mount.tsx).
 const withIslandStrings = (t: Translate, strings: Record<string, string>): Translate => (key, named) =>
   key.startsWith("chatReact.") ? strings[key.slice(10)] ?? key : t(key, named);
 
@@ -73,9 +77,13 @@ export function ChatApp(props: ChatProps) {
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
   const settings = useSettings(conversationId, t);
   const effort = useEffort(settings);
-  const effortNow = useRef(effort.sent);
-  effortNow.current = effort.sent;
-  const core = useCoreConversation(conversationId, report, () => effortNow.current);
+  const [profile, setProfile] = useState<ProfileSelection | null>(null);
+  const profileScope = `${conversationId ?? "new"}:${settings.backend}:${settings.model?.providerId}:${settings.model?.model}`;
+  // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
+  const turn = profileRequest(profile, profileScope, effort.sent);
+  const turnNow = useRef(turn);
+  turnNow.current = turn;
+  const core = useCoreConversation(conversationId, report, () => turnNow.current);
   const messageActions = useMessageActions(conversationId, !!core && isRunning(core.state), props.navigate, (fork) => props.onFork?.(fork), report);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
@@ -96,12 +104,14 @@ export function ChatApp(props: ChatProps) {
         if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
         try {
-          const created = await props.create(withRequestEffort({
+          const payload: CreateConversationRequest = {
             mode: "a2a_agent", input,
             model: settings.model?.model ?? "", providerId: settings.model?.providerId,
             executionBackend: settings.backend ?? undefined,
             ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
-          }, effort.sent, settings.backend));
+          };
+          const created = await props.create(typeof turn === "string" ? withRequestEffort(payload, turn, settings.backend) : { ...payload, ...turn });
+          setProfile(null);
           props.navigate(`/c/${created.id}`);
         } catch (error) {
           toast.error(modelErrorMessage(error, t, t("home.createFailed")));
@@ -128,6 +138,7 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
             <Composer t={t} settings={settings} effort={effort}
+              controls={<ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} />}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
@@ -227,6 +238,25 @@ function MediaPill({ kind, t }: { kind: "image" | "video"; t: Translate }) {
 }
 
 export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { imageHint?: string; modelHint?: string };
+
+/**
+ * MUYU-408 profile choices for the Controls slot. The panel keeps its slot mounted while hidden, so the chunk and
+ * its /model-profiles request wait here for the first open.
+ */
+export function ProfileSlot(props: ComponentProps<typeof ProfileControls>) {
+  const [opened, setOpened] = useState(false);
+  const mark = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const menu = mark.current?.closest<HTMLElement>("[role=menu]");
+    if (!menu) return;
+    const check = () => { if (!menu.hidden) setOpened(true); };
+    const observer = new MutationObserver(check);
+    observer.observe(menu, { attributeFilter: ["hidden"] });
+    check();
+    return () => observer.disconnect();
+  }, []);
+  return opened ? <Suspense fallback={null}><ProfileControls {...props} /></Suspense> : <span ref={mark} hidden />;
+}
 
 /**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
@@ -443,6 +473,7 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
         </ul>
       )}
       {r?.content && <pre className="mc-step-detail">{r.content}</pre>}
+      {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} /></Suspense>}
     </Step>
   );
 }

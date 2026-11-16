@@ -1,10 +1,11 @@
 import type { IslandStrings } from "./islandStringsZh";
 
-/** en-US island strings, a separate lazy chunk so zh-CN sessions never download them. */
+/** en-US island strings; both locales share one lazy compressed chunk. */
 export const EN_STRINGS: IslandStrings = {
     modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usagePending: "Settlement pending", usageSettled: "Turn settled",
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model",
+    profile: "Model preset", profileNote: "A chosen effort overrides the preset; temperature / top_p / max tokens are not adjustable yet", profileError: "Presets failed to load; reload to retry",
     upstream: "Upstream",
     reasoning: "Thinking process",
     attachmentPending: "Attachment verification pending; download unavailable",

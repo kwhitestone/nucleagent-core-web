@@ -36,7 +36,7 @@ export interface ProcessPartData {
 export interface MediaPartData { media: { kind?: string; taskId?: number }; prompt: string; failed: boolean }
 
 /** What a Core tool step carries into its aui tool-call card (no args: Core only sends the outcome). */
-export interface ToolResult { content: string; query?: string; sources?: readonly { title?: string; domain?: string; url?: string }[] }
+export interface ToolResult { content: string; messageId?: number; query?: string; sources?: readonly { title?: string; domain?: string; url?: string }[] }
 
 const terminal = (item: ConversationItem) => item.status !== "pending" && item.status !== "streaming";
 
@@ -57,7 +57,7 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
   const timing = stepTiming(item, endedAt);
   if (item.kind === "tool_call" || toolCallId) {
     const details = processToolDetails(item.data);
-    const result: ToolResult = { content: item.content, ...(details?.query ? { query: details.query } : {}), ...(details?.sources ? { sources: details.sources } : {}) };
+    const result: ToolResult = { content: item.content, messageId: Number(item.id.slice(4)), ...(details?.query ? { query: details.query } : {}), ...(details?.sources ? { sources: details.sources } : {}) };
     return {
       type: "tool-call", toolCallId: toolCallId ?? item.id, toolName: item.title || item.kind, args: {},
       ...(terminal(item) ? { result, isError: item.status === "failed" } : {}), ...timing,

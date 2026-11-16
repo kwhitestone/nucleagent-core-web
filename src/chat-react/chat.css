@@ -505,3 +505,9 @@
   .mc-model-trigger { max-width: 140px; }
   .mc-menu { width: min(300px, calc(100vw - 32px)); }
 }
+.mc-tool-io { margin: 8px 0; font-size: 12px; }
+.mc-tool-io button { color: inherit; background: transparent; border: 0; cursor: pointer; padding: 6px 0; }
+.mc-tool-io pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; }
+.mc-tool-io dl > div { display: flex; gap: 12px; padding: 3px 0; }
+.mc-tool-io dt { flex: 0 0 110px; }
+.mc-tool-io dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }

@@ -198,7 +198,7 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
     item(id, { lane: "process", kind: "tool_call", userReadable: true, title: "联网搜索", ...over });
   const [, reply] = toThreadMessages(stateOf([
     item("u1", { role: "user", content: "q" }),
-    tool("s1", { content: "找到 2 条", data: { toolCallId: "call-1", toolDetails: { query: "aui", sources: [{ title: "A", url: "https://a.example" }] } } }),
+    tool("msg-12", { content: "找到 2 条", data: { toolCallId: "call-1", toolDetails: { query: "aui", sources: [{ title: "A", url: "https://a.example" }] } } }),
     tool("s2", { status: "streaming", content: "", data: { toolCallId: "call-2" } }),
     tool("s3", { status: "failed", content: "超时" }),
     item("a1", { content: "done", attachments: [{ id: "f9", name: "report.pdf" }] }),
@@ -208,7 +208,7 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
   assert.deepEqual(parts.map((p) => p.type), ["data-process", "tool-call", "tool-call", "tool-call", "text", "data-files", "data-media"]);
   const { timing, ...first } = parts[1] as { timing?: unknown };
   assert.deepEqual(first, { type: "tool-call", toolCallId: "call-1", toolName: "联网搜索", args: {},
-    result: { content: "找到 2 条", query: "aui", sources: [{ title: "A", url: "https://a.example" }] }, isError: false });
+    result: { content: "找到 2 条", messageId: 12, query: "aui", sources: [{ title: "A", url: "https://a.example" }] }, isError: false });
   assert.ok(timing, "settled tool step carries aui timing");
   assert.equal("timing" in parts[2], false, "a running step has no duration yet");
   assert.equal("result" in parts[2], false, "a running tool has no result yet (aui shows it as running)");

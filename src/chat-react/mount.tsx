@@ -5,7 +5,7 @@ import { preloadChatStrategy } from "./chatStrategy";
 
 export type MountProps = Omit<ChatProps, "strings">;
 
-/** Only the current language's island strings are downloaded (each is its own chunk; ChatHost.vue starts it early). */
+/** Select the current language from the shared lazy locale chunk; ChatHost.vue starts it early. */
 export const loadIslandStrings = (locale: ChatProps["locale"]): Promise<IslandStrings> =>
   locale === "en-US" ? import("./islandStringsEn").then((m) => m.EN_STRINGS) : import("./islandStringsZh").then((m) => m.ZH_STRINGS);
 
