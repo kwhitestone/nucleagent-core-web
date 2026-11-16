@@ -2,7 +2,7 @@ import type { IslandStrings } from "./islandStringsZh";
 
 /** en-US island strings, a separate lazy chunk so zh-CN sessions never download them. */
 export const EN_STRINGS: IslandStrings = {
-    modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Not settled or settlement unknown", usageSettled: "Turn settled",
+    modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usagePending: "Settlement pending", usageSettled: "Turn settled",
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model",
     upstream: "Upstream",

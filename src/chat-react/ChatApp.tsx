@@ -225,7 +225,8 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
-export function Composer({ t, settings, placeholder, effort }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort> }) {
+/** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
+export function Composer({ t, settings, placeholder, effort, controls }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode }) {
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
@@ -251,7 +252,7 @@ export function Composer({ t, settings, placeholder, effort }: { t: Translate; s
           <MediaPill kind="video" t={t} />
           <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-          {effort && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} />}
+          {effort && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions.includes("send") && (
             <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>

@@ -22,6 +22,16 @@ test("UNKNOWN, pending, missing authority and incomplete upstream evidence never
   }
 });
 
+test("pending settlement is its own state, never zero, and yields to a later settled or UNKNOWN revision", () => {
+  const pending = settled({ state: "pending", points: "0", upstreams: [] });
+  assert.deepEqual(turnUsage(scope, [pending]), { state: "pending", points: "—", upstreams: [] });
+  assert.equal(turnUsage(scope, [settled({ revision: 0 }), pending]).state, "pending");
+  assert.deepEqual(turnUsage(scope, [pending, settled({ revision: 2 })]), { state: "settled", points: "0", upstreams: ["aihub-gateway"] });
+  assert.equal(turnUsage(scope, [pending, settled({ revision: 2, state: "unknown" })]).state, "unknown");
+  assert.equal(turnUsage(scope, [pending, { ...pending }]).state, "unknown");
+  assert.equal(turnUsage({ ...scope, turnId: "turn-b" }, [pending]).state, "unknown");
+});
+
 test("mixed upstreams stay bound to the matching conversation and turn", () => {
   const evidence = settled({ points: "2", upstreams: ["aihub-gateway", "everai-yunyi"] });
   assert.deepEqual(turnUsage(scope, [evidence]).upstreams, ["aihub-gateway", "everai-yunyi"]);
