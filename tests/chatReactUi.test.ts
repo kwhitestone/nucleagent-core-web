@@ -445,6 +445,66 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
   }
 });
 
+test("model menu keeps its own keys beside Controls: arrows do not open it, Escape bubbles, Escape/Tab/pick refocus the trigger, outside click closes", async () => {
+  const document = window.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
+  Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(container);
+  const picked: unknown[] = [];
+  const escapes: string[] = [];
+  const heard = (event: Event) => { if ((event as KeyboardEvent).key === "Escape") escapes.push("body"); };
+  document.body.addEventListener("keydown", heard);
+  const option = (model: string) => ({ value: `chat:p:${model}`, label: model, choice: { kind: "chat" as const, model: { providerId: "p", model } } });
+  const key = async (target: Element, value: string) => {
+    await React.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true })));
+  };
+  try {
+    await React.act(async () => root.render(React.createElement(app.ModelMenu, { t, groups: [{ kind: "chat" as const, options: [option("m1"), option("m2")] }],
+      value: "chat:p:m1", backend: null, disabled: false, onPick: (choice: unknown) => picked.push(choice) })));
+    const trigger = container.querySelector<HTMLButtonElement>("[data-testid=mc-model]")!;
+    const menu = container.querySelector<HTMLElement>("[role=menu]")!;
+    await key(trigger, "ArrowDown");
+    assert.equal(menu.hidden, true, "unlike Controls, arrows on the trigger do not open the model menu");
+    await React.act(async () => trigger.click());
+    const radios = container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+    assert.equal(radios.length, 3);
+    assert.equal(document.activeElement, radios[1], "opens on the checked model");
+    await key(radios[1], "ArrowDown");
+    await key(radios[2], "ArrowDown");
+    assert.equal(document.activeElement, radios[0], "wraps");
+    await key(radios[0], "End");
+    assert.equal(document.activeElement, radios[2]);
+    await key(radios[2], "Escape");
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, trigger);
+    assert.deepEqual(escapes, ["body"], "the model menu does not swallow Escape");
+    await React.act(async () => trigger.click());
+    await key(radios[1], "Tab");
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, trigger);
+    await React.act(async () => trigger.click());
+    await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
+    assert.equal(menu.hidden, true);
+    await React.act(async () => trigger.click());
+    await React.act(async () => radios[2].click());
+    assert.deepEqual(picked, [option("m2").choice]);
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, trigger);
+    await React.act(async () => trigger.click());
+    await React.act(async () => radios[0].click());
+    assert.deepEqual(picked, [option("m2").choice, null], "默认模型 picks null");
+  } finally {
+    await React.act(async () => root.unmount());
+    document.body.removeEventListener("keydown", heard);
+    container.remove();
+    Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
 test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on revision and refresh", async () => {
   const { turnUsage } = await import("../src/chat-react/turnUsage.ts");
   const scope = { conversationId: "7", turnId: "one" };
