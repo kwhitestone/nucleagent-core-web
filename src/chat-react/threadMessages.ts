@@ -80,6 +80,11 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
   // Late process rows move before the answer, as in the Vue view.
   for (const raw of orderTurnItemsForDisplay(group)) {
     const item = processItemForDisplay(raw, locale);
+    if (item.data?.modelThinking === true && item.content) {
+      flush(item.timestamp);
+      parts.push({ type: "data-thinking", id: item.id, data: { text: item.content, active: active(item) } });
+      continue;
+    }
     // tool/progress rows join the fold too, so every step group has its 执行过程 header.
     if (item.lane === "process" || item.lane === "tool" || item.lane === "progress") {
       if (item.lane === "process" || item.title || item.content) run.push(item);

@@ -53,6 +53,28 @@ function render(state: ReturnType<typeof stateOf>, child: () => import("react").
 }
 const settings = { groups: [], model: null, backend: null, busy: false, pick: async () => {} };
 
+test("actual thinking has an independent default-closed fold, streaming label and escaped text", () => {
+  for (const status of ["streaming", "complete"] as const) {
+    const state = stateOf([
+      item("user", { role: "user", content: "Question" }),
+      item("thought", { lane: "process", userReadable: true, content: "Model <script>thinking</script>", status, data: { thinking: true, modelThinking: true } }),
+      item("answer", { content: "Answer", status }),
+    ], status === "streaming" ? "running" : "completed");
+    const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
+      ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+    assert.match(html, /<details class="mc-process mc-reasoning">/);
+    assert.match(html, /chatReact.reasoning/);
+    assert.equal(html.includes("chatReact.thinking"), status === "streaming");
+    assert.match(html, /Model &lt;script&gt;thinking&lt;\/script&gt;/);
+    assert.doesNotMatch(html, /<script>|mc-reasoning" open/);
+    assert.equal(html.split("Model &lt;script&gt;").length - 1, 1);
+  }
+  const html = render(stateOf([item("heartbeat", { lane: "process", userReadable: true, title: "Waiting", data: { thinking: true, thinkingStatus: true } })]),
+    () => React.createElement(aui.ThreadPrimitive.Messages, null,
+      ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.doesNotMatch(html, /mc-reasoning/);
+});
+
 test("composer state machine: idle send; running empty → stop only; running with text → queue + stop", () => {
   assert.deepEqual(composerActions(false, true), ["send"]);
   assert.deepEqual(composerActions(false, false), ["send"]);

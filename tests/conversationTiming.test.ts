@@ -37,3 +37,17 @@ test("a server snapshot supplies waiting status and a stable cancelled endpoint"
   });
   assert.equal(snapshotTiming({ status: "failed", completedAt: "bad" }).stoppedAt, undefined);
 });
+
+test("only visible model thinking carries provenance, never heartbeat or synthesized fallback", () => {
+  for (const thinkingVisibility of ["summary", "full"]) {
+    const thought = message({ senderName: "agent.thinking", content: "Model reasoning", metadata: { thinkingVisibility } });
+    assert.equal(messageTimingData(thought).modelThinking, true);
+    for (const hidden of [
+      { ...thought, metadata: { thinkingVisibility, thinkingStatus: true } },
+      { ...thought, metadata: { thinkingVisibility: "status" } },
+      { ...thought, metadata: {} },
+      { ...thought, content: "  " },
+      { ...thought, senderName: "agent" },
+    ]) assert.equal(messageTimingData(hidden).modelThinking, undefined);
+  }
+});

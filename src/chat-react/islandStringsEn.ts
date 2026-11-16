@@ -2,6 +2,7 @@ import type { IslandStrings } from "./islandStringsZh";
 
 /** en-US island strings, a separate lazy chunk so zh-CN sessions never download them. */
 export const EN_STRINGS: IslandStrings = {
+    reasoning: "Thinking process",
     attachmentPending: "Attachment verification pending; download unavailable",
     stop: "Stop", executor: "Executors", mediaLater: "Coming soon", pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",

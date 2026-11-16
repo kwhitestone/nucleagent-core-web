@@ -21,6 +21,9 @@ export function messageTimingData(message: Message): Record<string, unknown> {
       (["agent", "system"].includes(message.senderType) && message.msgType === "error")
     ),
     ...(meta?.thinkingStatus === true ? { thinkingStatus: true } : {}),
+    ...(message.senderName?.endsWith(".thinking") && meta?.thinkingStatus !== true &&
+      ["summary", "full"].includes(String(meta?.thinkingVisibility)) && message.content?.trim()
+      ? { modelThinking: true } : {}),
     // Raw executor timing; parsed only inside the React island (default-path size).
     ...(meta?.server_timing?.constructor === Object ? { serverTiming: meta.server_timing } : {}),
     ...(typeof meta?.clarify_request_id === "string" ? { clarifyResponse: true } : {}),

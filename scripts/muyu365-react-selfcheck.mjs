@@ -70,6 +70,15 @@ try {
 
   // One page per screenshot. `open` = expand the 执行过程 folds; `menu` = open the model menu; `text` = composer draft.
   const SCENES = {
+    "mock-thinking-streaming": { now: 4, state: snapshot([
+      user("u1", 0, "mock：展示模型返回的可见思考"),
+      proc("thought", 1, "思考过程", "mock 模型思考内容：先检查输入，再组织回答。", { status: "streaming", data: { thinking: true, modelThinking: true } }),
+    ], "running") },
+    "mock-thinking-complete": { openThought: true, state: snapshot([
+      user("u1", 0, "mock：展示模型返回的可见思考"),
+      proc("thought", 1, "思考过程", "mock 模型思考内容：先检查输入，再组织回答。", { data: { thinking: true, modelThinking: true } }),
+      item("a1", 3, { content: "mock：回答已完成，思考默认收起。" }),
+    ], "completed") },
     "empty-suggestions": { state: snapshot([], "idle"), newChat: true, suggestions: [
       { title: "写周报", label: "整理本周进展", prompt: "写周报：" }, { title: "翻译文档", label: "中英互译", prompt: "翻译文档：" },
       { title: "数据分析", label: "上传表格后提问", prompt: "数据分析：" }, { title: "竞品调研", label: "联网检索并对比", prompt: "竞品调研：" } ] },
@@ -134,6 +143,7 @@ try {
   };
   for (const [name, scene] of Object.entries(SCENES)) {
     const hooks = [
+      scene.openThought && "document.querySelector('.mc-reasoning summary').click();",
       scene.open && "document.querySelectorAll('details.mc-process').forEach(d=>d.open=true);",
       // react-textarea-autosize runs only with JS in a live page; size the static draft the same way (≤ 8 rows).
       scene.text && "const ta=document.querySelector('.mc-input');ta.rows=Math.min(8,ta.value.split('\\n').length);",
@@ -144,7 +154,7 @@ try {
         : "const v=document.querySelector('.mc-viewport');v.scrollTop=v.scrollHeight;",
     ].filter(Boolean).join("");
     writeFileSync(join(outDir, `${name}.html`), `<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>${css}\nhtml,body{margin:0;height:100%}</style></head>` +
-      `<body>${decorate(renderToStaticMarkup(h(Scene, { scene })))}${SHELL_BUTTON}<script>${hooks}</script></body></html>`);
+      `<body><div style="position:fixed;top:0;left:8px;z-index:9999;background:#fff3cd;color:#543;font:14px sans-serif;padding:8px">mock · 本地自检，非 TEST 验收</div>${decorate(renderToStaticMarkup(h(Scene, { scene })))}${SHELL_BUTTON}<script>${hooks}</script></body></html>`);
   }
   writeFileSync(join(outDir, "scenes.json"), JSON.stringify(Object.fromEntries(Object.entries(SCENES).map(([k, s]) => [k, `${s.width ?? 1100},${s.height ?? 755}`]))));
   console.log(`wrote ${Object.keys(SCENES).length} scenes to ${outDir}`);

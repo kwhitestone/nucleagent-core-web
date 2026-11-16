@@ -520,6 +520,13 @@ function Parts({ t }: { t: Translate }) {
           case "tool-call":
             return <ToolStep part={part} t={t} />;
           case "data":
+            if (part.name === "thinking") {
+              const thought = part.data as { text: string; active: boolean };
+              return <details className="mc-process mc-reasoning">
+                <summary className="mc-process-head"><span className="mc-process-chevron"><ChevronMark size={16} /></span>{t("chatReact.reasoning")}{thought.active && <span role="status"> · {t("chatReact.thinking")}</span>}</summary>
+                <pre className="mc-step-detail">{thought.text}</pre>
+              </details>;
+            }
             // The header is drawn by ProcessFold.
             if (part.name === "process") return <></>;
             if (part.name === "media") return <MediaCard data={part.data as MediaPartData} t={t} />;
