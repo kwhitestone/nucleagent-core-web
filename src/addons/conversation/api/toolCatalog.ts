@@ -76,3 +76,23 @@ export async function listToolCatalog(): Promise<ToolCatalogItem[]> {
     throw e;
   }
 }
+
+const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is ToolCatalogItem => !!t && typeof t === "object"
+  && Number.isSafeInteger((t as ToolCatalogItem).id) && (t as ToolCatalogItem).id > 0 && typeof (t as ToolCatalogItem).name === "string")
+  .map((t) => ({ ...t, skillIds: Array.isArray(t.skillIds) ? t.skillIds.filter((id) => Number.isSafeInteger(id)) : [] }));
+
+/** Every catalog page (Core caps pageSize at 100) until hasMore is false, at most `maxPages`; [] on 404/405 like listToolCatalog. */
+export async function listToolCatalogPages(maxPages = 50): Promise<ToolCatalogItem[]> {
+  const out: ToolCatalogItem[] = [];
+  try {
+    for (let page = 1; page <= maxPages; page++) {
+      const r = await getPlatformRuntime().http.get<{ data?: unknown; hasMore?: boolean }>(`${TOOL_CATALOG_PATH}?page=${page}&pageSize=100`);
+      out.push(...wellFormed(Array.isArray(r.data?.data) ? r.data.data : []));
+      if (r.data?.hasMore !== true) break;
+    }
+    return out;
+  } catch (e) {
+    if ([404, 405].includes((e as { status?: number } | null)?.status as number)) return [];
+    throw e;
+  }
+}

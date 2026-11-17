@@ -17,7 +17,7 @@ import { MediaCard } from "./MediaCard";
 import { EnumSelect, toolSchema, WorkflowForm } from "./WorkflowForm";
 import { guardMediaSend } from "./mediaPolicy";
 import { directMediaRequest, directMediaTool, workflowFields, type DirectMedia } from "./workflowParams";
-import { listToolCatalog } from "@/addons/conversation/api/toolCatalog";
+import { listToolCatalogPages } from "@/addons/conversation/api/toolCatalog";
 import { getSessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
 import { executionBackendCompatibility } from "@/addons/conversation/composables/executionBackendCompatibility";
@@ -795,7 +795,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   useEffect(() => {
     let live = true;
     setDirect(null); setParams({});
-    if (media) void Promise.all([listToolCatalog(), conversationId ? getSessionBindings(conversationId) : null])
+    if (media) void Promise.all([listToolCatalogPages(), conversationId ? getSessionBindings(conversationId) : null])
       .then(([rows, bound]) => directMediaTool(media.model.model, bound ? rows.filter((row) => bound.toolIds.includes(row.id)) : rows, toolSchema))
       .then((found) => { if (live) setDirect(found); }, () => {});
     return () => { live = false; };

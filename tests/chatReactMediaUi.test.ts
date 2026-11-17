@@ -178,7 +178,7 @@ test("late task responses cannot overwrite a different history card; video is pl
 const imageSchema = { model: "image-model", invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "aspect_ratio"],
   properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1", "16:9"] } } } };
 const directResponse = (bound: number[]) => (url: string) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
-  : url.endsWith("/catalog") ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
+  : /\/catalog(\?|$)/.test(url) ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
   : url.endsWith("/9/schema") ? imageSchema
   : url.endsWith("/bindings") ? { skillIds: [], toolIds: bound, editable: true, revision: "1", principal: "1" }
   : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
@@ -275,7 +275,7 @@ test("a new conversation resolves the selected media model to its job tool; an e
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   const view = await fixture();
   response = (url) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
-    : url.endsWith("/catalog") ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
+    : /\/catalog(\?|$)/.test(url) ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
     : url.endsWith("/9/schema") ? { model: "image-model", invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false, properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1"] } } } }
     : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
   function Harness({ id }: { id?: string }) {
