@@ -1,6 +1,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createConversationAdapter } from "@/addons/conversation/composables/useConversationAdapter";
+import { followUp } from "@/addons/conversation/api/conversation";
+import type { EffortChoice } from "./requestEffort";
 import { createConversationController } from "@/addons/conversation/task-conversation/conversationController";
 import { observableBoxes } from "./observableBox";
 
@@ -12,11 +14,14 @@ const noop = () => () => {};
  * subscribed with useSyncExternalStore; no Vue reactivity in the island. One adapter per id
  * (plan §3 risk: the adapter keeps per-conversation module state).
  */
-export function useCoreConversation(id: string | undefined, onError: (error: Error) => void) {
+export function useCoreConversation(id: string | undefined, onError: (error: Error) => void, effort: () => EffortChoice = () => "") {
   const [controller, setController] = useState<Controller | null>(null);
   useEffect(() => {
     if (!id) { setController(null); return; }
-    const adapter = createConversationAdapter(() => id);
+    // Same follow-up as the adapter's default, plus the chosen per-turn effort (gap2).
+    const adapter = createConversationAdapter(() => id, {
+      send: async (input, attachments) => { await followUp(id, input, attachments, undefined, undefined, effort() || undefined); return { accepted: true }; },
+    });
     const { box, subscribe } = observableBoxes();
     const c = { ...createConversationController({
       conversationKey: () => id, adapter: () => adapter,
@@ -31,7 +36,7 @@ export function useCoreConversation(id: string | undefined, onError: (error: Err
     };
     window.addEventListener(SESSION_CHANGE_EVENT, onSession);
     return () => { window.removeEventListener(SESSION_CHANGE_EVENT, onSession); c.dispose(); };
-    // onError is a stable module-level function in ChatApp.
+    // onError is a stable module-level function in ChatApp; effort reads a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   const state = useSyncExternalStore(controller?.subscribe ?? noop, () => controller?.state.value ?? null);

@@ -9,6 +9,7 @@ export const RUNTIME_CONFIG_KEYS = [
   "VITE_EMBED_HOST_ORIGINS",
   "VITE_SHELL_ALLOWED_ORIGINS",
   "CHAT_UI_DEFAULT",
+  "CHAT_EFFORT_DEFAULT",
 ] as const;
 export type RuntimeConfigKey = (typeof RUNTIME_CONFIG_KEYS)[number];
 export type RuntimeConfig = Readonly<Record<RuntimeConfigKey, string>>;
@@ -54,6 +55,12 @@ export function parseRuntimeConfig(body: unknown, pageOrigin: string): RuntimeCo
       const value = input[key];
       if (value === undefined || value === "") continue;
       if (value !== "old" && value !== "react") throw new Error(`runtime-config.json: invalid ${key}`);
+      out[key] = value;
+    } else if (key === "CHAT_EFFORT_DEFAULT") {
+      // MUYU-365 gap2 per-environment default reasoning effort; optional, absent/empty = backend default.
+      const value = input[key];
+      if (value === undefined || value === "") continue;
+      if (value !== "low" && value !== "medium" && value !== "high") throw new Error(`runtime-config.json: invalid ${key}`);
       out[key] = value;
     } else if (key === "VITE_SHELL_ALLOWED_ORIGINS") {
       const value = input[key] === undefined ? "" : input[key];
