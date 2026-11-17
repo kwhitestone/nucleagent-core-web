@@ -829,3 +829,11 @@ Vue 侧**未重新截图**：Vue 视图依赖 Pinia/路由/i18n/SFC，不能用�
   whose reasoning is model-native). Core/Toolgate expose no per-model effort
   capability yet (gap2 REPORT C③).
 - Replaces the D18 `?chatEffort=low` TEST experiment toggle.
+
+### 23.2 Upstream label
+- Model menu rows and the trigger show the real Toolgate upstream when the typed
+  catalog (`GET /provider/models?type=`) carries `upstream` (route rule upstream
+  name): `aihub-gateway` → “AIHub”, `everai-yunyi` → “云一/everai”, any other
+  name verbatim. Absent field (every Core up to v0.1.13: its catalog sync drops
+  Toolgate's `upstream`) → no label; nothing is inferred from model names.
+  Model groups (聊天/生图/生视频/执行器) are unchanged and coexist with the tag.

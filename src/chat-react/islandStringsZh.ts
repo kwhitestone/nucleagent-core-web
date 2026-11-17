@@ -2,6 +2,7 @@
 export const ZH_STRINGS = {
     effort: "思考强度", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "该模型不支持",
     effortBackend: "仅 Codex 执行器支持", effortUnverified: "未实测该模型是否生效", effortIneffective: "已实测：对该模型不生效", effortEffective: "已实测：对该模型生效",
+    upstream: "上游",
     reasoning: "思考过程",
     attachmentPending: "附件待核验，暂不可下载",
     stop: "停止", executor: "目鱼执行器", mediaLater: "即将开放", pickerLabel: "模型与执行器",
