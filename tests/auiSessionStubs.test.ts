@@ -18,6 +18,19 @@ test("stand-ins are valid only for the pinned library and while the island passe
   assert.doesNotMatch(read("src/chat-react/externalStore.ts"), /voice|dictation/i);
 });
 
+test("tool-invocation tracker stand-in: the host builds a tracker only on opt-in, which the island never gives", async () => {
+  const host = read("node_modules/@assistant-ui/core/dist/runtimes/external-store/external-store-thread-runtime-core.js");
+  assert.match(read("vite.config.ts"), /"\.\.\/tool-invocations\/ToolInvocationTracker\.js": [^\n]*src\/vendor\/assistant-ui-core\/tool-invocation-tracker\.ts/);
+  assert.equal(host.match(/new ToolInvocationTracker\(/g)?.length, 1, "one construction site");
+  assert.match(host, /_driveToolInvocations\(\) \{\n\t\tif \(!this\._store\.unstable_enableToolInvocations\) \{/, "behind the opt-in");
+  for (const file of ["src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts"]) {
+    assert.doesNotMatch(read(file), /unstable_enableToolInvocations|unstable_isClientToolCall/, file);
+  }
+  const stub = await import("../src/vendor/assistant-ui-core/tool-invocation-tracker.ts");
+  assert.equal(await stub.NO_TOOL_EXECUTIONS, undefined);
+  assert.throws(() => new (stub.ToolInvocationTracker as unknown as new () => unknown)(), /not bundled/);
+});
+
 test("every member the library hosts touch exists on the stand-ins and behaves as the original without a session", async () => {
   const messages = [{ id: "a", role: "assistant", status: { type: "running" } }];
   const host = { adapter: () => undefined, isRunning: () => false, dirty: 0, notified: 0, getBaseMessages: () => messages,

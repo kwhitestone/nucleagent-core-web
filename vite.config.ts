@@ -40,6 +40,8 @@ export default defineConfig(({ mode }) => {
         // are unreachable, so the bundle gets inert stand-ins (tests/auiSessionStubs.test.ts pins the contract).
         "./voice-session.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/voice-session.ts"),
         "./dictation-session.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/dictation-session.ts"),
+        // MUYU-365 batch 2: the island never sets unstable_enableToolInvocations, so the tracker is never constructed.
+        "../tool-invocations/ToolInvocationTracker.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/tool-invocation-tracker.ts"),
         "@": resolve(process.cwd(), "src"),
       },
     },
