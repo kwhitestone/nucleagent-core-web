@@ -64,3 +64,19 @@ test("a model with no supported levels disables the selector and omits remembere
     assert.deepEqual(payload, { input: "q" });
   }
 });
+
+// MUYU-365 exp3: Core /model-profiles `efforts` is the server whitelist; it enables levels when no measured strategy exists.
+test("server efforts enable only listed levels and are labelled as accepted, not measured", async () => {
+  const { serverEvidence } = await import("../src/chat-react/requestEffort.ts");
+  assert.equal(serverEvidence(undefined), undefined);
+  assert.equal(serverEvidence([]), undefined);
+  assert.equal(serverEvidence([{ efforts: [] }]), undefined, "empty whitelist = nothing to offer");
+  assert.equal(serverEvidence([{}]), undefined, "older Core without efforts");
+  const evidence = serverEvidence([{ efforts: ["medium", "low", "xhigh"] }]);
+  assert.deepEqual(evidence, { levels: ["low", "medium"], effective: false, source: "core" });
+  const view = effortView("codex", evidence);
+  assert.deepEqual([view.disabled, view.off, view.note], [false, ["high"], "server"]);
+  assert.equal(sentEffort("low", view), "low");
+  assert.equal(sentEffort("high", view), "", "unlisted level is never sent");
+  assert.equal(effortView("hermes", evidence).disabled, true);
+});
