@@ -68,12 +68,24 @@ try {
     item("a1", 3, { status: "streaming", content: "下周计划：\n\n1. 附件预览" }),
   ], "running");
 
+  // gap2 mock catalog: upstream names as Core would forward them from Toolgate (not real TEST data).
+  const UPSTREAM_GROUPS = [
+    { kind: "chat", options: [["mock-claude", "AIHub"], ["mock-deepseek", "云一/everai"], ["mock-unknown", undefined]].map(([m, u]) => ({ value: `chat:1:${m}`, label: m, hint: "mock 网关", ...(u ? { upstream: u } : {}), choice: { kind: "chat", model: { providerId: 1, model: m } } })) },
+    { kind: "image", options: [{ value: "image:1:mock-img", label: "mock-img", upstream: "AIHub", choice: { kind: "image", model: { providerId: 1, model: "mock-img" } } }] },
+    { kind: "executor", options: [{ value: "executor:codex", label: "Codex", choice: { kind: "executor", backend: "codex" } }] },
+  ];
+  const upstreamSettings = { groups: UPSTREAM_GROUPS, model: { providerId: 1, model: "mock-claude" }, backend: "codex", busy: false, pick: async () => {} };
+  const effortOf = (sent, off, note) => ({ choice: sent, sent, view: { disabled: false, off, note }, set: () => {} });
+
   // One page per screenshot. `open` = expand the 执行过程 folds; `menu` = open the model menu; `text` = composer draft.
   const SCENES = {
     "mock-resend-attachments": { state: snapshot([
       user("u1", 0, "mock：请总结附件", { attachments: [{ id: "mock-file", name: "mock-report.pdf", mimeType: "application/pdf", size: 2048, metadata: verified }] }),
       item("a1", 3, { content: "mock：点击下方再次发送会新增一轮，保留原问题与附件引用。" }),
     ], "completed") },
+    "mock-effort-select": { state: snapshot([], "idle"), newChat: true, settings: upstreamSettings, effort: effortOf("low", ["high"], "ineffective"), openEffort: true },
+    "mock-narrow-520-effort": { state: snapshot([], "idle"), newChat: true, width: 520, settings: upstreamSettings, effort: effortOf("medium", [], "unverified") },
+    "mock-upstream-menu": { state: snapshot([], "idle"), newChat: true, settings: upstreamSettings, effort: effortOf("", [], "unverified"), menu: true },
     "mock-thinking-streaming": { now: 4, state: snapshot([
       user("u1", 0, "mock：展示模型返回的可见思考"),
       proc("thought", 1, "思考过程", "mock 模型思考内容：先检查输入，再组织回答。", { status: "streaming", data: { thinking: true, modelThinking: true } }),
@@ -132,7 +144,7 @@ try {
           h(ThreadPrimitive.Empty, null, h(Welcome, { t })),
           h(ThreadPrimitive.Messages, null, ({ message }) => h(MessageRow, { role: message.role, t })),
           h(ThreadPrimitive.ViewportFooter, { className: "mc-footer" },
-            h(Composer, { t, settings, placeholder: scene.newChat ? t("chatReact.newPlaceholder") : t("conversation.inputPlaceholder") })))));
+            h(Composer, { t, settings: scene.settings ?? settings, effort: scene.effort, placeholder: scene.newChat ? t("chatReact.newPlaceholder") : t("conversation.inputPlaceholder") })))));
   }
   // Selfcheck-only mock of the shell's floating 「◇ 成果」 trigger (nucleagent-web CoreRemoteHost.vue: top 18px / right 22px,
   // about 120×36): inline-styled here, never in chat.css or the island DOM.
@@ -147,6 +159,7 @@ try {
   };
   for (const [name, scene] of Object.entries(SCENES)) {
     const hooks = [
+      scene.openEffort && "const s=document.querySelector('[data-testid=mc-effort]');s.size=4;s.style.cssText='position:fixed;bottom:150px;left:120px;height:auto;z-index:10';",
       scene.openThought && "document.querySelector('.mc-reasoning summary').click();",
       scene.open && "document.querySelectorAll('details.mc-process').forEach(d=>d.open=true);",
       // react-textarea-autosize runs only with JS in a live page; size the static draft the same way (≤ 8 rows).
