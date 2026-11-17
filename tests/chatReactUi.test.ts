@@ -54,16 +54,43 @@ function render(state: ReturnType<typeof stateOf>, child: () => import("react").
 }
 const settings = { groups: [], model: null, backend: null, busy: false, pick: async () => {} };
 
-test("effort capability states disable the rendered selector and suppress a remembered unsupported level", () => {
+test("effort capability states disable radio choices and suppress a remembered unsupported level", () => {
   for (const evidence of [undefined, { levels: [], effective: false, source: "catalog:unsupported" }]) {
     const view = effortView("codex", evidence);
-    const html = renderToString(React.createElement(app.EffortSelect, {
-      t, value: sentEffort("high", view), view, onChange: () => {},
+    const html = renderToString(React.createElement(app.ModelControls, {
+      t, value: sentEffort("high", view), view, onChange: () => {}, defaultOpen: true,
     }));
-    assert.match(html, /<select[^>]*disabled=""/);
-    assert.match(html, /<option value="" selected="">/);
+    assert.equal((html.match(/disabled=""/g) ?? []).length, 4);
+    assert.match(html, /aria-checked="true"/);
     assert.match(html, new RegExp(`chatReact.effort${evidence ? "Ineffective" : "Unverified"}`));
   }
+});
+
+test("model controls opens from an icon, exposes supported radio choices and leaves an extension slot", () => {
+  const view = effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" });
+  const html = renderToString(React.createElement(app.ModelControls, {
+    t, value: "high", view, onChange: () => {}, defaultOpen: true,
+  }, React.createElement("button", null, "extension")));
+  assert.match(html, /aria-label="chatReact.modelControls"/);
+  assert.match(html, /aria-haspopup="menu" aria-expanded="true"/);
+  assert.equal((html.match(/role="menuitemradio"/g) ?? []).length, 4);
+  assert.match(html, /aria-checked="true"[^>]*>.*chatReact.effortHigh/);
+  assert.match(html, /disabled=""[^>]*>.*chatReact.effortMedium/);
+  assert.match(html, /extension/);
+  assert.doesNotMatch(html, /<select/);
+});
+
+test("every assistant response has an UNKNOWN usage area; user messages and raw token data cannot invent points", () => {
+  const html = render(stateOf([
+    item("user1", { role: "user", content: "one" }),
+    item("answer1", { data: { usage: { points: 12, tokens: 9000 }, upstream: "untrusted" } }),
+    item("user2", { role: "user", content: "two" }), item("answer2"),
+  ]), () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.equal((html.match(/data-testid="mc-turn-usage"/g) ?? []).length, 2);
+  assert.equal((html.match(/data-settlement="unknown"/g) ?? []).length, 2);
+  assert.match(html, /—/);
+  assert.doesNotMatch(html, /untrusted|9000/);
 });
 
 test("actual thinking has an independent default-closed fold, streaming label and escaped text", (context) => {
@@ -307,16 +334,20 @@ test("process head: 首字 X 秒 · 总耗时 Y 秒 from server_timing; detail r
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
 });
 
-test("effort select: levels from the view, unsupported levels disabled and labelled, honest effect note; non-codex disabled", () => {
-  const html = (value: string, view: object) => renderToString(React.createElement(app.EffortSelect, { t, value, view, onChange: () => {} }));
+test("effort radios: unsupported levels disabled and labelled, honest effect note; non-codex disabled", () => {
+  const html = (value: string, view: object) => renderToString(React.createElement(app.ModelControls, { t, value, view, onChange: () => {}, defaultOpen: true }));
   const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
-  assert.match(partial, /<select[^>]*data-testid="mc-effort"[^>]*aria-label="chatReact.effort"[^>]*title="chatReact.effort · chatReact.effortIneffective"/);
-  assert.match(partial, /<option value="">chatReact.effort · chatReact.effortDefault<\/option>/);
-  assert.match(partial, /<option value="low" selected="">chatReact.effort · chatReact.effortLow<\/option>/);
-  assert.match(partial, /<option value="high" disabled="">chatReact.effort · chatReact.effortHigh（chatReact.effortOff）<\/option>/);
-  assert.doesNotMatch(partial, /value="medium" disabled/);
+  const document = new JSDOM(partial).window.document;
+  const choices = document.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+  assert.equal(choices[0].textContent, "chatReact.effortDefault");
+  assert.equal(choices[1].getAttribute("aria-checked"), "true");
+  assert.equal(choices[2].disabled, false);
+  assert.equal(choices[3].disabled, true);
+  assert.equal(choices[3].title, "chatReact.effortOff");
+  assert.match(partial, /chatReact.effortIneffective/);
   const other = html("", { disabled: true, off: ["low", "medium", "high"], note: "backend" });
-  assert.match(other, /<select[^>]*disabled=""[^>]*title="chatReact.effort · chatReact.effortBackend"|<select[^>]*title="chatReact.effort · chatReact.effortBackend"[^>]*disabled=""/);
+  assert.equal((other.match(/disabled=""/g) ?? []).length, 4);
+  assert.match(other, /chatReact.effortBackend/);
   assert.match(html("", { disabled: false, off: [], note: "unverified" }), /chatReact.effortUnverified/);
   assert.match(html("", { disabled: false, off: [], note: "effective" }), /chatReact.effortEffective/);
 });
@@ -329,7 +360,79 @@ test("composer: effect note is visible text (not only a tooltip) once a level is
   const off = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
     effort: { ...base, sent: "", view: { disabled: true, off: ["low", "medium", "high"], note: "backend" } } }));
   assert.doesNotMatch(off, /mc-effort-note/);
-  assert.match(off, /data-testid="mc-effort"/);
+  assert.match(off, /aria-label="chatReact.modelControls"/);
+});
+
+test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and disabled evidence", async () => {
+  const document = window.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: document });
+  Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(container);
+  const selected: string[] = [];
+  const draw = (view: ReturnType<typeof effortView>) => React.createElement(app.ModelControls, {
+    t, value: "low", view, onChange: (value: string) => selected.push(value),
+  });
+  const key = async (target: Element, value: string) => {
+    await React.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true })));
+  };
+  try {
+    await React.act(async () => root.render(draw(effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" }))));
+    const trigger = container.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    const menu = container.querySelector<HTMLElement>("[role=menu]")!;
+    assert.equal(menu.hidden, true);
+    await React.act(async () => trigger.click());
+    const radios = container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+    assert.equal(document.activeElement, radios[1]);
+    await key(radios[1], "ArrowDown");
+    assert.equal(document.activeElement, radios[3]);
+    await key(radios[3], "Home");
+    assert.equal(document.activeElement, radios[0]);
+    await key(radios[0], "End");
+    assert.equal(document.activeElement, radios[3]);
+    await React.act(async () => radios[3].click());
+    assert.deepEqual(selected, ["high"]);
+    await React.act(async () => radios[2].click());
+    assert.deepEqual(selected, ["high"]);
+    await key(radios[3], "Escape");
+    assert.equal(menu.hidden, true);
+    assert.equal(document.activeElement, trigger);
+    await key(trigger, "ArrowDown");
+    assert.equal(menu.hidden, false);
+    await key(radios[1], "Tab");
+    assert.equal(menu.hidden, true);
+    await React.act(async () => trigger.click());
+    await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
+    assert.equal(menu.hidden, true);
+    await React.act(async () => root.render(draw(effortView("codex", undefined))));
+    await React.act(async () => trigger.click());
+    assert.equal(menu.hidden, false);
+    for (const radio of radios) assert.equal(radio.disabled, true);
+    await key(trigger, "Escape");
+    assert.equal(menu.hidden, true);
+  } finally {
+    await React.act(async () => root.unmount());
+    container.remove();
+    Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    Reflect.deleteProperty(globalThis, "document");
+  }
+});
+
+test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on revision and refresh", async () => {
+  const { turnUsage } = await import("../src/chat-react/turnUsage.ts");
+  const scope = { conversationId: "7", turnId: "one" };
+  const receipt = { ...scope, state: "settled" as const, revision: 2, points: "0", upstreams: ["aihub-gateway", "everai-yunyi"] };
+  const show = (usage: ReturnType<typeof turnUsage>) => renderToString(React.createElement(app.TurnUsage, { t, usage }));
+  assert.match(show(turnUsage(scope)), /data-settlement="unknown"[^>]*>chatReact.points<!-- -->: <!-- -->—/);
+  const settled = show(turnUsage(scope, [receipt]));
+  assert.match(settled, /data-settlement="settled"/);
+  assert.match(settled, /: <!-- -->0/);
+  assert.match(settled, /aihub-gateway \/ everai-yunyi/);
+  assert.equal(show(turnUsage(scope, JSON.parse(JSON.stringify([receipt])))), settled);
+  assert.doesNotMatch(show(turnUsage({ ...scope, turnId: "two" }, [receipt])), /aihub-gateway/);
+  assert.match(show(turnUsage(scope, [receipt, { ...receipt, revision: 3, state: "unknown" }])), /data-settlement="unknown"/);
 });
 
 test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
