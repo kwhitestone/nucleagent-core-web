@@ -38,8 +38,6 @@ export interface MediaPartData { media: { kind?: string; taskId?: number }; prom
 /** What a Core tool step carries into its aui tool-call card (no args: Core only sends the outcome). */
 export interface ToolResult { content: string; messageId?: number; query?: string; sources?: readonly { title?: string; domain?: string; url?: string }[] }
 
-const terminal = (item: ConversationItem) => item.status !== "pending" && item.status !== "streaming";
-
 /** Wall-clock span of a settled step, same rules as the Vue view's step clock (none while it runs). */
 function stepTiming(item: ConversationItem, endedAt: string | undefined) {
   if (item.data?.durationUnavailable === true || item.data?.phaseStatus === "unavailable") return {};
@@ -48,7 +46,7 @@ function stepTiming(item: ConversationItem, endedAt: string | undefined) {
     startedAt: item.timestamp, endedAt: processStepEndedAt({ status: item.status, nextStepAt: endedAt, settledGroupEnd: endedAt }),
     nowMs: startedAt, status: item.status, explicitDurationMs: item.data?.phaseDurationMs ?? item.data?.durationMs,
   });
-  return ms === undefined || !terminal(item) || !Number.isFinite(startedAt) ? {} : { timing: { startedAt, completedAt: startedAt + ms } };
+  return ms === undefined || active(item) || !Number.isFinite(startedAt) ? {} : { timing: { startedAt, completedAt: startedAt + ms } };
 }
 
 /** One Core process step → an aui part: tool calls become `tool-call`, everything else `reasoning` (Core status in providerMetadata.core). */
@@ -60,7 +58,7 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
     const result: ToolResult = { content: item.content, messageId: Number(item.id.slice(4)), ...(details?.query ? { query: details.query } : {}), ...(details?.sources ? { sources: details.sources } : {}) };
     return {
       type: "tool-call", toolCallId: toolCallId ?? item.id, toolName: item.title || item.kind, args: {},
-      ...(terminal(item) ? { result, isError: item.status === "failed" } : {}), ...timing,
+      ...(!active(item) ? { result, isError: item.status === "failed" } : {}), ...timing,
     };
   }
   return { type: "reasoning", id: item.id, text: [item.title, item.content].filter(Boolean).join("\n"), providerMetadata: { core: { status: item.status } }, ...timing };

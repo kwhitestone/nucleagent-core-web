@@ -160,6 +160,8 @@ export type ConversationCommand =
       content: string;
       clientMessageId: string;
       attachments?: readonly ConversationAttachment[];
+      /** Core-verified explicit tool request (direct media model); sent as-is, never replayed. */
+      toolInvocation?: { toolId: number; revision: string; arguments: Record<string, string> };
     }
   | { type: "stop" }
   | { type: "retry"; itemId?: string; turnId?: string }

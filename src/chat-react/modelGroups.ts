@@ -27,7 +27,7 @@ export function modelGroups(providers: Provider[], typed: Record<string, TypedMo
     const upstreams = new Map((typed?.[kind] ?? []).filter((m) => m.upstream).map((m) => [`${m.providerId}:${m.model}`, m.upstream!]));
     return {
       kind,
-      options: pickerOptions(providers, typed?.[kind] ?? null, kind).flatMap((g) => g.models.map((model) => {
+      options: pickerOptions(providers, typed?.[kind] ?? [], kind).flatMap((g) => g.models.map((model) => {
         const choice: Choice = { kind, model: { providerId: g.id, model } };
         const upstream = upstreams.get(`${g.id}:${model}`);
         return { value: choiceValue(choice), label: model, hint: g.name, ...(upstream ? { upstream: UPSTREAM_NAMES[upstream] ?? upstream } : {}), choice };

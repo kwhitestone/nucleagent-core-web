@@ -1,0 +1,346 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+import { createServer, type ViteDevServer } from "vite";
+import { JSDOM } from "jsdom";
+import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
+
+let vite: ViteDevServer;
+let React: typeof import("react");
+let createRoot: typeof import("react-dom/client").createRoot;
+let MediaCard: typeof import("../src/chat-react/MediaCard.tsx").MediaCard;
+let WorkflowForm: typeof import("../src/chat-react/WorkflowForm.tsx").WorkflowForm;
+let useSettings: typeof import("../src/chat-react/ChatApp.tsx").useSettings;
+let settings: ReturnType<typeof useSettings>;
+let response: (url: string) => unknown;
+let writes: string[];
+let reads: string[];
+let downloads: string[];
+let posted: unknown[] | null = null;
+let app: typeof import("../src/chat-react/ChatApp.tsx");
+let disposeRuntime: () => void;
+let disposeCatalog: () => void;
+const t = (key: string) => key;
+const mediaData = (taskId: number, kind = "image") => ({ media: { taskId, kind }, prompt: "历史提示", failed: false });
+const task = (id: number, status: string, downloadUrl?: string) => ({ id, status, kind: "image", downloadUrl });
+
+before(async () => {
+  const dom = new JSDOM("", { url: "https://test.example/" });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: dom.window.document });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, MutationObserver: dom.window.MutationObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window), requestAnimationFrame: (run: () => void) => setTimeout(run, 0), cancelAnimationFrame: clearTimeout });
+  vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+  await initializeRuntimeFixture(vite);
+  React = await import("react");
+  ({ createRoot } = await import("react-dom/client"));
+  ({ MediaCard } = await vite.ssrLoadModule("/src/chat-react/MediaCard.tsx"));
+  ({ WorkflowForm } = await vite.ssrLoadModule("/src/chat-react/WorkflowForm.tsx"));
+  app = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof app;
+  ({ useSettings } = app);
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  disposeRuntime = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
+    get: async (url: string) => { reads.push(url); return { data: await response(url) }; },
+    patch: async (url: string, body: unknown) => { writes.push(url); return { data: { data: body } }; },
+    post: async (url: string, body: unknown) => { writes.push(url); if (!posted) throw new Error("unexpected write"); posted.push(body); return { data: { data: { id: "7" } } }; },
+  } });
+  const { registerModelCatalog } = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
+  disposeCatalog = registerModelCatalog({
+    listProviders: async () => [{ id: 1, name: "provider", isActive: true, config: { models: ["chat-model"] } }],
+    listTypedModels: async (type: string) => ["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: [] }] : [],
+    fetchVisibleModels: async () => [],
+  });
+  dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.href); };
+});
+after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close(); });
+
+test("workflow form uses schema parameters and holds an unknown submission without replay", async () => {
+  const view = await fixture();
+  response = (url) => ({ data: url.endsWith("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
+    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["style"], properties: { style: { type: "string", enum: ["水彩"], maxLength: 8 } } },
+  } });
+  const submitted: unknown[] = [];
+  try {
+    await view.render(React.createElement(WorkflowForm, { t, submit: async (request) => { submitted.push(request); throw new Error("connection lost"); } }));
+    await React.act(async () => { const details = view.container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
+    const selects = () => view.container.querySelectorAll("select");
+    await React.act(async () => { selects()[0]!.value = "37"; selects()[0]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await React.act(async () => { selects()[1]!.value = "水彩"; selects()[1]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await React.act(async () => view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { style: "水彩" } }]);
+    assert.equal(view.container.querySelector("button")!.disabled, true);
+    assert.match(view.container.textContent!, /workflowUnknown/);
+    await React.act(async () => view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.equal(submitted.length, 1);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
+async function fixture() {
+  reads = []; writes = []; downloads = [];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  return {
+    container,
+    render: async (element: import("react").ReactNode) => { await React.act(async () => root.render(element)); },
+    click: async (text: string) => {
+      const button = [...container.querySelectorAll("button")].find((entry) => entry.textContent === text);
+      assert.ok(button, text);
+      await React.act(async () => button.click());
+    },
+    close: async () => { await React.act(async () => root.unmount()); container.remove(); },
+  };
+}
+
+test("history remount fetches fresh token; download validates current task state and never writes", async () => {
+  const view = await fixture();
+  let current = task(7, "succeeded", "https://cdn.example/media?token=first");
+  response = () => current;
+  try {
+    await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+    assert.match(view.container.querySelector("img")!.src, /token=first/);
+    current = task(7, "succeeded", "https://cdn.example/media?token=fresh");
+    await view.click("common.attachmentDownload");
+    assert.deepEqual(downloads, [current.downloadUrl]);
+    current = task(7, "failed", "https://cdn.example/media?token=must-not-open");
+    await view.click("common.attachmentDownload");
+    assert.equal(downloads.length, 1);
+    assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
+    assert.equal(view.container.querySelector("img"), null);
+    await view.render(null);
+    current = task(7, "succeeded", "https://cdn.example/media?token=remount");
+    await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+    assert.match(view.container.querySelector("img")!.src, /token=remount/);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
+test("history refresh handles unknown/cancelled, GET errors, unsafe URLs and expired image without spinning forever", async () => {
+  const view = await fixture();
+  let current = task(7, "running");
+  response = () => current;
+  try {
+    await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+    assert.match(view.container.textContent!, /chatReact.media_running/);
+    for (const status of ["unknown", "cancelled", "failed"]) {
+      current = task(7, status);
+      await view.click("chatReact.mediaRefresh");
+      assert.match(view.container.textContent!, new RegExp(`generate.status.${status}`));
+      assert.equal(view.container.querySelector("img"), null);
+    }
+    response = () => { throw new Error("private service detail"); };
+    await view.click("chatReact.mediaRefresh");
+    assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
+    assert.doesNotMatch(view.container.textContent!, /private service detail/);
+    response = () => task(7, "succeeded", "javascript:alert(1)");
+    await view.click("chatReact.mediaRefresh");
+    assert.equal(view.container.querySelector("img"), null);
+    response = () => task(7, "succeeded", "https://cdn.example/expired");
+    await view.click("chatReact.mediaRefresh");
+    await React.act(async () => view.container.querySelector("img")!.dispatchEvent(new window.Event("error")));
+    assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
+test("pending history polls are bounded and unmount cancels further reads", async (context) => {
+  const view = await fixture();
+  response = () => task(7, "queued");
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+    assert.match(view.container.textContent!, /chatReact.media_queued/);
+    for (let tick = 0; tick < 25; tick++) await React.act(async () => context.mock.timers.tick(3000));
+    assert.equal(reads.length, 20);
+    await view.click("chatReact.mediaRefresh");
+    assert.equal(reads.length, 21);
+    await view.render(null);
+    await React.act(async () => context.mock.timers.tick(3000));
+    assert.equal(reads.length, 21);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); context.mock.timers.reset(); }
+});
+
+test("late task responses cannot overwrite a different history card; video is playable", async () => {
+  const view = await fixture();
+  let resolveOld!: (value: unknown) => void;
+  response = (url) => url.endsWith("/7") ? new Promise((resolve) => { resolveOld = resolve; }) : { ...task(8, "succeeded", "https://cdn.example/video"), kind: "video" };
+  try {
+    await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+    await view.render(React.createElement(MediaCard, { data: mediaData(8, "video"), t }));
+    await React.act(async () => resolveOld(task(7, "succeeded", "https://cdn.example/old")));
+    assert.equal(view.container.querySelector("img"), null);
+    assert.equal(view.container.querySelector("video")!.src, "https://cdn.example/video");
+    assert.equal(view.container.querySelector("video")!.controls, true);
+  } finally { await view.close(); }
+});
+
+const imageSchema = { model: "image-model", invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "aspect_ratio"],
+  properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1", "16:9"] } } } };
+const directResponse = (bound: number[]) => (url: string) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
+  : url.endsWith("/catalog") ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
+  : url.endsWith("/9/schema") ? imageSchema
+  : url.endsWith("/bindings") ? { skillIds: [], toolIds: bound, editable: true, revision: "1", principal: "1" }
+  : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
+const sendKey = (view: { container: HTMLElement }) => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-send"]')!;
+async function type(view: { container: HTMLElement }, text: string) {
+  const input = view.container.querySelector("textarea")!;
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(input, text);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+}
+const settle = async () => { for (let turn = 0; turn < 4; turn++) await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+
+test("direct media send key: enabled only with real text, a loaded job schema and its required choice; one click is one create with the chosen parameters", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  const view = await fixture();
+  response = directResponse([]);
+  const created: any[] = [];
+  const navigated: string[] = [];
+  try {
+    await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: (path: string) => { navigated.push(path); },
+      create: async (payload: unknown) => { created.push(payload); return { id: "55" } as never; } }));
+    await settle();
+    assert.equal(sendKey(view).disabled, true, "empty input");
+    await type(view, "画一只猫");
+    assert.equal(sendKey(view).disabled, false, "chat mode with text");
+
+    // No job tool for this model: closed, with the notice.
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
+    await settle();
+    assert.equal(sendKey(view).disabled, true, "no schema");
+    assert.match(view.container.textContent!, /chatReact.mediaUnavailable/);
+
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
+    await settle();
+    assert.doesNotMatch(view.container.textContent!, /chatReact.mediaUnavailable/);
+    const select = view.container.querySelector<HTMLSelectElement>('[data-testid="mc-media-mode"] select')!;
+    assert.equal(sendKey(view).disabled, true, "required parameter not chosen");
+    await React.act(async () => { select.value = "16:9"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.equal(sendKey(view).disabled, false, "text + schema + required choice");
+    await type(view, "");
+    assert.equal(sendKey(view).disabled, true, "empty input in media mode");
+    await type(view, "画一只猫");
+    assert.equal(sendKey(view).disabled, false);
+
+    await React.act(async () => sendKey(view).click());
+    await settle();
+    assert.equal(created.length, 1);
+    assert.deepEqual(created[0].toolIds, [9]);
+    assert.deepEqual(created[0].toolInvocation, { toolId: 9, revision: "4", arguments: { aspect_ratio: "16:9", input: "画一只猫" } });
+    assert.equal(created[0].input, "画一只猫");
+    assert.notEqual(created[0].model, "image-model", "the media model is bound by Core from the tool, never sent as the chat model");
+    assert.deepEqual(navigated, ["/c/55"]);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
+test("a follow-up carries the bound invocation once; an active run closes the media send key and Enter", async () => {
+  const { createConversationAdapter } = await vite.ssrLoadModule("/src/addons/conversation/composables/useConversationAdapter.ts");
+  const toolInvocation = { toolId: 9, revision: "4", arguments: { aspect_ratio: "16:9", input: "再来一张" } };
+  posted = [];
+  try {
+    await createConversationAdapter(() => "7").execute({ type: "send", content: "再来一张", clientMessageId: "c1", toolInvocation }, { signal: new AbortController().signal });
+    assert.deepEqual(posted, [{ input: "再来一张", toolInvocation }]);
+    assert.deepEqual(writes.filter((url) => url.endsWith("/7/follow-up")).length, 1);
+  } finally { posted = null; }
+
+  const aui = await import("@assistant-ui/react");
+  const { externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts");
+  const { createConversationState } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
+  const Viewport = (await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts")).ThreadPrimitive.Viewport;
+  const sent: unknown[] = [];
+  const slot = (await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts")).createSingleSlot(async () => {}, () => true, () => {});
+  function Running({ direct }: { direct: boolean }) {
+    const runtime = aui.useExternalStoreRuntime(externalStore({ ...createConversationState("7"), status: "running" }, { send: async (...args: unknown[]) => { sent.push(args); }, stop: async () => {} }, undefined, undefined, slot));
+    const media = { kind: "image" as const, model: { providerId: 1, model: "image-model" } };
+    return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null, React.createElement(app.Composer, { t, placeholder: "p",
+      settings: { groups: [], model: null, backend: null, busy: false, pick: async () => {}, ...(direct ? { media, direct: { toolId: 9, schema: imageSchema }, params: { aspect_ratio: "16:9" } } : {}) } as never })));
+  }
+  const view = await fixture();
+  try {
+    await view.render(React.createElement(Running, { direct: false }));
+    await type(view, "排队");
+    assert.equal(sendKey(view).disabled, false, "a chat follow-up may still queue during a run");
+    await view.render(React.createElement(Running, { direct: true }));
+    await type(view, "再来一张");
+    assert.equal(sendKey(view).disabled, true, "running: a paid media submission is not queued");
+    await React.act(async () => view.container.querySelector("textarea")!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    assert.deepEqual(sent, []);
+  } finally { await view.close(); }
+});
+
+test("a new conversation resolves the selected media model to its job tool; an existing one needs the tool bound to it", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  const view = await fixture();
+  response = (url) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
+    : url.endsWith("/catalog") ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
+    : url.endsWith("/9/schema") ? { model: "image-model", invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false, properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1"] } } } }
+    : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
+  function Harness({ id }: { id?: string }) {
+    settings = useSettings(id, t);
+    return null;
+  }
+  try {
+    await view.render(React.createElement(Harness, {}));
+    const image = () => settings.groups.find((group) => group.kind === "image")!.options[0].choice;
+    await React.act(async () => settings.pick(image()));
+    await React.act(async () => undefined);
+    assert.equal(settings.direct?.toolId, 9);
+    await React.act(async () => settings.setParam("aspect_ratio", "1:1"));
+    assert.deepEqual(settings.params, { aspect_ratio: "1:1" });
+
+    // Another model without a job tool: closed again.
+    await React.act(async () => settings.pick(settings.groups.find((group) => group.kind === "video")!.options[0].choice));
+    await React.act(async () => undefined);
+    assert.equal(settings.direct, null);
+    // Existing conversation: closed until the job tool is one of its bound tools (Core checks the same set).
+    for (const [id, bound, toolId] of [["7", [], undefined], ["8", [9], 9]] as const) {
+      const base = response;
+      response = (url) => url.endsWith("/bindings") ? { data: { skillIds: [], toolIds: bound, editable: true, revision: "1", principal: "1" } } : base(url);
+      await view.render(React.createElement(Harness, { id }));
+      await settle();
+      await React.act(async () => settings.pick(image()));
+      await settle();
+      assert.equal(settings.direct?.toolId, toolId);
+      response = base;
+    }
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
+test("typed media selection stays local, switches kind, preserves chat model and resets across conversations", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  const view = await fixture();
+  response = (url) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }] : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
+  function Harness({ id }: { id?: string }) {
+    settings = useSettings(id, t);
+    return null;
+  }
+  try {
+    await view.render(React.createElement(Harness, { id: "7" }));
+    const chat = settings.model;
+    assert.deepEqual(chat, { providerId: 1, model: "chat-model" });
+    for (const kind of ["image", "video"] as const) {
+      const choice = settings.groups.find((group) => group.kind === kind)!.options[0].choice;
+      await React.act(async () => settings.pick(choice));
+      assert.equal(settings.media?.kind, kind);
+      assert.deepEqual(settings.model, chat);
+    }
+    assert.deepEqual(writes, []);
+    await React.act(async () => settings.pick({ kind: "chat", model: chat! }));
+    assert.equal(settings.media, null);
+    assert.deepEqual(writes, []);
+    await React.act(async () => settings.pick(settings.groups.find((group) => group.kind === "video")!.options[0].choice));
+    await React.act(async () => settings.pick({ kind: "image", model: { providerId: 1, model: "unlisted" } }));
+    assert.equal(settings.media?.kind, "video");
+    await React.act(async () => settings.pick(null));
+    assert.equal(settings.media, null);
+    assert.equal(writes.length, 1);
+    const choice = settings.groups.find((group) => group.kind === "image")!.options[0].choice;
+    await React.act(async () => settings.pick(choice));
+    await view.render(React.createElement(Harness, { id: "8" }));
+    assert.equal(settings.media, null);
+  } finally { await view.close(); }
+});

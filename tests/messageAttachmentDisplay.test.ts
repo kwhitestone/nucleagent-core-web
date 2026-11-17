@@ -394,3 +394,16 @@ test("persisted895: verified generic image delivery preserves failed steps in th
     assert.doesNotMatch(html, /图片已生成|Image generated/);
   } finally { controller?.dispose(); DOMPurify.sanitize = originalSanitize; }
 });
+
+test("a media follow-up's persisted toolInvocation does not drop the message's existing attachments", async () => {
+  const attachment = { fileId: "ref-image", name: "参考图.png", mimeType: "image/png", size: 512, kind: "image", verification: "verified" };
+  const row = (id: number, metadata: Record<string, unknown>) => ({ id, conversationId: 358, senderType: "user", senderName: "user", msgType: "text",
+    content: `message ${id}`, metadata, createdAt: "2026-08-29T23:28:35+08:00" });
+  http.defaults.adapter = async (config: any) => ({ config, headers: {}, status: 200, statusText: "OK", data: { code: 0, data: [
+    row(1, { attachments: [attachment] }),
+    row(2, { attachments: [attachment], toolInvocation: { request: { toolId: 9, revision: "4", arguments: { input: "再来一张" } }, slug: "image-job", configHash: "h" } }),
+  ] } });
+  const snapshot = await createConversationAdapter(() => "358").loadSnapshot({ conversationKey: "358", signal: new AbortController().signal });
+  const expected = [{ id: "ref-image", name: "参考图.png", mimeType: "image/png", size: 512, metadata: { kind: "image", verification: "verified" } }];
+  assert.deepEqual(snapshot.items.map((entry: any) => entry.attachments), [expected, expected]);
+});

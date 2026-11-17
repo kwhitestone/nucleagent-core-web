@@ -116,7 +116,10 @@ export interface ExecutionBackendOption {
 }
 
 /** POST /conversation body. */
+export interface ToolInvocation { toolId: number; revision: string; arguments: Record<string, string> }
+
 export interface CreateConversationRequest {
+  toolInvocation?: ToolInvocation;
   targetDeviceId?: string;
   mode: ConversationMode;
   input: string;

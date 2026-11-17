@@ -419,8 +419,7 @@ test("model groups: chat/image/video from the typed catalog, executors from Core
   ]);
   assert.deepEqual(groups[0]!.options[0]!.label, "c1", "model name first");
   assert.equal(groups[0]!.options[0]!.hint, "P1", "provider as secondary hint");
-  // Old Core without typed lists: chat falls back to config.models; media groups disappear.
-  assert.deepEqual(modelGroups(providers, null, []).map((g) => g.kind), ["chat"]);
+  assert.deepEqual(modelGroups(providers, null, []).map((g) => g.kind), []);
 });
 
 test("model groups: upstream label only from the catalog's real upstream field; known names get house names, absent = no label", () => {
@@ -433,7 +432,7 @@ test("model groups: upstream label only from the catalog's real upstream field; 
   ] };
   const [chat] = modelGroups(providers, typed, []);
   assert.deepEqual(chat!.options.map((o) => o.upstream), ["AIHub", "云一/everai", "newapi-env", undefined]);
-  assert.equal(modelGroups(providers, null, [])[0]!.options[0]!.upstream, undefined, "old Core: no guess");
+  assert.equal(modelGroups(providers, null, [])[0]?.options[0]?.upstream, undefined, "old Core: no guess (MUYU-409 lists no untyped models)");
 });
 
 test("component: assistant-ui renders the converted Core history through ExternalStoreRuntime", () => {
@@ -549,7 +548,7 @@ test("attachments: onNew forwards refs to the controller; history shows them on 
 
 test("sealedLink: sealed tool links open via Core in a fresh no-opener tab; others and unsafe results are not opened", async (t) => {
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
-  const { openSealedLinkOnClick } = await vite.ssrLoadModule("/src/chat-react/sealedLink.ts");
+  const { openSealedLinkOnClick } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/sealedLink.ts");
   const posts: unknown[] = [];
   let reply = "https://wb.example.com/real";
   const unregister = registerPlatformRuntime({ http: { post: async (url: string, body: unknown) => { posts.push([url, body]); return { data: { url: reply } }; } } } as never);

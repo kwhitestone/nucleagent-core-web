@@ -4,9 +4,9 @@ import { toast } from "@/composables/useToast";
 
 /**
  * MUYU-181: tool links carry sealed tickets, never credentials; the owner's real link is fetched
- * from Core at click time and opened without ever entering the page. Same steps as
- * MarkdownContent.vue's onClick (kept separate so the default Vue chunk does not change size);
- * the conversation id comes from the nearest [data-conversation-key].
+ * from Core at click time and opened without ever entering the page. The one click handler of
+ * MarkdownContent.vue and the React island; the conversation id comes from the nearest
+ * [data-conversation-key] (TaskConversation marks its root with it, also on broadcast pages).
  */
 export async function openSealedLinkOnClick(event: MouseEvent): Promise<void> {
   const anchor = (event.target as Element | null)?.closest?.("a");

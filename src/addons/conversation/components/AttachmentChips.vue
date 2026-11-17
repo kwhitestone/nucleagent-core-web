@@ -11,7 +11,7 @@
 import { useI18n } from "vue-i18n";
 import { inject } from "vue";
 import { RefreshCw } from "@lucide/vue";
-import { getDownloadUrl, getImageContent } from "@/addons/conversation/api/storage";
+import { downloadStoredFile } from "./attachmentDownload";
 import { toast } from "@/composables/useToast";
 import type { MessageAttachment } from "@/addons/conversation/api/types";
 import ImageAttachmentPreview from "./ImageAttachmentPreview.vue";
@@ -39,42 +39,7 @@ const available = (att: MessageAttachment) => props.removable || att.verificatio
 async function download(att: MessageAttachment): Promise<void> {
   if (!available(att)) return;
   try {
-    if (isImageAttachment(att)) {
-      const { blob, filename } = await getImageContent(att.fileId);
-      const objectUrl = URL.createObjectURL(blob);
-      try {
-        const anchor = document.createElement("a");
-        anchor.href = objectUrl;
-        anchor.download = filename;
-        anchor.style.display = "none";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      } finally {
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-      }
-      return;
-    }
-    const url = await getDownloadUrl(att.fileId);
-    let objectUrl = "";
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`download returned ${response.status}`);
-      objectUrl = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = att.name || "attachment";
-      anchor.style.display = "none";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-    } catch {
-      // Some third-party CDNs do not expose CORS headers. The signed URL is
-      // still safe (validated by getDownloadUrl), so fall back to a new tab.
-      window.open(url, "_blank", "noopener,noreferrer");
-    } finally {
-      if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-    }
+    await downloadStoredFile(att.fileId, att.name, isImageAttachment(att));
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
     toast.error(t("common.attachmentDownloadFailed"));

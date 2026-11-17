@@ -1,22 +1,20 @@
 import { MessageNotSentError, type AppendMessage, type AttachmentAdapter, type ExternalStoreAdapter, type ThreadMessageLike } from "@assistant-ui/react";
 import type { ConversationAttachment, ConversationState } from "@/addons/conversation/task-conversation/core";
+import type { ToolInvocation } from "@/addons/conversation/api/types";
 import { isRunning, toThreadMessages, type ThreadOptions } from "./threadMessages";
 import { toConversationAttachments } from "./attachments";
-import { isConflict, type SingleSlot } from "./singleSlotQueue";
+import { isConflict, textOf, type SingleSlot } from "./singleSlotQueue";
 
 /** The controller calls the thread needs (conversationController's send/stop/loadOlder). */
 export interface ChatController {
-  send(content: string, attachments?: readonly ConversationAttachment[]): Promise<void>;
+  send(content: string, attachments?: readonly ConversationAttachment[], toolInvocation?: ToolInvocation): Promise<void>;
   stop(): Promise<void>;
   loadOlder?(): Promise<void>;
 }
 
 /** Sends one composer message through the controller (text + stored attachment refs). */
 export const sendAppend = (controller: ChatController, message: AppendMessage) =>
-  controller.send(appendText(message), toConversationAttachments(message.attachments));
-
-export const appendText = (message: AppendMessage): string =>
-  message.content.map((p) => (p.type === "text" ? p.text : "")).join("\n").trim();
+  controller.send(textOf(message), toConversationAttachments(message.attachments));
 
 /**
  * ExternalStoreRuntime adapter (plan §2): Core + the existing reducer own history and run
@@ -34,7 +32,7 @@ export function externalStore(
     convertMessage: (message) => message,
     isRunning: isRunning(state),
     async onNew(message) {
-      const text = appendText(message);
+      const text = textOf(message);
       if (!text) return;
       try {
         await sendAppend(controller, message);

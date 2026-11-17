@@ -13,12 +13,17 @@ import {
 import { listProviders, listAllTypedModels, type Provider, type TypedModel } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
-import { freshDownloadUrl } from "@/addons/conversation/api/media";
+import { MediaCard } from "./MediaCard";
+import { EnumSelect, toolSchema, WorkflowForm } from "./WorkflowForm";
+import { guardMediaSend } from "./mediaPolicy";
+import { directMediaRequest, directMediaTool, workflowFields, type DirectMedia } from "./workflowParams";
+import { listToolCatalog } from "@/addons/conversation/api/toolCatalog";
+import { getSessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
 import { executionBackendCompatibility } from "@/addons/conversation/composables/executionBackendCompatibility";
 import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
 import { createConversationState, MAX_ATTACHMENTS, type ConversationLocale } from "@/addons/conversation/task-conversation/core";
-import { openSealedLinkOnClick } from "./sealedLink";
+import { openSealedLinkOnClick } from "@/addons/conversation/task-conversation/sealedLink";
 import { copyRawBody, formatMessageTime } from "@/addons/conversation/components/conversation/messageCopy";
 import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
@@ -95,8 +100,30 @@ export function ChatApp(props: ChatProps) {
   const suggestions = useSuggestions(!conversationId, locale);
   const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status);
 
+  const guard = <A extends unknown[], R>(send: (...args: A) => Promise<R>) => guardMediaSend(settings.direct ? null : settings.media, send, t("chatReact.mediaUnavailable"));
+  // New conversation with the current model and executor, then open it.
+  // withTurn: this turn's effort or profile; never on a media/workflow job, which carries its own parameters.
+  const start = async (request: Partial<CreateConversationRequest> & { input: string }, withTurn = false) => {
+    const payload: CreateConversationRequest = {
+      mode: "a2a_agent", model: settings.model?.model ?? "", providerId: settings.model?.providerId,
+      executionBackend: settings.backend ?? undefined, ...request,
+    };
+    const created = await props.create(!withTurn ? payload : typeof turn === "string" ? withRequestEffort(payload, turn, settings.backend) : { ...payload, ...turn });
+    setProfile(null);
+    props.navigate(`/c/${created.id}`);
+  };
   const controller: ChatController = {
-    send: (text, files) => core ? core.controller.send(text, files) : Promise.reject(new Error(t("chatReact.loading"))),
+    send: guard(async (text, files) => {
+      if (!core) throw new Error(t("chatReact.loading"));
+      if (!settings.direct) return core.controller.send(text, files);
+      // A paid submission is never parked or replayed: not while a run is active, and an unconfirmed
+      // result (no HTTP answer) is reported as unknown instead of reaching the 409 queue.
+      if (isRunning(core.state)) throw new Error(t("chatReact.loading"));
+      const { toolInvocation } = directMediaRequest(settings.direct, settings.params, text);
+      await core.controller.send(text, files, toolInvocation).catch((error) => {
+        throw new Error((error as { status?: number }).status ? (error as Error).message : t("chatReact.workflowUnknown"));
+      });
+    }),
     stop: () => core?.controller.stop() ?? Promise.resolve(),
     loadOlder: () => core?.controller.loadOlder() ?? Promise.resolve(),
   };
@@ -105,24 +132,20 @@ export function ChatApp(props: ChatProps) {
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
     ? externalStore(core?.state ?? EMPTY, controller, view, attachments, slot)
     : { ...externalStore(EMPTY, {
-      async send(input, files) {
+      send: guard(async (input, files) => {
         if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
         try {
-          const payload: CreateConversationRequest = {
-            mode: "a2a_agent", input,
-            model: settings.model?.model ?? "", providerId: settings.model?.providerId,
-            executionBackend: settings.backend ?? undefined,
+          await start({
+            input,
+            ...(settings.direct ? directMediaRequest(settings.direct, settings.params, input) : {}),
             ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
-          };
-          const created = await props.create(typeof turn === "string" ? withRequestEffort(payload, turn, settings.backend) : { ...payload, ...turn });
-          setProfile(null);
-          props.navigate(`/c/${created.id}`);
+          }, !settings.media);
         } catch (error) {
           toast.error(modelErrorMessage(error, t, t("home.createFailed")));
           throw error;
         }
-      },
+      }),
       stop: () => Promise.resolve(),
     }, undefined, attachments), suggestions };
   const runtime = useExternalStoreRuntime(adapter);
@@ -145,6 +168,9 @@ export function ChatApp(props: ChatProps) {
             <Composer t={t} settings={settings} effort={effort}
               controls={<ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} />}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
+            {!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
+              await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
+            }} />}
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
       </ThreadPrimitive.Root>
@@ -231,18 +257,18 @@ function AttachButton({ t }: { t: Translate }) {
   );
 }
 
-/** Old-Vue entry points kept visible; generation is not wired in the React MVP (no paid calls), so they only explain why. */
-function MediaPill({ kind, t }: { kind: "image" | "video"; t: Translate }) {
-  const tip = t("chatReact.mediaLaterTip");
+function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean }) {
+  const choice = settings.groups.find((group) => group.kind === kind)?.options[0]?.choice;
+  const disabled = !choice || settings.busy || running;
   return (
-    <button type="button" className="mc-pill mc-pill--off" aria-disabled="true" title={tip} data-testid={`mc-gen-${kind}`}
-      onClick={() => toast.info(tip)}>
-      {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(kind === "image" ? "chatReact.genImage" : "chatReact.genVideo")}</span>
+    <button type="button" className="mc-pill" aria-disabled={disabled} aria-pressed={settings.media?.kind === kind} disabled={disabled} data-testid={`mc-gen-${kind}`}
+      onClick={() => choice && settings.pick(choice)}>
+      {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(`chatGen.kinds.${kind}`)}</span>
     </button>
   );
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { imageHint?: string; modelHint?: string };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageHint?: string; modelHint?: string; direct?: DirectMedia | null; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * MUYU-408 profile choices for the Controls slot. The panel keeps its slot mounted while hidden, so the chunk and
@@ -273,11 +299,15 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
   const actions = composerActions(running, empty);
+  const sendLabel = t(running ? "chatReact.queueSend" : "common.send"); // queue while a reply runs
+  // Media mode sends only with the model's job tool, every required choice made, and no active run (never queued).
+  const blocked = settings.busy || (!!settings.media && (running || !settings.direct
+    || !!settings.direct.schema.inputSchema.required?.some((name) => name !== "input" && !settings.params?.[name])));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <ComposerPrimitive.Root className="mc-composer">
         <ComposerAttachmentChips t={t} />
-        {hasImage && settings.imageHint && <p className="mc-hint" role="status">{settings.imageHint}</p>}
+        {hasImage && !settings.media && settings.imageHint && <p className="mc-hint" role="status">{settings.imageHint}</p>}
         <ComposerPrimitive.Queue>
           {() => (
             <div className="mc-queued" data-testid="mc-queued">
@@ -287,20 +317,23 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
             </div>
           )}
         </ComposerPrimitive.Queue>
-        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus placeholder={placeholder} aria-label={placeholder} />
+        {settings.media && <div className="mc-hint" role="status" data-testid="mc-media-mode">
+          <strong>{t(`model.types.${settings.media.kind}`)} · {settings.media.model.model}</strong>
+          {settings.direct ? workflowFields(settings.direct.schema).map(([name, field]) => field.enum && <label key={name}>{field.description || name}
+            <EnumSelect t={t} options={field.enum} value={settings.params?.[name] ?? ""} onChange={(event) => settings.setParam?.(name, event.target.value)} /></label>) : <p>{t("chatReact.mediaUnavailable")}</p>}
+          <button type="button" className="mc-pill" onClick={() => settings.pick(settings.model ? { kind: "chat", model: settings.model } : null)}>{t("chatReact.returnToChat")}</button>
+        </div>}
+        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={settings.media && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         <div className="mc-toolbar">
           <AttachButton t={t} />
-          <MediaPill kind="image" t={t} />
-          <MediaPill kind="video" t={t} />
-          <ModelMenu t={t} groups={settings.groups} value={settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-            backend={settings.backend} disabled={settings.busy} onPick={settings.pick} />
-          {effort && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
+          <MediaPill kind="image" t={t} settings={settings} running={running} />
+          <MediaPill kind="video" t={t} settings={settings} running={running} />
+          <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
+            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} />
+          {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
           <span className="mc-spacer" />
-          {actions.includes("send") && (
-            <ComposerPrimitive.Send className="mc-send" data-testid="mc-send" disabled={settings.busy} aria-label={t("common.send")} title={t("common.send")}><SendMark /></ComposerPrimitive.Send>
-          )}
-          {actions.includes("queue") && (
-            <ComposerPrimitive.Send className="mc-round" data-testid="mc-send" aria-label={t("chatReact.queueSend")} title={t("chatReact.queueSend")}><SendMark /></ComposerPrimitive.Send>
+          {actions[0] !== "stop" && (
+            <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
           )}
           {actions.includes("stop") && (
             <ComposerPrimitive.Cancel className="mc-send mc-send--stop" data-testid="mc-stop" aria-label={t("chatReact.stop")} title={t("chatReact.stop")}><StopMark /></ComposerPrimitive.Cancel>
@@ -308,8 +341,8 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
         </div>
       </ComposerPrimitive.Root>
       <p className="mc-hint">{t("chatReact.hint")}</p>
-      {settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
-      {effort?.sent && <p className="mc-hint" data-testid="mc-effort-note">{effortNote(t, effort.view)}</p>}
+      {!settings.media && settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
+      {!settings.media && effort?.sent && <p className="mc-hint" data-testid="mc-effort-note">{effortNote(t, effort.view)}</p>}
     </ComposerPrimitive.AttachmentDropzone>
   );
 }
@@ -457,7 +490,7 @@ function Step({ state, name, tool, duration, t, children }: { state: StepState; 
         <StepIcon state={state} />
         <span className="mc-step-name">{name}</span>
         {tool && <span className="mc-step-tag"><ToolMark />{t("chatReact.tool")}</span>}
-        {state !== "done" && <span className="mc-step-state">{t(`chatReact.${state}`)}</span>}
+        {state !== "done" && <span className="mc-step-state">{t(state === "cancelled" ? "conversation.stopped" : `toolCalls.status.${state}`)}</span>}
         {duration && <span className="mc-step-time">{duration}</span>}
       </div>
       {children}
@@ -481,30 +514,6 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
       {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} t={t} /></Suspense>}
     </Step>
   );
-}
-
-/** Image/video produced by a media generation task: a fresh signed link per render (never cached). */
-function MediaCard({ data, t }: { data: MediaPartData; t: Translate }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const taskId = data.media.taskId;
-  useEffect(() => {
-    let live = true;
-    if (!data.failed && typeof taskId === "number") freshDownloadUrl(taskId).then((u) => live && setUrl(u), () => {});
-    return () => { live = false; };
-  }, [taskId, data.failed]);
-  const video = data.media.kind === "video";
-  if (data.failed || !url) {
-    return (
-      <div className="mc-media mc-media--slot" data-failed={data.failed || undefined} role="status">
-        <span className="mc-media-icon">{data.failed ? <AlertMark size={20} /> : video ? <VideoMark size={20} /> : <ImageMark size={20} />}</span>
-        <span>{t(data.failed ? "chatReact.mediaFailed" : "chatReact.mediaPending")}</span>
-        {data.prompt && <span className="mc-media-prompt">{data.prompt}</span>}
-      </div>
-    );
-  }
-  return video
-    ? <video className="mc-media" src={url} controls preload="metadata" />
-    : <a href={url} target="_blank" rel="noopener noreferrer"><img className="mc-media" src={url} alt={data.prompt} /></a>;
 }
 
 /** Contiguous Core process steps (the header part + reasoning/tool-call parts) render as one 执行过程 fold. */
@@ -659,7 +668,11 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
       {upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{upstream}</span>}{checked && <CheckMark size={14} />}
     </button>
   );
-  const media = groups.filter((g) => g.kind === "image" || g.kind === "video");
+  const section = (kind: string, title: string, body: ReactNode, bare?: boolean) => (
+    <div key={kind} role="group" aria-label={title} data-kind={kind} className="mc-menu-group">
+      {!bare && <div className="mc-menu-label" aria-hidden="true">{title}</div>}{body}
+    </div>
+  );
   return (
     <div className="mc-model" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
@@ -668,26 +681,14 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
       </button>
       <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
         {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
-        <div role="group" aria-label={t("model.types.chat")} data-kind="chat" className="mc-menu-group">
-          <div className="mc-menu-label" aria-hidden="true">{t("model.types.chat")}</div>
+        {section("chat", t("model.types.chat"), <>
           {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
           {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint, o.upstream))}
-        </div>
-        {/* Image/video are not pickable in the MVP (no paid calls): one disabled row, not a list. */}
-        {media.length > 0 && (
-          <div role="group" data-kind="media" className="mc-menu-group">
-            <div className="mc-menu-item" role="menuitem" aria-disabled="true" title={t("chatReact.mediaLaterTip")}>
-              <span className="mc-menu-text">{media.map(label).join(" · ")}</span><span className="mc-menu-tag">{t("chatReact.mediaLater")}</span>
-            </div>
-          </div>
-        )}
-        {groups.filter((g) => g.kind === "executor").map((g) => (
-          <div key={g.kind} role="group" aria-label={label(g)} data-kind={g.kind} className="mc-menu-group">
-            {/* A lone executor named like its group shows once. */}
-            {!(g.options.length === 1 && g.options[0]!.label === label(g)) && <div className="mc-menu-label" aria-hidden="true">{label(g)}</div>}
-            {g.options.map((o) => item(o.value, o.label, o.value === backendValue, () => choose(o.choice)))}
-          </div>
-        ))}
+        </>)}
+        {groups.filter((g) => g.kind !== "chat").map((g) => section(g.kind, label(g),
+          g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value), () => choose(o.choice), o.hint)),
+          // A lone executor named like its group shows once.
+          g.kind === "executor" && g.options.length === 1 && g.options[0]!.label === label(g)))}
       </div>
     </div>
   );
@@ -731,6 +732,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const [backends, setBackends] = useState<ExecutionBackendOption[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [model, setModel] = useState<ModelChoice | null>(null);
+  const [media, setMedia] = useState<{ kind: "image" | "video"; model: ModelChoice } | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [strategy, setStrategy] = useState<ChatStrategy | null>(null);
@@ -739,6 +741,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
 
   useEffect(() => {
     let live = true;
+    setMedia(null);
     const revision = selectionRevision.current;
     let policy = cachedChatStrategy(window.location.origin);
     void loadChatStrategy(window.location.origin).then((loaded) => {
@@ -774,23 +777,45 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     return () => { live = false; };
   }, [conversationId]);
 
+  // Direct media model: its Toolgate job tool and real parameters. An existing conversation needs the tool
+  // already bound to it (Core validates against the conversation's tools); otherwise it stays closed.
+  const [direct, setDirect] = useState<DirectMedia | null>(null);
+  const [params, setParams] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let live = true;
+    setDirect(null); setParams({});
+    if (media) void Promise.all([listToolCatalog(), conversationId ? getSessionBindings(conversationId) : null])
+      .then(([rows, bound]) => directMediaTool(media.model.model, bound ? rows.filter((row) => bound.toolIds.includes(row.id)) : rows, toolSchema))
+      .then((found) => { if (live) setDirect(found); }, () => {});
+    return () => { live = false; };
+  }, [media, conversationId]);
+
   const allowedFor = (m: ModelChoice | null, id: string | null) => {
     const option = backends.find((b) => b.id === id);
     return !option || executionBackendCompatibility(option, m, providers).allowed;
   };
 
   async function pick(choice: Choice | null) {
+    if (choice?.kind === "image" || choice?.kind === "video") {
+      const listed = groups.find((group) => group.kind === choice.kind)?.options.some((option) => option.value === choiceValue(choice));
+      if (listed && !busy) setMedia({ kind: choice.kind, model: choice.model });
+      return;
+    }
+    if (media && choice?.kind === "chat" && model && choice.model.model === model.model && String(choice.model.providerId) === String(model.providerId)) {
+      setMedia(null);
+      return;
+    }
     const nextModel = choice === null ? null : choice.kind === "chat" ? choice.model : model;
     const nextBackend = choice?.kind === "executor" ? choice.backend : backend;
-    if (choice && choice.kind !== "chat" && choice.kind !== "executor") return;
     if (!allowedFor(nextModel, nextBackend)) { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
     selectionRevision.current += 1;
-    if (!conversationId || !nextBackend) { setModel(nextModel); setBackend(nextBackend); return; }
+    if (!conversationId || !nextBackend) { setModel(nextModel); setBackend(nextBackend); if (choice?.kind !== "executor") setMedia(null); return; }
     setBusy(true);
     try {
       const saved = await updateConversationSettings(conversationId, nextModel, nextBackend);
       setModel(conversationModelChoice(saved) ?? nextModel);
       setBackend(saved.executionBackend?.trim() || nextBackend);
+      if (choice?.kind !== "executor") setMedia(null);
       toast.success(t("common.executionSettingsSwitched"));
     } catch (error) {
       toast.error(modelErrorMessage(error, t, t("common.executionSettingsSwitchFailed")));
@@ -802,6 +827,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const labeledGroups = strategy ? groups.map((group) => group.kind !== "chat" ? group : {
     ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, option.choice.model)}` })),
   }) : groups;
-  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend),
+  return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, params,
+    setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

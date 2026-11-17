@@ -472,6 +472,7 @@ export const createConversationController = (
   const send = async (
     content: string,
     attachments: readonly ConversationAttachment[] = [],
+    toolInvocation?: { toolId: number; revision: string; arguments: Record<string, string> },
   ) => {
     requireAuthoritativeHistory();
     if (!content.trim()) {
@@ -517,7 +518,7 @@ export const createConversationController = (
     const beforeSend = state.value;
     dispatch({ type: "item.optimistic", item: optimistic });
     try {
-      const result = await execute({ type: "send", content, clientMessageId, attachments });
+      const result = await execute({ type: "send", content, clientMessageId, attachments, ...(toolInvocation ? { toolInvocation } : {}) });
       if (result?.accepted && result.activeAccepted === false) {
         await reconcileSkippedSend(optimistic.id, beforeSend, lifecycle);
       }

@@ -1,5 +1,6 @@
 import type { AttachmentAdapter, PendingAttachment } from "@assistant-ui/react";
-import { MAX_UPLOAD_BYTES, UploadError, getDownloadUrl, getImageContent, uploadFile } from "../addons/conversation/api/storage.ts";
+import { MAX_UPLOAD_BYTES, UploadError, uploadFile } from "../addons/conversation/api/storage.ts";
+import { downloadStoredFile } from "../addons/conversation/components/attachmentDownload.ts";
 import type { MessageAttachment } from "../addons/conversation/api/types.ts";
 import type { ConversationAttachment } from "../addons/conversation/task-conversation/core/types.ts";
 
@@ -85,45 +86,7 @@ export function fileKind(name: string, mimeType?: string): string {
   return KINDS.find(([re]) => re.test(lower))?.[1] ?? "file";
 }
 
-function save(href: string, filename: string) {
-  const anchor = Object.assign(document.createElement("a"), { href, download: filename, style: "display:none" });
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-}
+/** Same download path as AttachmentChips.vue (shared module). */
+export const downloadFile = (file: FileChip): Promise<void> => downloadStoredFile(file.id, file.name, fileKind(file.name, file.mimeType) === "image");
 
-/**
- * Same download path as AttachmentChips.vue: images from verified Storage bytes, other files through
- * the validated signed URL (blob download, or a new no-opener tab when the CDN has no CORS).
- * shortcut: a copy of AttachmentChips.vue's download(); share one module if either side changes.
- */
-export async function downloadFile(file: FileChip): Promise<void> {
-  if (fileKind(file.name, file.mimeType) === "image") {
-    const { blob, filename } = await getImageContent(file.id);
-    const url = URL.createObjectURL(blob);
-    try { save(url, filename); } finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
-    return;
-  }
-  const url = await getDownloadUrl(file.id);
-  let objectUrl = "";
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`download returned ${response.status}`);
-    objectUrl = URL.createObjectURL(await response.blob());
-    save(objectUrl, file.name || "attachment");
-  } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
-  } finally {
-    if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
-  }
-}
-
-/**
- * Same output as attachmentPresentation.formatAttachmentSize; a local copy because importing that module
- * from the island re-splits the default /c/:id chunks (+~70 B over the 1 KiB budget, leg 6 §20).
- */
-export function formatSize(bytes?: number): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
+export { formatAttachmentSize as formatSize } from "../addons/conversation/components/attachmentPresentation.ts";

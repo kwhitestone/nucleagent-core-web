@@ -4,7 +4,8 @@ import type { AppendMessage, ExternalThreadQueueAdapter, QueueItemState } from "
 /** The server still runs a turn (Core thought it was idle): keep the message for the run's end. */
 export const isConflict = (error: unknown) => (error as { status?: unknown } | null)?.status === 409;
 
-const textOf = (message: AppendMessage) =>
+/** Text of one composer message (text parts joined by newlines, trimmed). */
+export const textOf = (message: AppendMessage) =>
   message.content.map((p) => (p.type === "text" ? p.text : "")).join("\n").trim();
 
 export type SingleSlot = ReturnType<typeof createSingleSlot>;

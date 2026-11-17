@@ -773,12 +773,13 @@ export function createConversationAdapter(
             : undefined;
           if (pendingKey) pendingSends.set(pendingKey, command.content);
           try {
-            if (send) {
+            // A direct media/tool job goes out as-is below; the override only adds per-turn effort/profile to chat turns.
+            if (send && !command.toolInvocation) {
               const result = await send(command.content, atts, options);
               if ((!result.accepted || result.activeAccepted === false) && pendingKey) pendingSends.delete(pendingKey);
               return result;
             }
-            await followUp(key(), command.content, atts);
+            await followUp(key(), command.content, atts, undefined, undefined, undefined, command.toolInvocation);
           } catch (error) {
             // 发送失败：撤销登记，否则下一条同内容消息会误吞 clientMessageId。
             if (pendingKey) pendingSends.delete(pendingKey);

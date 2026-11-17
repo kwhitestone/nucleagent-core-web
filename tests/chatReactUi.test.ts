@@ -159,7 +159,7 @@ test("composer: running with an empty input shows only the stop square", () => {
   assert.doesNotMatch(html, /data-testid="mc-send"/);
 });
 
-test("model menu: 默认模型 is a checked radio of the chat group, provider as hint, media folded to one 即将开放 row, lone executor shown once", () => {
+test("model menu: typed image/video models are selectable in separate groups", () => {
   const model = { providerId: "p", model: "m1" };
   const groups = [
     { kind: "chat" as const, options: [{ value: "chat:p:m1", label: "m1", hint: "P", choice: { kind: "chat" as const, model } }, { value: "chat:p:m2", label: "m2", hint: "P", choice: { kind: "chat" as const, model: { providerId: "p", model: "m2" } } }] },
@@ -174,17 +174,41 @@ test("model menu: 默认模型 is a checked radio of the chat group, provider as
   assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider");
   const open = renderToString(React.createElement(app.ModelMenu, { ...props, defaultOpen: true }));
   assert.doesNotMatch(open, /role="menu"[^>]*hidden=""/);
-  assert.deepEqual([...open.matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]), ["chat", "media", "executor"]);
+  assert.deepEqual([...open.matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]), ["chat", "image", "video", "executor"]);
   assert.match(open, /data-kind="chat"[^>]*><div class="mc-menu-label"[^>]*>model.types.chat<\/div><button[^>]*role="menuitemradio"[^>]*aria-checked="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
   assert.match(open, /aria-checked="true"><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
   assert.equal(open.match(/aria-checked="true"/g)?.length, 2, "current model and executor");
-  assert.match(open, /role="menuitem" aria-disabled="true" title="chatReact.mediaLaterTip"><span class="mc-menu-text">model.types.image · model.types.video<\/span><span class="mc-menu-tag">chatReact.mediaLater</);
-  assert.doesNotMatch(open, /model.types.image<\/div>/, "no media group lists");
+  assert.match(open, /data-kind="image"/);
+  assert.match(open, /data-kind="video"/);
   assert.equal(open.slice(open.indexOf(`role="menu"`)).match(/>chatReact.executor</g)?.length, 1, "executor group title not repeated");
   const unpinned = renderToString(React.createElement(app.ModelMenu, { ...props, value: "", defaultOpen: true }));
   assert.match(unpinned, /aria-checked="true"><span class="mc-menu-text">common.modelDefault<\/span><svg/, "默认模型 checked when nothing is pinned");
   assert.match(unpinned, /mc-model-name">common.modelDefault</);
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-menu \{[^}]*max-height:[^}]*overflow-y: auto;/s, "panel scrolls");
+});
+
+test("media composer with the model's job tool sends normally and offers only its real parameters", () => {
+  const media = { kind: "image" as const, model: { providerId: "p", model: "real-image" } };
+  const direct = { toolId: 9, schema: { invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false,
+    properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1", "16:9"] }, note: { type: "string" } } } } };
+  const html = render(stateOf([], "completed"), () => React.createElement(app.Composer, { t, settings: { ...settings, media, direct, params: { aspect_ratio: "16:9" } }, placeholder: "p" }));
+  assert.doesNotMatch(html, /chatReact.mediaUnavailable/);
+  assert.match(html, /real-image/);
+  assert.equal(html.match(/<select/g)?.length, 1);
+  assert.match(html, /aspect_ratio[\s\S]*16:9/);
+  assert.doesNotMatch(html, /duration|note</);
+});
+
+test("media composer blocks send and queue, identifies selected model, hides unsupported parameters", () => {
+  const media = { kind: "video" as const, model: { providerId: "p", model: "real-video" } };
+  for (const running of [false, true]) {
+    const state = stateOf(running ? [item("active", { status: "streaming" })] : [], running ? "running" : "completed");
+    const html = render(state, () => React.createElement(app.Composer, { t, settings: { ...settings, media }, placeholder: "p" }));
+    assert.match(html, /chatReact.mediaUnavailable/);
+    assert.match(html, /real-video/);
+    assert.doesNotMatch(html, /<select/);
+    if (!running) assert.match(html, /data-testid="mc-send"[^>]*disabled=""/);
+  }
 });
 
 test("process row: failed step → one severity color (alert icon, no dot), opens on the failure, done steps fold to one row; aria-expanded", () => {
@@ -206,7 +230,7 @@ test("process row: failed step → one severity color (alert icon, no dot), open
   assert.match(css, /\.mc-process\[data-hide-done\] > \.mc-step\[data-state="done"\] \{ display: none; \}/);
   assert.doesNotMatch(css.slice(css.indexOf(".mc-process {"), css.indexOf(".mc-step-detail {")), /amber/, "one severity color");
   assert.match(html, /class="mc-step" data-state="done".*排队等待.*class="mc-step-time">2.0s</s);
-  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*chatReact.failed.*class="mc-step-time">5.0s<.*exit 1/s);
+  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*toolCalls.status.failed.*class="mc-step-time">5.0s<.*exit 1/s);
   assert.equal(app.stepState("streaming", { type: "complete" }), "running");
   assert.equal(app.stepState(undefined, { type: "running" }), "running");
   assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
@@ -314,7 +338,6 @@ test("island strings: zh/en chunks have the same keys, mount picks the current l
   assert.equal(en.process, "Process");
   assert.equal(zh.reload, "重新生成");
   assert.equal(en.reload, "Regenerate");
-  assert.equal(zh.mediaLater, "即将开放");
   assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort());
   const mount = readFileSync("src/chat-react/mount.tsx", "utf8");
   assert.match(mount, /locale === "en-US" \? import\("\.\/islandStringsEn"\)[^:]*: import\("\.\/islandStringsZh"\)/, "one chunk per language, zh default");

@@ -21,6 +21,8 @@ export interface ToolCatalogItem {
   /** catalog v2: anything but "ready" is listed for visibility only (held/source_removed/conflict/...); absent = older core = ready. */
   status?: string;
   reason?: string;
+  /** The media model an imported Toolgate job tool generates with (direct model selection). */
+  mediaModel?: string;
 }
 
 /** Listed but not pickable; the server refuses it on save (tool_not_selectable). */
