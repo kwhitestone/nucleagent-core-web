@@ -91,8 +91,8 @@ export function installShellBridge(router: Router): () => void {
     allowedHostOrigins: configValue("VITE_SHELL_ALLOWED_ORIGINS"),
     parent: window.parent,
     messages: {
-      toChild: ["auth", "view", "locale", "load-more", "delete", "search"],
-      fromChild: ["auth-required", "conversations", "view-changed", "search-results"],
+      toChild: ["auth", "view", "locale", "load-more", "delete", "search", "rename"],
+      fromChild: ["auth-required", "conversations", "view-changed", "search-results", "rename-result"],
     },
     onMessage(type, payload) {
       handleVerifiedMessage(type, payload);
@@ -148,6 +148,17 @@ export function installShellBridge(router: Router): () => void {
     if (type === "delete") {
       const intent = parseDeleteIntent(payload);
       if (intent) requestDelete(intent.conversationId);
+      return;
+    }
+
+    // MUYU-410: sidebar inline rename; lazy so the default entry chunk stays within budget.
+    if (type === "rename") {
+      void import("./sidebarRename").then((m) => {
+        const intent = m.parseRenameIntent(payload);
+        if (!intent || !getPlatformRuntime().getAccessToken()) return;
+        void m.runSidebarRename(intent, store.rename, (p) => channel.send("rename-result", p),
+          () => toast.error(i18n.global.t("conversation.rename.failed")));
+      });
       return;
     }
 

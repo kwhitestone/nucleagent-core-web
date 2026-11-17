@@ -85,6 +85,8 @@ async function rename(next: string): Promise<void> {
     throw error;
   }
 }
+// A rename from the shell sidebar lands in the store; keep this header in step.
+watch(() => conversationStore.conversations.find((c) => c.id === Number(props.id))?.title, (next) => { if (next) title.value = next; });
 function askDelete(): void {
   moreOpen.value = false;
   menuOpen.value = false;
