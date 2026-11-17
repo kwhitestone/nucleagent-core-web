@@ -758,6 +758,6 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const labeledGroups = strategy ? groups.map((group) => group.kind !== "chat" ? group : {
     ...group, options: group.options.map((option) => option.choice.kind !== "chat" ? option : ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, option.choice.model)}` })),
   }) : groups;
-  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model),
+  return { groups: labeledGroups, model, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend),
     imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

@@ -51,7 +51,8 @@ const same = (left: ModelChoice, right: ModelChoice) => left.providerId === righ
 const evidenceFor = (strategy: ChatStrategy | null, model: ModelChoice | null) => model ? strategy?.measurements.find((entry) => same(entry, model)) : undefined;
 const qualifies = (sample: { n: number; medianMs: number } | undefined) => !!sample && sample.n >= 5 && sample.medianMs <= 2000;
 
-export const effortEvidence = (strategy: ChatStrategy | null, model: ModelChoice | null) => evidenceFor(strategy, model)?.effort ?? undefined;
+export const effortEvidence = (strategy: ChatStrategy | null, model: ModelChoice | null, backend: string | null) =>
+  strategy?.backend === backend ? evidenceFor(strategy, model)?.effort ?? undefined : undefined;
 
 export function initialChatModel(input: {
   strategy: ChatStrategy | null; conversationId?: string; selected: ModelChoice | null; explicit: boolean;

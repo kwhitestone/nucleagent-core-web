@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
+import { messageTimingData } from "../src/addons/conversation/composables/conversationTiming.ts";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import type { ConversationAdapter, ConversationEvent, ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
@@ -136,6 +137,38 @@ test("switch: shell query arriving after boot locks or reloads, once per page lo
   followChatUiQuery("vue", reload);
   assert.equal(reloads, 1);
   assert.equal(loadedChatUi(), "react");
+});
+
+test("thinking provenance survives a refreshed snapshot; status-only and empty bodies never become reasoning", () => {
+  const projected = (content: string, metadata: Record<string, unknown>, status: ConversationItem["status"]) => item("thought", {
+    lane: "process", userReadable: true, content, status,
+    data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking",
+      msgType: status === "streaming" ? "streaming" : "result", content, metadata, createdAt: "2026-11-13T00:00:00Z" }),
+  });
+  for (const visibility of ["summary", "full"]) {
+    for (const status of ["streaming", "complete"] as const) {
+      const history = stateOf([
+        item("u1", { role: "user", content: "hi" }),
+        projected("真实思考正文", { thinkingVisibility: visibility }, status),
+        item("answer", { content: "answer", status }),
+      ], status === "streaming" ? "running" : "completed");
+      const content = toThreadMessages(history)[1]?.content;
+      assert.ok(Array.isArray(content));
+      assert.deepEqual(content.filter((part) => part.type === "data-thinking"), [
+        { type: "data-thinking", id: "thought", data: { text: "真实思考正文", active: status === "streaming" } },
+      ]);
+    }
+  }
+  for (const thought of [
+    projected("正在思考", { thinkingVisibility: "full", thinkingStatus: true }, "streaming"),
+    projected("已完成分析", { thinkingVisibility: "status" }, "complete"),
+    projected("  ", { thinkingVisibility: "full" }, "complete"),
+    projected("unknown provenance", {}, "complete"),
+  ]) {
+    const content = toThreadMessages(stateOf([thought]))[0]?.content;
+    assert.ok(Array.isArray(content));
+    assert.equal(content.some((part) => part.type === "data-thinking"), false);
+  }
 });
 
 test("adapter: user items split turns; process → data-process header + one part per step, answer → text; hidden lanes dropped", () => {
