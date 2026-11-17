@@ -33,6 +33,9 @@ export interface Conversation {
   updatedAt: string;
   completedAt?: string | null;
   deletedAt?: string | null;
+  /** MUYU-410: user pin; absent on Core builds before pinning (treat as false). */
+  pinned?: boolean;
+  pinnedAt?: string | null;
 }
 
 /** "media": MT3 carrier of one image/video generation (Core addons/media); no follow-ups. */

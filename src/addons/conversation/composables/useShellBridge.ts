@@ -17,7 +17,8 @@ import { useConversationStore } from "@/addons/conversation/store/conversation";
 import i18n, { setLocale } from "@/i18n";
 import { toast } from "@/composables/useToast";
 import { resolveShellViewPath, shellViewLocation, shouldReportView } from "./shellMessagePolicy";
-import { activeSidebarConversation, broadcastGroupId } from "./broadcastViewPolicy";
+import { activeSidebarConversation } from "./broadcastViewPolicy";
+import { sidebarRow } from "./sidebarProjection";
 import {
   applyShellSession,
   setAuthRequiredNotifier,
@@ -91,8 +92,8 @@ export function installShellBridge(router: Router): () => void {
     allowedHostOrigins: configValue("VITE_SHELL_ALLOWED_ORIGINS"),
     parent: window.parent,
     messages: {
-      toChild: ["auth", "view", "locale", "load-more", "delete", "search", "rename"],
-      fromChild: ["auth-required", "conversations", "view-changed", "search-results", "rename-result"],
+      toChild: ["auth", "view", "locale", "load-more", "delete", "search", "rename", "pin"],
+      fromChild: ["auth-required", "conversations", "view-changed", "search-results", "rename-result", "pin-result"],
     },
     onMessage(type, payload) {
       handleVerifiedMessage(type, payload);
@@ -162,6 +163,17 @@ export function installShellBridge(router: Router): () => void {
       return;
     }
 
+    // MUYU-410: sidebar pin/unpin; lazy like rename.
+    if (type === "pin") {
+      void import("./sidebarPin").then((m) => {
+        const intent = m.parsePinIntent(payload);
+        if (!intent || !getPlatformRuntime().getAccessToken()) return;
+        void m.runSidebarPin(intent, store.setPinned, (p) => channel.send("pin-result", p),
+          () => toast.error(i18n.global.t(intent.pinned ? "conversation.pin.failed" : "conversation.pin.unpinFailed")));
+      });
+      return;
+    }
+
     if (type === "search") {
       void searchReady.then((m) => onSearch(m, payload));
       return;
@@ -226,10 +238,7 @@ export function installShellBridge(router: Router): () => void {
         type: "conversations",
         sessionVersion: getPlatformRuntime().getSessionVersion(),
         navigate,
-        conversations: list.map((c) => ({
-          id: c.id, title: c.title, status: c.status,
-          broadcastGroupId: broadcastGroupId(c), executionBackend: c.executionBackend,
-        })),
+        conversations: list.map(sidebarRow),
         activeId,
         hasMore: store.hasMore,
         agents: agents.value.map((a) => ({
@@ -257,10 +266,7 @@ export function installShellBridge(router: Router): () => void {
       source: "sub", type: "search-results",
       sessionVersion: getPlatformRuntime().getSessionVersion(),
       q: search.query.value,
-      conversations: search.results.value.map((c) => ({
-        id: c.id, title: c.title, status: c.status,
-        broadcastGroupId: broadcastGroupId(c), executionBackend: c.executionBackend,
-      })),
+      conversations: search.results.value.map(sidebarRow),
       hasMore: search.hasMore.value, loading: search.loading.value, failed: search.failed.value,
     });
   }

@@ -176,6 +176,12 @@ export async function renameConversation(conversationId: number | string, title:
   return response.data?.data as Conversation;
 }
 
+/** PATCH /conversation/:id {pinned} — user pin/unpin; Core checks ownership (MUYU-410). */
+export async function setConversationPinned(conversationId: number | string, pinned: boolean): Promise<Conversation> {
+  const response = await http().patch<Envelope<Conversation>>(`${BASE}/${conversationId}`, { pinned });
+  return response.data?.data as Conversation;
+}
+
 /**
  * PATCH /conversation/:id — 切换对话使用的模型/提供商。
  *

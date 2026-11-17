@@ -93,8 +93,8 @@ test("routes: instance page under /agents, admin tab gated by core:admin:read", 
 
 test("shell projection: my agents ride the existing conversations message (no new channel type)", () => {
   const bridge = readFileSync(new URL("../src/addons/conversation/composables/useShellBridge.ts", import.meta.url), "utf8");
-  // MUYU-410 adds only the title-search and sidebar-rename pairs; agents still ride "conversations".
-  assert.match(bridge, /fromChild: \["auth-required", "conversations", "view-changed", "search-results", "rename-result"\]/, "agents add no channel type");
+  // MUYU-410 adds only the title-search, sidebar-rename and sidebar-pin pairs; agents still ride "conversations".
+  assert.match(bridge, /fromChild: \["auth-required", "conversations", "view-changed", "search-results", "rename-result", "pin-result"\]/, "agents add no channel type");
   assert.match(bridge, /agents: agents\.value\.map\(\(a\) => \(\{\s*templateId: a\.templateId, name: a\.name, disabled: a\.disabled, lastSessionAt: a\.lastSessionAt,/);
   assert.match(bridge, /agents\.value = \[\];/, "session change drops the previous identity's agents");
   assert.match(bridge, /runtime\.getAccessToken\(\) === token && runtime\.getSessionVersion\(\) === version\) agents\.value = list/,

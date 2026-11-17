@@ -5,6 +5,7 @@ import {
   listConversations,
   createConversation as createConversationApi,
   renameConversation,
+  setConversationPinned,
 } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest } from "@/addons/conversation/api/types";
 import { createBroadcast as createBroadcastApi } from "../api/broadcast";
@@ -164,6 +165,15 @@ export const useConversationStore = defineStore("conversation", () => {
     return saved;
   }
 
+  /** MUYU-410: pin/unpin; the row only changes once Core accepted it. Order is untouched (the shell groups). */
+  async function setPinned(id: number, pinned: boolean): Promise<Conversation> {
+    const saved = await setConversationPinned(id, pinned);
+    const next = typeof saved?.pinned === "boolean" ? saved.pinned : pinned;
+    conversations.value = conversations.value.map((c) =>
+      (c.id === id ? { ...c, pinned: next, pinnedAt: next ? saved?.pinnedAt ?? c.pinnedAt ?? null : null } : c));
+    return saved;
+  }
+
   /** UI-IMPL-5: drop a deleted conversation and its compare group (Core soft-deletes the group). */
   function remove(id: number): void {
     const group = conversations.value.find((c) => c.id === id)?.state?.broadcastGroupId;
@@ -200,6 +210,7 @@ export const useConversationStore = defineStore("conversation", () => {
     load,
     loadMore,
     rename,
+    setPinned,
     create,
     createBroadcast,
     setBroadcastNotices,

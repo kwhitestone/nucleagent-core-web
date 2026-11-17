@@ -153,6 +153,7 @@ export default {
   },
   conversation: {
     rename: { label: "重命名", failed: "重命名失败" },
+    pin: { failed: "置顶失败", unpinFailed: "取消置顶失败" },
     delete: {
       action: "删除",
       menu: "删除对话",

@@ -153,6 +153,7 @@ export default {
   },
   conversation: {
     rename: { label: "Rename", failed: "Rename failed" },
+    pin: { failed: "Pin failed", unpinFailed: "Unpin failed" },
     delete: {
       action: "Delete",
       menu: "Delete conversation",
