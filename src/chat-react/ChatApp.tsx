@@ -27,7 +27,7 @@ import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } 
 import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
 import { composerActions } from "./composerState";
 import {
-  AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, ReloadMark, SendMark, StopMark, VideoMark,
+  AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
 import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type FileChip } from "./attachments";
@@ -41,6 +41,7 @@ import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 export { ModelControls, TurnUsage };
 import "./chat.css";
+import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
 /** A home suggestion card resolved for the locale (suggestions.ts). */
@@ -51,6 +52,7 @@ export interface ChatProps {
   locale?: ConversationLocale;
   navigate(path: string): void;
   create(payload: CreateConversationRequest): Promise<Conversation>;
+  onFork?(conversation: Conversation): void;
   /** Island strings for `locale`, loaded by mount.tsx. */
   strings: IslandStrings;
   /** Per-turn settlement source; none exists yet, so the host passes nothing and usage shows "—". */
@@ -74,6 +76,7 @@ export function ChatApp(props: ChatProps) {
   const effortNow = useRef(effort.sent);
   effortNow.current = effort.sent;
   const core = useCoreConversation(conversationId, report, () => effortNow.current);
+  const messageActions = useMessageActions(conversationId, !!core && isRunning(core.state), props.navigate, (fork) => props.onFork?.(fork), report);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
@@ -121,7 +124,7 @@ export function ChatApp(props: ChatProps) {
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} conversationId={conversationId} evidence={evidence} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
             <Composer t={t} settings={settings} effort={effort}
@@ -564,7 +567,7 @@ function Parts({ t }: { t: Translate }) {
  * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
  * pointer), and always on the last reply.
  */
-export function MessageRow({ role, t, conversationId = "", evidence }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[] }) {
+export function MessageRow({ role, t, conversationId = "", evidence, actions }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
   const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
@@ -586,11 +589,8 @@ export function MessageRow({ role, t, conversationId = "", evidence }: { role: s
         <Parts t={t} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
-      <ActionBarPrimitive.Root className="mc-actions" hideWhenRunning autohide="never">
-        <CopyAction t={t} />
-        {!isUser && (
-          <ActionBarPrimitive.Reload className="mc-icon-btn" aria-label={t("chatReact.reload")} title={t("chatReact.reload")}><ReloadMark /></ActionBarPrimitive.Reload>
-        )}
+      <ActionBarPrimitive.Root className="mc-actions" aria-busy={actions?.busy} hideWhenRunning autohide="never">
+        <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
       </ActionBarPrimitive.Root>
       {!isUser && <TurnUsage t={t} usage={turnUsage({ conversationId, turnId }, evidence)} />}
     </MessagePrimitive.Root>

@@ -25,6 +25,7 @@ const chatProps = (): MountProps => ({
   navigate: (path) => void router.push(path),
   create: (payload) => store.create(payload),
   settlementReader: readSettlement,
+  onFork: (conversation) => store.upsert(conversation),
 });
 
 onMounted(async () => {

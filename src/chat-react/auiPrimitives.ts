@@ -30,7 +30,6 @@ import { AttachmentPrimitiveRemove } from "@aui-dist/primitives/attachment/Attac
 import { MessagePrimitiveRoot } from "@aui-dist/primitives/message/MessageRoot.js";
 import { MessagePrimitiveAttachments } from "@aui-dist/primitives/message/MessageAttachments.js";
 import { ActionBarPrimitiveRoot } from "@aui-dist/primitives/actionBar/ActionBarRoot.js";
-import { ActionBarPrimitiveReload } from "@aui-dist/primitives/actionBar/ActionBarReload.js";
 import { MessagePrimitiveGroupedParts } from "@assistant-ui/core/react";
 
 export const ThreadPrimitive = {
@@ -46,5 +45,5 @@ export const ComposerPrimitive = {
 };
 export const AttachmentPrimitive = { Root: AttachmentPrimitiveRoot, Name: AttachmentPrimitiveName, Remove: AttachmentPrimitiveRemove };
 export const MessagePrimitive = { Root: MessagePrimitiveRoot, GroupedParts: MessagePrimitiveGroupedParts, Attachments: MessagePrimitiveAttachments };
-export const ActionBarPrimitive = { Root: ActionBarPrimitiveRoot, Reload: ActionBarPrimitiveReload };
+export const ActionBarPrimitive = { Root: ActionBarPrimitiveRoot };
 export const QueueItemPrimitive = { Text: QueueItemPrimitiveText, Remove: QueueItemPrimitiveRemove };

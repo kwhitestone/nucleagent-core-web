@@ -102,7 +102,13 @@
 .mc-author { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .mc-time { font-size: 11px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity 0.15s; }
 .mc-msg:hover .mc-time, .mc-msg:focus-within .mc-time { opacity: 1; }
-.mc-actions { display: flex; align-items: center; gap: 2px; margin-top: 2px; min-height: 32px; opacity: 0; transition: opacity 0.15s; }
+.mc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 2px; min-height: 32px; opacity: 0; transition: opacity 0.15s; }
+.mc-actions [aria-pressed="true"] { background: var(--bg-hover); color: var(--fg-accent); }
+.mc-message-form { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.mc-message-form textarea { width: 100%; min-height: 80px; resize: vertical; }
+.mc-message-form textarea, .mc-message-form button { font: inherit; color: inherit; background: var(--bg-primary); border: 1px solid var(--border-input); border-radius: 8px; padding: 6px 10px; }
+.mc-feedback-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (hover: none) { .mc-actions { opacity: 1; } }
 .mc-msg:hover .mc-actions, .mc-msg:focus-within .mc-actions, .mc-msg[data-last][data-message-role="assistant"] .mc-actions { opacity: 1; }
 .mc-icon-btn {
   display: inline-flex;

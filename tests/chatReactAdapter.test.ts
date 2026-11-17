@@ -217,36 +217,31 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
   assert.deepEqual(parts[6].data, { media: { kind: "image", taskId: 7 }, prompt: "提示词：「猫」", failed: false });
 });
 
-test("adapter: 重新生成 resends the question; earlier history pages through loadOlder", async () => {
+test("adapter: message branches own regeneration; earlier history pages through loadOlder", async () => {
   const sent: string[] = [];
   let older = 0;
   const state = { ...stateOf([item("u1", { role: "user", content: "question" }), item("a1", { content: "answer" })]), hasOlder: true };
   const store = externalStore(state, { send: async (text) => { sent.push(text); }, stop: async () => {}, loadOlder: async () => { older += 1; } });
-  await store.onReload!("u1", {} as never);
-  await store.onReload!("missing", {} as never);
-  assert.deepEqual(sent, ["question"]);
+  assert.equal(store.onReload, undefined);
+  assert.deepEqual(sent, []);
   assert.equal(store.hasEarlier, true);
   await store.onLoadEarlier!();
   assert.equal(older, 1);
   assert.equal("onLoadEarlier" in externalStore(state, { send: async () => {}, stop: async () => {} }), false);
 });
 
-test("resend preserves the selected question and storage references without replaying output or file metadata", async () => {
-  const sent: unknown[] = [];
+test("branch metadata identifies persisted parent question and final answer, preserving storage references", () => {
   const state = stateOf([
-    item("u1", { role: "user", content: "Read this file", attachments: [{ id: "file-1", name: "report.pdf", mimeType: "application/pdf", metadata: { verification: "verified", privateField: "mock-only" } }] }),
-    item("a1", { content: "Answer", attachments: [{ id: "output", name: "result.txt" }] }),
-    item("u2", { role: "user", content: "Other question" }), item("a2"),
+    item("msg-1", { role: "user", content: "  Read this file\n", attachments: [{ id: "file-1", name: "report.pdf", mimeType: "application/pdf", metadata: { verification: "verified", privateField: "mock-only" } }] }),
+    item("msg-2", { lane: "process", kind: "status", userReadable: true }),
+    item("msg-3", { content: "Answer", attachments: [{ id: "output", name: "result.txt" }] }),
+    item("msg-4", { role: "user", content: "Other question" }), item("msg-5"),
   ]);
-  const store = externalStore(state, { send: async (...args) => { sent.push(args); }, stop: async () => {} });
-  await store.onReload!("u1", {} as never);
-  assert.deepEqual(sent, [["Read this file", [{ id: "file-1", name: "report.pdf", mimeType: "application/pdf" }]]]);
-  await store.onReload!("a1", {} as never);
-  await store.onReload!("missing", {} as never);
-  assert.equal(sent.length, 1);
-  const rejected = externalStore(state, { send: async () => { throw new Error("mock permission denied"); }, stop: async () => {} });
-  await assert.rejects(rejected.onReload!("u1", {} as never), /mock permission denied/);
-  assert.equal(state.items.u1!.attachments![0]!.metadata!.verification, "verified");
+  const messages = toThreadMessages(state);
+  assert.deepEqual(messages[1]!.metadata?.custom?.question, { id: 1, content: "  Read this file\n", attachments: [{ fileId: "file-1", name: "report.pdf" }] });
+  assert.equal(messages[1]!.metadata?.custom?.feedbackMessageId, 3);
+  assert.equal((messages[3]!.metadata?.custom?.question as { id: number }).id, 4);
+  assert.equal(state.items['msg-1']!.attachments![0]!.metadata!.verification, "verified");
 });
 
 test("suggestions: home cards → aui suggestions (locale, prefill vs title, disabled and media cards dropped)", async () => {
@@ -462,7 +457,7 @@ test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行�
   const { createElement: h } = React;
   const t = (key: string) => ({ "conversation.you": "你", "home.greeting": "NucleAgent", "common.copy": "复制", "chatReact.process": "执行过程" })[key] ?? key;
   const state = stateOf([
-    item("u1", { role: "user", content: "question" }),
+    item("msg-1", { role: "user", content: "question" }),
     item("p1", { lane: "process", title: "排队等待", userReadable: true }),
     item("p2", { lane: "process", title: "Agent 初始化", userReadable: true }),
     item("a1", { content: "answer [x](javascript:alert(1)) <img src=x onerror=alert(1)> ![p](https://e.example/p.png) - [x] done" }),

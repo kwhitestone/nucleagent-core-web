@@ -225,7 +225,7 @@ test("process fold defaults: closed when all done, open while running, open on f
 });
 
 test("hover action bar: under the bubble, real buttons (keyboard focusable, ≥28px via .mc-icon-btn), last reply marked", () => {
-  const state = stateOf([item("u1", { role: "user", content: "q" }), item("a1", { content: "答案" })]);
+  const state = stateOf([item("msg-1", { role: "user", content: "q" }), item("msg-2", { content: "答案" })]);
   const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   const assistant = html.slice(html.indexOf('data-message-role="assistant"'));
@@ -312,8 +312,8 @@ test("island strings: zh/en chunks have the same keys, mount picks the current l
   const { EN_STRINGS: en } = await vite.ssrLoadModule("/src/chat-react/islandStringsEn.ts") as typeof import("../src/chat-react/islandStringsEn.ts");
   assert.equal(zh.process, "执行过程");
   assert.equal(en.process, "Process");
-  assert.equal(zh.reload, "再次发送（新增一轮）");
-  assert.equal(en.reload, "Send again (new turn)");
+  assert.equal(zh.reload, "重新生成");
+  assert.equal(en.reload, "Regenerate");
   assert.equal(zh.mediaLater, "即将开放");
   assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort());
   const mount = readFileSync("src/chat-react/mount.tsx", "utf8");
