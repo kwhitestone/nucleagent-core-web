@@ -15,7 +15,7 @@ const strategySchema = z.object({
     thinking: z.object({ supported: z.boolean(), source: z.string().min(1) }).nullable(),
     vision: sampleSchema.nullable(),
     // gap2: measured reasoning-effort evidence; absent = unverified (never assumed effective).
-    effort: z.object({ levels: z.array(z.enum(["low", "medium", "high"])).min(1), effective: z.boolean(), source: z.string().min(1) }).nullable().optional(),
+    effort: z.object({ levels: z.array(z.enum(["low", "medium", "high"])), effective: z.boolean(), source: z.string().min(1) }).nullable().optional(),
   })).max(200),
 });
 export type ChatStrategy = z.infer<typeof strategySchema>;

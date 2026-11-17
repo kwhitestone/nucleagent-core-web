@@ -35,8 +35,8 @@ export function storeEffort(model: string, level: EffortChoice, s: Store | undef
 /** What the selector may offer: non-codex → disabled; levels outside the evidence → off; note = honest effect label. */
 export function effortView(backend: string | null, evidence: EffortEvidence | undefined) {
   if (backend !== "codex") return { disabled: true, off: [...EFFORT_LEVELS] as EffortLevel[], note: "backend" as EffortNote };
-  if (!evidence) return { disabled: false, off: [] as EffortLevel[], note: "unverified" as EffortNote };
-  return { disabled: false, off: EFFORT_LEVELS.filter((l) => !evidence.levels.includes(l)), note: (evidence.effective ? "effective" : "ineffective") as EffortNote };
+  if (!evidence) return { disabled: true, off: [...EFFORT_LEVELS] as EffortLevel[], note: "unverified" as EffortNote };
+  return { disabled: evidence.levels.length === 0, off: EFFORT_LEVELS.filter((level) => !evidence.levels.includes(level)), note: (evidence.effective ? "effective" : "ineffective") as EffortNote };
 }
 
 /** Never send a level the view disables. */

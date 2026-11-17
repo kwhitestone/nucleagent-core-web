@@ -79,3 +79,11 @@ test("effort evidence is optional per measurement, validated, and only returned 
   assert.equal(effortEvidence(strategy, { providerId: 1, model: "other" }), undefined);
   assert.equal(parseChatStrategy({ ...config, measurements: [{ ...measurement, effort: { ...effort, levels: ["minimal"] } }] }, config.origin), null);
 });
+
+test("explicit unsupported effort preserves the rest of the strategy instead of invalidating it", () => {
+  const effort = { levels: [], effective: false, source: "catalog:unsupported" };
+  const parsed = parseChatStrategy({ ...config, measurements: [{ ...measurement, effort }] }, config.origin);
+  assert.ok(parsed);
+  assert.deepEqual(parsed.measurements[0]?.effort, effort);
+  assert.deepEqual(parsed.candidate, choice);
+});

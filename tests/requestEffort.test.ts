@@ -44,13 +44,23 @@ test("sent level: unsupported or disabled choices fall back to the backend defau
   assert.equal(sentEffort("high", effortView("codex", { levels: ["low"], effective: true, source: "s" })), "");
   assert.equal(sentEffort("low", effortView("codex", { levels: ["low"], effective: true, source: "s" })), "low");
   assert.equal(sentEffort("low", effortView("hermes", undefined)), "");
-  assert.equal(sentEffort("medium", effortView("codex", undefined)), "medium");
+  assert.equal(sentEffort("medium", effortView("codex", undefined)), "");
 });
 
 test("view: non-codex disables everything; evidence disables unsupported levels and states real effect; no evidence = unverified", () => {
   assert.deepEqual(effortView("hermes", undefined), { disabled: true, off: ["low", "medium", "high"], note: "backend" });
-  assert.deepEqual(effortView("codex", undefined), { disabled: false, off: [], note: "unverified" });
+  assert.deepEqual(effortView("codex", undefined), { disabled: true, off: ["low", "medium", "high"], note: "unverified" });
   assert.deepEqual(effortView("codex", { levels: ["low", "medium"], effective: false, source: "s" }),
     { disabled: false, off: ["high"], note: "ineffective" });
   assert.equal(effortView("codex", { levels: ["low", "medium", "high"], effective: true, source: "s" }).note, "effective");
+});
+
+test("a model with no supported levels disables the selector and omits remembered effort on create", () => {
+  const view = effortView("codex", { levels: [], effective: false, source: "catalog:unsupported" });
+  assert.equal(view.disabled, true);
+  assert.deepEqual(view.off, ["low", "medium", "high"]);
+  for (const level of ["low", "medium", "high"] as const) {
+    const payload = withRequestEffort({ input: "q" }, sentEffort(level, view), "codex");
+    assert.deepEqual(payload, { input: "q" });
+  }
 });
