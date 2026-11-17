@@ -102,8 +102,12 @@ test("listConversations forwards q to Core", async () => {
 test("task desk keeps its order and shows a separate search view", () => {
   const home = readFileSync(new URL("../src/addons/conversation/views/Home.vue", import.meta.url), "utf8");
   assert.match(home, /deskOrder\(store\.sorted\)/);
-  assert.match(home, /data-testid="desk-search"/);
-  assert.match(home, /v-for="c in \(search\.active\.value \? search\.results\.value : recent\)"/);
+  // MUYU-365 batch 1: the search view lives in a lazily loaded DeskSearch; Home hides its own list while it is active.
+  assert.match(home, /import\("@\/addons\/conversation\/components\/DeskSearch\.vue"\)/);
+  assert.match(home, /<template v-if="!searching">[\s\S]*v-for="c in recent"/);
+  const desk = readFileSync(new URL("../src/addons/conversation/components/DeskSearch.vue", import.meta.url), "utf8");
+  assert.match(desk, /data-testid="desk-search"/);
+  assert.match(desk, /<template v-if="search\.active\.value">[\s\S]*v-for="c in search\.results\.value"/);
 });
 
 test("shell search intents are validated before they reach Core", async () => {

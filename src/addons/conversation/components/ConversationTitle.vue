@@ -55,6 +55,3 @@ defineExpose({ start });
   <strong v-else data-testid="conv-title" dir="auto" :title="t('conversation.rename.label')" @dblclick="start">{{ shown || t('common.untitled') }}</strong>
 </template>
 
-<style scoped>
-.conv-title-input { font: inherit; font-weight: 600; min-width: 0; width: 100%; padding: 2px 6px; border: 1px solid var(--border, #ccc); border-radius: 6px; background: transparent; color: inherit; }
-</style>

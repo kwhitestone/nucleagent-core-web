@@ -8,7 +8,7 @@
  * 替代旧 Workbench.vue：去掉自带的品牌头部与侧栏（chrome 已上移到壳），
  * 仅保留内容。创建对话的逻辑沿用 useConversationStore。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, shallowRef, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
@@ -26,8 +26,6 @@ import { useBindingSelection } from "@/addons/conversation/composables/useBindin
 import { useNarrow } from "@/composables/useNarrow";
 import { broadcastRoute } from "@/addons/conversation/composables/broadcastViewPolicy";
 import { deskOrder, relativeTime } from "@/addons/conversation/composables/taskDesk";
-import { createTitleSearch } from "@/addons/conversation/composables/historySearch";
-import { listConversations } from "@/addons/conversation/api/conversation";
 import type { ConversationMode, MessageAttachment, ModelChoice } from "@/addons/conversation/api/types";
 import { fetchHomeSuggestions } from "@/addons/conversation/api/homeSuggestions";
 import SuggestionChip from "@/components/SuggestionChip.vue";
@@ -143,8 +141,10 @@ const runSheet = ref(false);
 const modelLabel = ref("");
 const backendLabel = ref("");
 const recent = computed(() => deskOrder(store.sorted).slice(0, 30));
-// Title search is its own Core-paged view (newest first); it never reorders the desk list.
-const search = createTitleSearch((q, beforeId) => listConversations({ q, beforeId, limit: 20 }));
+// Title search (MUYU-410) is lazy so the default /chat chunk stays within the 1 KiB budget; the plain desk shows until it lands.
+const DeskSearch = shallowRef<Component | null>(null);
+const searching = ref(false);
+void import("@/addons/conversation/components/DeskSearch.vue").then((m) => { DeskSearch.value = m.default; });
 const now = ref(Date.now());
 function openTask(conversation: (typeof store.sorted)[number]): void {
   void router.push(broadcastRoute(conversation) ?? `/c/${conversation.id}`);
@@ -194,21 +194,12 @@ onMounted(() => {
       <div class="desk-scroll">
         <h1 class="desk-title">{{ t('home.deskTitle') }}</h1>
         <p class="desk-lede">{{ t('home.deskLede') }}</p>
-        <input
-          v-model="search.query.value"
-          type="search"
-          class="desk-search"
-          data-testid="desk-search"
-          maxlength="80"
-          dir="auto"
-          :placeholder="t('home.searchPlaceholder')"
-          :aria-label="t('home.searchPlaceholder')"
-          @keydown.esc="search.query.value = ''"
-        />
-        <p class="desk-glabel" aria-live="polite">{{ search.active.value ? (search.loading.value ? t('common.loading') : t('home.searchResults')) : t('home.recent') }}</p>
-        <div v-if="(search.active.value ? search.results.value : recent).length" class="desk-list" :aria-busy="search.loading.value">
+        <component :is="DeskSearch" v-if="DeskSearch" :now="now" @open="openTask" @active="searching = $event" />
+        <template v-if="!searching">
+        <p class="desk-glabel">{{ t('home.recent') }}</p>
+        <div v-if="recent.length" class="desk-list">
           <button
-            v-for="c in (search.active.value ? search.results.value : recent)"
+            v-for="c in recent"
             :key="c.id"
             type="button"
             class="desk-row"
@@ -224,11 +215,8 @@ onMounted(() => {
             </span>
           </button>
         </div>
-        <p v-if="search.active.value && search.failed.value" class="desk-empty" role="alert">
-          {{ t('home.searchFailed') }} <button type="button" class="desk-more" @click="search.retry()">{{ t('common.retry') }}</button>
-        </p>
-        <button v-else-if="search.active.value && search.hasMore.value && !search.loading.value" type="button" class="desk-more" data-testid="desk-search-more" @click="search.more()">{{ t('home.loadMore') }}</button>
-        <p v-else-if="search.active.value ? !search.loading.value && !search.results.value.length : !recent.length && store.loaded" class="desk-empty">{{ search.active.value ? t('home.searchEmpty') : t('common.empty') }}</p>
+        <p v-else-if="store.loaded" class="desk-empty">{{ t('common.empty') }}</p>
+        </template>
       </div>
 
       <div class="desk-composer">

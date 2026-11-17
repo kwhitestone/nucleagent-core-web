@@ -27,7 +27,7 @@ import {
 import { configValue } from "@/runtimeConfig";
 import { listMyAgents, type MyAgent } from "../api/agent";
 import { listConversations } from "../api/conversation";
-import { createTitleSearch, parseSearchIntent } from "./historySearch";
+import type { createTitleSearch } from "./historySearch";
 import { parseDeleteIntent } from "./conversationDelete";
 import { requestDelete } from "./useConversationDelete";
 
@@ -50,13 +50,16 @@ export function installShellBridge(router: Router): () => void {
   // "My agents" ride the sidebar projection; the shell never queries Core itself.
   const agents = ref<MyAgent[]>([]);
   // Wide-screen sidebar title search: Core owns the request, the shell only renders the projection.
-  const search = createTitleSearch((q, beforeId) => listConversations({ q, beforeId, limit: 20 }));
+  // Loaded on the first shell search so the default entry chunk stays within the 1 KiB budget (MUYU-365 batch 1).
+  let search: ReturnType<typeof createTitleSearch> | undefined;
+  let stopSearch = () => {};
+  const searchReady = import("./historySearch");
   // Reset is synchronous: late requests from the previous identity must not
   // repopulate the shared history after logout or account/credential changes.
   const onSessionChange = () => {
     store.reset();
     agents.value = [];
-    search.query.value = "";
+    if (search) search.query.value = "";
   };
   window.addEventListener(SESSION_CHANGE_EVENT, onSessionChange);
 
@@ -149,12 +152,7 @@ export function installShellBridge(router: Router): () => void {
     }
 
     if (type === "search") {
-      const intent = parseSearchIntent(payload);
-      if (!intent || !getPlatformRuntime().getAccessToken()) return;
-      // Same query (shell reconnected): resend the current projection instead of refetching.
-      if (intent.action === "query") intent.q === search.query.value ? pushSearch() : (search.query.value = intent.q);
-      // A page/retry for an older query must not page the current one.
-      else if (intent.q === search.query.value) void (intent.action === "more" ? search.more() : search.retry());
+      void searchReady.then((m) => onSearch(m, payload));
       return;
     }
 
@@ -229,8 +227,21 @@ export function installShellBridge(router: Router): () => void {
     });
   }
 
+  function onSearch(m: typeof import("./historySearch"), payload: unknown): void {
+    const intent = m.parseSearchIntent(payload);
+    if (!intent || !getPlatformRuntime().getAccessToken()) return;
+    if (!search) {
+      const s = (search = m.createTitleSearch((q, beforeId) => listConversations({ q, beforeId, limit: 20 })));
+      stopSearch = watch(() => [s.query.value, s.results.value, s.hasMore.value, s.loading.value, s.failed.value], pushSearch);
+    }
+    // Same query (shell reconnected): resend the current projection instead of refetching.
+    if (intent.action === "query") intent.q === search.query.value ? pushSearch() : (search.query.value = intent.q);
+    // A page/retry for an older query must not page the current one.
+    else if (intent.q === search.query.value) void (intent.action === "more" ? search.more() : search.retry());
+  }
+
   function pushSearch(): void {
-    if (!getPlatformRuntime().getAccessToken()) return;
+    if (!search || !getPlatformRuntime().getAccessToken()) return;
     channel.send("search-results", {
       source: "sub", type: "search-results",
       sessionVersion: getPlatformRuntime().getSessionVersion(),
@@ -242,10 +253,6 @@ export function installShellBridge(router: Router): () => void {
       hasMore: search.hasMore.value, loading: search.loading.value, failed: search.failed.value,
     });
   }
-  const stopSearch = watch(
-    () => [search.query.value, search.results.value, search.hasMore.value, search.loading.value, search.failed.value],
-    pushSearch,
-  );
 
   // core → 壳：对话列表变化时推。
   const stopConversations = watch(

@@ -13,7 +13,7 @@
  *     （标题取 senderName），不需要自定义 renderer。
  *   - 附件上传复用组件的 uploadAttachment 边界 → api/storage.uploadFile。
  */
-import { computed, onBeforeUnmount, provide, ref, watch } from "vue";
+import { computed, onBeforeUnmount, provide, ref, shallowRef, watch, type Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { ApiError } from "@/contracts/platform-runtime";
@@ -53,7 +53,6 @@ import VideoConfirm from "@/addons/conversation/components/media/VideoConfirm.vu
 import ChatGenBar from "@/addons/conversation/components/media/ChatGenBar.vue";
 import GenMessage, { type ChatGenHost } from "@/addons/conversation/components/media/GenMessage.vue";
 import { requestDelete } from "@/addons/conversation/composables/useConversationDelete";
-import ConversationTitle from "@/addons/conversation/components/ConversationTitle.vue";
 import { useConversationStore } from "@/addons/conversation/store/conversation";
 
 const props = defineProps<{ id: string }>();
@@ -66,7 +65,10 @@ function onMore(): void {
   if (narrow.value) moreOpen.value = true;
   else menuOpen.value = !menuOpen.value;
 }
-const titleEditor = ref<InstanceType<typeof ConversationTitle> | null>(null);
+// Inline rename (MUYU-410) is lazy so the default /c/:id chunk stays within the 1 KiB budget; plain title until it lands.
+const ConversationTitle = shallowRef<Component | null>(null);
+void import("@/addons/conversation/components/ConversationTitle.vue").then((m) => { ConversationTitle.value = m.default; });
+const titleEditor = ref<{ start(): Promise<void> } | null>(null);
 const conversationStore = useConversationStore();
 function askRename(): void {
   moreOpen.value = false;
@@ -370,7 +372,8 @@ function onError(error: Error): void {
       <!-- Below 1024px (board §13): task name + status, and 「⋯」 for the run settings (Q7). -->
       <header class="conv-head" :class="{ 'conv-head--wide': !narrow }" data-testid="conv-head">
         <div class="conv-head-text">
-          <ConversationTitle ref="titleEditor" :title="title" :save="rename" />
+          <component :is="ConversationTitle" v-if="ConversationTitle" ref="titleEditor" :title="title" :save="rename" />
+          <strong v-else>{{ title || t('common.untitled') }}</strong>
           <span v-if="status" class="conv-status" :data-status="status">
             {{ status === 'blocked' ? t('home.needsYou') : t(`broadcast.status.${status}`) }}
           </span>
