@@ -26,20 +26,28 @@ export function workflowInvocation(toolId: number, definition: WorkflowSchema, v
 }
 
 type MediaRow = { id: number; imported?: boolean; status?: string; mediaModel?: string };
-export type DirectMedia = { toolId: number; schema: WorkflowSchema };
+/** `prompt` names the schema field that carries the composer text ("input", or the source's own free-text prompt). */
+export type DirectMedia = { toolId: number; schema: WorkflowSchema; prompt: string };
+const freeText = (field?: Field) => field?.type === "string" && !field.enum;
+/** The composer text goes to `input`; else to the source's own `prompt` when it is the only free-text required field. */
+function promptField(schema: WorkflowSchema): string | null {
+  const { properties, required = [] } = schema.inputSchema;
+  const name = freeText(properties.input) ? "input" : freeText(properties.prompt) ? "prompt" : null;
+  // Every other required parameter must be a real enum the user can pick.
+  return name && !required.some((key) => key !== name && !properties[key]?.enum) ? name : null;
+}
 /** The Toolgate job tool Core binds to this media model, with its real parameter schema; null = not connected. */
 export async function directMediaTool(model: string, rows: MediaRow[], load: (id: number) => Promise<WorkflowSchema & { model?: string }>): Promise<DirectMedia | null> {
-  const row = rows.find((entry) => entry.imported && entry.status === "ready" && entry.mediaModel === model);
-  if (!row) return null;
-  try {
-    const schema = await load(row.id);
-    const properties = schema.inputSchema.properties;
-    // The composer text is the prompt; every other required parameter must be a real enum the user can pick.
-    return schema.model === model && schema.invocation?.toolId === row.id && workflowFields(schema) && properties.input?.type === "string" && !properties.input.enum
-      && !schema.inputSchema.required?.some((name) => name !== "input" && !properties[name]?.enum) ? { toolId: row.id, schema } : null;
-  } catch { return null; }
+  for (const row of rows.filter((entry) => entry.imported && entry.status === "ready" && entry.mediaModel === model)) {
+    try {
+      const schema = await load(row.id);
+      const prompt = schema.model === model && schema.invocation?.toolId === row.id && workflowFields(schema) ? promptField(schema) : null;
+      if (prompt) return { toolId: row.id, schema, prompt };
+    } catch { /* this row stays closed; try the next one */ }
+  }
+  return null;
 }
 
 /** Conversation request fields of a direct media generation: the model's job tool with server-validated arguments. */
 export const directMediaRequest = (direct: DirectMedia, params: Record<string, string>, input: string) =>
-  ({ toolIds: [direct.toolId], toolInvocation: workflowInvocation(direct.toolId, direct.schema, { ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)), input }) });
+  ({ toolIds: [direct.toolId], toolInvocation: workflowInvocation(direct.toolId, direct.schema, { ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)), [direct.prompt]: input }) });

@@ -302,7 +302,7 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
   const sendLabel = t(running ? "chatReact.queueSend" : "common.send"); // queue while a reply runs
   // Media mode sends only with the model's job tool, every required choice made, and no active run (never queued).
   const blocked = settings.busy || (!!settings.media && (running || !settings.direct
-    || !!settings.direct.schema.inputSchema.required?.some((name) => name !== "input" && !settings.params?.[name])));
+    || !!settings.direct.schema.inputSchema.required?.some((name) => name !== settings.direct!.prompt && !settings.params?.[name])));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <ComposerPrimitive.Root className="mc-composer">
