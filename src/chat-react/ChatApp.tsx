@@ -40,7 +40,7 @@ import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
-import { cap, defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort, type EffortChoice } from "./requestEffort";
+import { cap, defaultEffort, effortView, sentEffort, serverEvidence, storedEffort, storeEffort, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
@@ -348,11 +348,22 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
 }
 
 /** Reasoning effort for the selected model (remembered per model, env default from runtime config). */
-function useEffort(settings: { model: ModelChoice | null; backend: string | null; effortEvidence?: ReturnType<typeof effortEvidence> }) {
+export function useEffort(settings: { model: ModelChoice | null; backend: string | null; effortEvidence?: ReturnType<typeof effortEvidence> }) {
   const key = settings.model ? `${settings.model.providerId}:${settings.model.model}` : "default";
   const [, bump] = useState(0);
+  // MUYU-365 exp3: without measured strategy evidence, Core's per-model whitelist (/model-profiles `efforts`) decides.
+  const [server, setServer] = useState<{ key: string; evidence?: EffortEvidence }>();
+  const ask = settings.backend === "codex" && !!settings.model && !settings.effortEvidence;
+  useEffect(() => {
+    if (!ask) return;
+    let live = true;
+    getPlatformRuntime().http.get<{ data: { efforts?: string[] }[] }>("/api/v1/addons/conversation/model-profiles", {
+      params: { executionBackend: "codex", providerId: settings.model!.providerId, model: settings.model!.model },
+    }).then((response) => { if (live) setServer({ key, evidence: serverEvidence(response.data.data) }); }).catch(() => {});
+    return () => { live = false; };
+  }, [ask, key]);
   const choice = storedEffort(key) ?? defaultEffort();
-  const view = effortView(settings.backend, settings.effortEvidence);
+  const view = effortView(settings.backend, settings.effortEvidence ?? (ask && server?.key === key ? server.evidence : undefined));
   return { choice, view, sent: sentEffort(choice, view), set: (level: EffortChoice) => { storeEffort(key, level); bump((n) => n + 1); } };
 }
 

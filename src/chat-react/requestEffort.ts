@@ -11,7 +11,7 @@ export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 export type EffortChoice = EffortLevel | "";
 /** Measured per-model evidence (chat-strategy.json `effort`): levels accepted and whether effort changed anything. */
 export interface EffortEvidence { levels: EffortLevel[]; effective: boolean; source: string }
-export type EffortNote = "backend" | "unverified" | "ineffective" | "effective";
+export type EffortNote = "backend" | "unverified" | "ineffective" | "effective" | "server";
 
 const KEY = "nucleagent_chat_effort";
 const valid = (v: unknown): v is EffortChoice => v === "" || (EFFORT_LEVELS as readonly unknown[]).includes(v);
@@ -38,7 +38,14 @@ export function storeEffort(model: string, level: EffortChoice, s: Store | undef
 export function effortView(backend: string | null, evidence: EffortEvidence | undefined) {
   if (backend !== "codex") return { disabled: true, off: [...EFFORT_LEVELS] as EffortLevel[], note: "backend" as EffortNote };
   if (!evidence) return { disabled: true, off: [...EFFORT_LEVELS] as EffortLevel[], note: "unverified" as EffortNote };
-  return { disabled: evidence.levels.length === 0, off: EFFORT_LEVELS.filter((level) => !evidence.levels.includes(level)), note: (evidence.effective ? "effective" : "ineffective") as EffortNote };
+  return { disabled: evidence.levels.length === 0, off: EFFORT_LEVELS.filter((level) => !evidence.levels.includes(level)), note: (evidence.source === "core" ? "server" : evidence.effective ? "effective" : "ineffective") as EffortNote };
+}
+
+/** MUYU-365 exp3: Core /model-profiles `efforts` (levels the upstream accepted) as evidence; effect itself unmeasured. */
+export function serverEvidence(profiles: { efforts?: string[] }[] | undefined): EffortEvidence | undefined {
+  const listed = profiles?.find((profile) => profile.efforts?.length)?.efforts;
+  const levels = EFFORT_LEVELS.filter((level) => listed?.includes(level));
+  return levels.length ? { levels, effective: false, source: "core" } : undefined;
 }
 
 /** Never send a level the view disables. */

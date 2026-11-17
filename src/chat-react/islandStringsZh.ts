@@ -2,7 +2,7 @@
 export const ZH_STRINGS = {
     modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "Toolgate额度未知", usagePending: "待结算", usageSettled: "Toolgate额度",
     effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "该模型不支持",
-    effortBackend: "仅 Codex 执行器支持", effortUnverified: "未实测该模型是否生效", effortIneffective: "已实测：对该模型不生效", effortEffective: "已实测：对该模型生效",
+    effortBackend: "仅 Codex 执行器支持", effortUnverified: "未实测该模型是否生效", effortIneffective: "已实测：对该模型不生效", effortEffective: "已实测：对该模型生效", effortServer: "平台已验证上游接受，效果未实测",
     profile: "模型预设", profileNote: "所选思考强度优先于预设；temperature / top_p / max tokens 当前不可调", profileError: "预设加载失败，刷新后重试",
     ioToggle: "完整工具输入输出", ioInput: "输入", ioOutput: "输出", ioMore: "加载更多", ioEmpty: "（空）", ioMissing: "未采集", ioError: "无法读取，请重新展开。",
     upstream: "上游",
