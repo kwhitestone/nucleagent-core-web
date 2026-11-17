@@ -2,7 +2,7 @@ import type { IslandStrings } from "./islandStringsZh";
 
 /** en-US island strings, a separate lazy chunk so zh-CN sessions never download them. */
 export const EN_STRINGS: IslandStrings = {
-    effort: "Reasoning effort", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
+    effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model",
     upstream: "Upstream",
     reasoning: "Thinking process",
