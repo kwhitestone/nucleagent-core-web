@@ -157,7 +157,7 @@ export function ChatApp(props: ChatProps) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="mc-root" data-conversation-key={conversationId ?? ""}>
-        <ScrollViewport conversationId={conversationId} ready={!conversationId || !!core?.controller.authoritativeReady.value} className="mc-viewport">
+        <ScrollViewport conversationId={conversationId} ready={!conversationId || (core?.state.conversationKey === conversationId && core.controller.authoritativeReady.value)} className="mc-viewport">
           <AuiIf condition={(s) => s.thread.hasEarlier}>
             <ThreadPrimitive.LoadEarlier className="mc-earlier">{t("chatReact.earlier")}</ThreadPrimitive.LoadEarlier>
           </AuiIf>
