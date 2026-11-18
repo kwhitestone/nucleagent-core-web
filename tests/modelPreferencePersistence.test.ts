@@ -16,6 +16,8 @@ let reads = 0;
 let writes = 0;
 let failWrite = false;
 let readGate: Promise<void> | undefined;
+let writeGate: Promise<void> | undefined;
+let writeSignal: AbortSignal | undefined;
 const saved = new Map<string, { profileId: string; effort: string }>();
 
 before(async () => {
@@ -35,10 +37,14 @@ before(async () => {
       await readGate;
       return result;
     },
-    put: async (_url: string, body: { profileId: string; effort: string }, config: { params: unknown }) => {
+    put: async (_url: string, body: { profileId: string; effort: string }, config: { params: unknown; signal?: AbortSignal }) => {
       writes++;
+      const owner = version;
+      writeSignal = config.signal;
+      await writeGate;
+      if (config.signal?.aborted) throw new Error("aborted transport");
       if (failWrite) throw new Error("unconfirmed write");
-      saved.set(`${version}:${JSON.stringify(config.params)}`, body);
+      saved.set(`${owner}:${JSON.stringify(config.params)}`, body);
       return { data: { data: body } };
     },
   } });
@@ -106,4 +112,31 @@ test("late reads from a retired account cannot restore its preference", async ()
     assert.equal(current.profile, null);
     assert.equal(current.choice, "");
   } finally { readGate = undefined; await React.act(async () => root.unmount()); }
+});
+
+test("session changes abort pending save transport without replaying it under another account", async () => {
+  failWrite = false;
+  version = 4;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  let release!: () => void;
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    writeGate = new Promise<void>((resolve) => { release = resolve; });
+    let pending!: Promise<void>;
+    await React.act(async () => { pending = current.save("quick", "medium"); });
+    const count = writes;
+    const retiredSignal = writeSignal;
+    version = 5;
+    await React.act(async () => window.dispatchEvent(new dom.window.Event("nucleagent:session-change")));
+    assert.equal(retiredSignal?.aborted, true);
+    await React.act(async () => { release(); await pending; });
+    assert.equal(writes, count);
+    assert.equal(current.profile, null);
+    assert.equal(current.choice, "");
+    assert.equal(current.ready, true);
+  } finally { writeGate = undefined; await React.act(async () => root.unmount()); }
 });

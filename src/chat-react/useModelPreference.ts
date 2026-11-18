@@ -10,9 +10,13 @@ const endpoint = "/api/v1/addons/conversation/model-preferences";
 export function useModelPreference(scope: string, backend: string, providerId: number | undefined, model: string) {
   const generation = useRef(0);
   const writing = useRef(false);
+  const transport = useRef<AbortController | null>(null);
   const [state, setState] = useState<{ scope: string; session: number; preference: Preference; catalog: Catalog; ready: boolean; error: boolean }>();
   useEffect(() => {
     const load = () => {
+      transport.current?.abort();
+      const controller = new AbortController();
+      transport.current = controller;
       const turn = ++generation.current;
       writing.current = false;
       setState(undefined);
@@ -20,8 +24,8 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       const runtime = getPlatformRuntime(), session = runtime.getSessionVersion();
       const params = { executionBackend: backend, providerId, model };
       Promise.all([
-        runtime.http.get<{ data: Preference }>(endpoint, { params }),
-        runtime.http.get<{ data: Catalog }>("/api/v1/addons/conversation/model-profiles", { params }),
+        runtime.http.get<{ data: Preference }>(endpoint, { params, signal: controller.signal }),
+        runtime.http.get<{ data: Catalog }>("/api/v1/addons/conversation/model-profiles", { params, signal: controller.signal }),
       ]).then(([preference, catalog]) => {
         const value = preference.data.data;
         if (!value || typeof value.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || !Array.isArray(catalog.data.data)) throw new Error("Invalid preference response");
@@ -34,7 +38,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
     };
     load();
     window.addEventListener(SESSION_CHANGE_EVENT, load);
-    return () => { generation.current++; window.removeEventListener(SESSION_CHANGE_EVENT, load); };
+    return () => { generation.current++; transport.current?.abort(); window.removeEventListener(SESSION_CHANGE_EVENT, load); };
   }, [scope, backend, providerId, model]);
   const current = state?.scope === scope ? state : undefined;
   const selected = current?.catalog.find((entry) => entry.enabled && entry.id === current.preference.profileId);
@@ -46,12 +50,14 @@ export function useModelPreference(scope: string, backend: string, providerId: n
     if (current.session !== session) return;
     const live = () => turn === generation.current && session === runtime.getSessionVersion();
     const params = { executionBackend: backend, providerId, model };
+    const signal = transport.current?.signal;
+    if (!signal || signal.aborted) return;
     writing.current = true;
     setState({ ...current, ready: false, error: false });
     try {
-      await runtime.http.put(endpoint, { profileId, effort }, { params });
+      await runtime.http.put(endpoint, { profileId, effort }, { params, signal });
       if (!live()) return;
-      const response = await runtime.http.get<{ data: Preference }>(endpoint, { params });
+      const response = await runtime.http.get<{ data: Preference }>(endpoint, { params, signal });
       if (!live()) return;
       if (response.data.data.profileId !== profileId || response.data.data.effort !== effort) throw new Error("Preference readback mismatch");
       setState({ ...current, preference: response.data.data, ready: true, error: false });
