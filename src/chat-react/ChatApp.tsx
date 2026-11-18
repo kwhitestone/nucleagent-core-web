@@ -46,6 +46,7 @@ import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileEffortView, profileRequest, type ProfileSelection } from "./modelProfile";
+import { useModelPreference } from "./useModelPreference";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -82,14 +83,14 @@ export function ChatApp(props: ChatProps) {
   const t = useMemo(() => withIslandStrings(props.t, props.strings), [props.t, props.strings]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
   const settings = useSettings(conversationId, t);
-  const [profile, setProfile] = useState<ProfileSelection | null>(null);
   const profileScope = `${conversationId ?? "new"}:${settings.backend}:${settings.model?.providerId}:${settings.model?.model}`;
-  // A profile picked for another conversation/backend/model must not come back when the user returns to it.
-  useEffect(() => setProfile(null), [profileScope]);
+  const preference = useModelPreference(profileScope, settings.backend ?? "", settings.model?.providerId, settings.model?.model ?? "");
+  const profile = preference.profile;
+  const setProfile = (value: ProfileSelection) => { void preference.save(value.profileId, preference.choice); };
   const measured = useEffort(settings);
   // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
   const offered = profileEffortView(measured.view, profile, profileScope);
-  const effort = { ...measured, view: offered, sent: sentEffort(measured.choice, offered) };
+  const effort = { ...measured, choice: preference.choice, view: offered, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(profile?.profileId ?? "", value); } };
   // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
   const turn = profileRequest(profile, profileScope, effort.sent);
   const turnNow = useRef(turn);
@@ -105,16 +106,17 @@ export function ChatApp(props: ChatProps) {
   // New conversation with the current model and executor, then open it.
   // withTurn: this turn's effort or profile; never on a media/workflow job, which carries its own parameters.
   const start = async (request: Partial<CreateConversationRequest> & { input: string }, withTurn = false) => {
+    if (withTurn && !preference.ready) throw new Error(t("chatReact.preferenceError"));
     const payload: CreateConversationRequest = {
       mode: "a2a_agent", model: settings.model?.model ?? "", providerId: settings.model?.providerId,
       executionBackend: settings.backend ?? undefined, ...request,
     };
     const created = await props.create(!withTurn ? payload : typeof turn === "string" ? withRequestEffort(payload, turn, settings.backend) : { ...payload, ...turn });
-    setProfile(null);
     props.navigate(`/c/${created.id}`);
   };
   const controller: ChatController = {
     send: guard(async (text, files) => {
+      if (!settings.media && !preference.ready) throw new Error(t("chatReact.preferenceError"));
       if (!core) throw new Error(t("chatReact.loading"));
       if (!settings.direct) return core.controller.send(text, files);
       // A paid submission is never parked or replayed: not while a run is active, and an unconfirmed
@@ -167,7 +169,7 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
             <Composer t={t} settings={settings} effort={effort}
-              controls={<ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} />}
+              controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
             {!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
               await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });

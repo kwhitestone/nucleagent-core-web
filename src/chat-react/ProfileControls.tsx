@@ -7,9 +7,10 @@ import type { Translate } from "./ChatApp";
 interface Profile { id: string; displayName: string; enabled: boolean; reason?: string; efforts?: string[] }
 
 /** MUYU-408 profile choices, rendered only as slot content of the one Controls panel (ModelControls children). */
-export default function ProfileControls({ t, backend, providerId, model, scope, value, onChange }: {
+export default function ProfileControls({ t, backend, providerId, model, scope, value, onChange, disabled }: {
   t: Translate; backend: string; providerId?: number; model: string; scope: string;
   value: ProfileSelection | null; onChange(value: ProfileSelection): void;
+  disabled?: boolean;
 }) {
   const [catalog, setCatalog] = useState<{ scope: string; profiles: Profile[] } | null>(null);
   const [error, setError] = useState(false);
@@ -32,7 +33,7 @@ export default function ProfileControls({ t, backend, providerId, model, scope, 
     {error && <p className="mc-menu-label" role="alert">{t("chatReact.profileError")}</p>}
     {[{ id: "", displayName: t("chatReact.effortDefault"), enabled: true } as Profile, ...profiles].map((profile) =>
       <button key={profile.id} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
-        aria-checked={selected === profile.id} disabled={!profile.enabled} title={profile.enabled ? undefined : profile.reason}
+        aria-checked={selected === profile.id} disabled={disabled || !profile.enabled} title={profile.enabled ? undefined : profile.reason}
         onClick={() => onChange({ scope, profileId: profile.id, efforts: profile.efforts })}>
         <span className="mc-menu-text">{profile.displayName}{profile.enabled || !profile.reason ? "" : `（${profile.reason}）`}</span>
         {selected === profile.id && <CheckMark size={14} />}
