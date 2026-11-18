@@ -15,9 +15,13 @@ let version = 1;
 let reads = 0;
 let writes = 0;
 let failWrite = false;
+let readFailure: number | undefined;
+let mismatch = false;
 let readGate: Promise<void> | undefined;
 let writeGate: Promise<void> | undefined;
 let writeSignal: AbortSignal | undefined;
+let loseAcknowledgement = false;
+let commitAfterAbort = false;
 const saved = new Map<string, { profileId: string; effort: string }>();
 
 before(async () => {
@@ -35,6 +39,8 @@ before(async () => {
         ? [{ id: "quick", enabled: true, efforts: ["low", "medium", "high"] }]
         : saved.get(`${version}:${JSON.stringify(config.params)}`) ?? { profileId: "", effort: "" } } };
       await readGate;
+      if (readFailure) throw Object.assign(new Error("read refused"), { status: readFailure });
+      if (mismatch && url.endsWith("model-preferences")) return { data: { data: { profileId: "", effort: "" } } };
       return result;
     },
     put: async (_url: string, body: { profileId: string; effort: string }, config: { params: unknown; signal?: AbortSignal }) => {
@@ -42,9 +48,10 @@ before(async () => {
       const owner = version;
       writeSignal = config.signal;
       await writeGate;
-      if (config.signal?.aborted) throw new Error("aborted transport");
+      if (config.signal?.aborted && !commitAfterAbort) throw new Error("aborted transport");
       if (failWrite) throw new Error("unconfirmed write");
       saved.set(`${owner}:${JSON.stringify(config.params)}`, body);
+      if (loseAcknowledgement) throw new Error("acknowledgement lost after commit");
       return { data: { data: body } };
     },
   } });
@@ -139,4 +146,220 @@ test("session changes abort pending save transport without replaying it under an
     assert.equal(current.choice, "");
     assert.equal(current.ready, true);
   } finally { writeGate = undefined; await React.act(async () => root.unmount()); }
+});
+
+for (const changed of [
+  { label: "model", conversation: "9", provider: 7, model: "deepseek-v4-flash" },
+  { label: "provider", conversation: "9", provider: 8, model: "gpt-6-astra" },
+  { label: "conversation", conversation: "10", provider: 7, model: "gpt-6-astra" },
+]) test(`review: retired scope save must be fenced after a ${changed.label} change`, async () => {
+  version = 30;
+  failWrite = false;
+  function Harness({ conversation, provider, model }: { conversation: string; provider: number; model: string }) {
+    current = hooks.useModelPreference(`${conversation}:codex:${provider}:${model}`, "codex", provider, model);
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  try {
+    await React.act(async () => root.render(React.createElement(Harness, { conversation: "9", provider: 7, model: "gpt-6-astra" })));
+    const retired = current;
+    const retiredSave = current.save;
+    await React.act(async () => root.render(React.createElement(Harness, changed)));
+    assert.equal(current.ready, true);
+    const next = { profile: current.profile, choice: current.choice, ready: current.ready, error: current.error };
+    const previousWrites = writes;
+    await React.act(async () => retiredSave("quick", "medium"));
+    console.log("REVIEW stale scope callback", { extraWrites: writes - previousWrites, readyAfter: current.ready });
+    assert.equal(writes, previousWrites, "retired model callback must not issue a write");
+    assert.equal(current.ready, true, "retired callback must not replace the new scope state");
+    assert.deepEqual({ profile: current.profile, choice: current.choice, ready: current.ready, error: current.error }, next);
+    assert.equal(retired.ready, false, "retired consumers cannot send");
+  } finally { await React.act(async () => root.unmount()); }
+});
+
+test("review: ready must close synchronously when a save starts", async () => {
+  version = 31;
+  failWrite = false;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  let release!: () => void;
+  let pending: Promise<void> | undefined;
+  let readyDuringSave: boolean | undefined;
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    writeGate = new Promise<void>((resolve) => { release = resolve; });
+    await React.act(async () => {
+      pending = current.save("quick", "medium");
+      readyDuringSave = current.ready;
+    });
+    console.log("REVIEW synchronous submission gate", { readyDuringSave });
+    assert.equal(readyDuringSave, false, "send gate must close before GET confirms the write");
+  } finally {
+    await React.act(async () => { release?.(); await pending; });
+    writeGate = undefined;
+    await React.act(async () => root.unmount());
+  }
+});
+
+for (const failure of [false, true]) test(`retired pending save ${failure ? "failure" : "success"} cannot mutate or unlock the new lifecycle`, async () => {
+  version++;
+  failWrite = false;
+  commitAfterAbort = true;
+  function Harness({ model }: { model: string }) {
+    current = hooks.useModelPreference(`9:codex:7:${model}`, "codex", 7, model);
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  let releaseOld!: () => void;
+  let releaseNew!: () => void;
+  let oldSave: Promise<void> | undefined;
+  let newSave: Promise<void> | undefined;
+  try {
+    await React.act(async () => root.render(React.createElement(Harness, { model: "gpt-6-astra" })));
+    writeGate = new Promise<void>((resolve) => { releaseOld = resolve; });
+    await React.act(async () => { oldSave = current.save("quick", "high"); });
+    await React.act(async () => root.render(React.createElement(Harness, { model: "deepseek-v4-flash" })));
+    assert.equal(current.ready, true);
+    writeGate = new Promise<void>((resolve) => { releaseNew = resolve; });
+    await React.act(async () => { newSave = current.save("quick", "low"); });
+    const count = writes;
+    failWrite = failure;
+    await React.act(async () => { releaseOld(); await oldSave; });
+    assert.equal(current.ready, false);
+    assert.equal(current.error, false);
+    assert.equal(current.choice, "");
+    await React.act(async () => current.save("quick", "medium"));
+    assert.equal(writes, count, "retired finally must not unlock the pending current save");
+    failWrite = false;
+    await React.act(async () => { releaseNew(); await newSave; });
+    assert.equal(current.ready, true);
+    assert.equal(current.choice, "low");
+  } finally {
+    failWrite = false;
+    await React.act(async () => { releaseOld?.(); releaseNew?.(); await oldSave; await newSave; });
+    writeGate = undefined;
+    commitAfterAbort = false;
+    await React.act(async () => root.unmount());
+  }
+});
+
+for (const status of [404, 403]) test(`preference GET ${status} remains fail closed on load and readback`, async () => {
+  version++;
+  failWrite = false;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  let root = createRoot(document.getElementById("root")!);
+  try {
+    readFailure = status;
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(current.ready, false);
+    assert.equal(current.error, true);
+    const count = writes;
+    await React.act(async () => current.save("quick", "medium"));
+    assert.equal(writes, count);
+    await React.act(async () => root.unmount());
+    readFailure = undefined;
+    root = createRoot(document.getElementById("root")!);
+    await React.act(async () => root.render(React.createElement(Harness)));
+    const beforeSave = current;
+    readFailure = status;
+    await React.act(async () => {
+      await beforeSave.save("quick", "medium");
+      assert.equal(beforeSave.ready, false, "failure must close old render objects before React commits");
+      await beforeSave.save("quick", "high");
+    });
+    assert.equal(current.ready, false);
+    assert.equal(current.error, true);
+    assert.equal(writes, count + 1, "unconfirmed write is not replayed");
+  } finally { readFailure = undefined; await React.act(async () => root.unmount()); }
+});
+
+test("mismatched GET keeps the synchronous send gate closed without replay", async () => {
+  version++;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    const beforeSave = current;
+    const count = writes;
+    mismatch = true;
+    await React.act(async () => {
+      await beforeSave.save("quick", "medium");
+      assert.equal(beforeSave.ready, false);
+      await beforeSave.save("quick", "high");
+    });
+    assert.equal(current.ready, false);
+    assert.equal(current.error, true);
+    assert.equal(writes, count + 1);
+  } finally { mismatch = false; await React.act(async () => root.unmount()); }
+});
+
+test("review: committed UNKNOWN write recovers on GET without replay", async () => {
+  version = 40;
+  failWrite = false;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  let root = createRoot(document.getElementById("root")!);
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    const previousWrites = writes;
+    loseAcknowledgement = true;
+    await React.act(async () => current.save("quick", "medium"));
+    assert.equal(current.ready, false);
+    assert.equal(current.error, true);
+    assert.equal(writes, previousWrites + 1);
+    loseAcknowledgement = false;
+    await React.act(async () => root.unmount());
+    root = createRoot(document.getElementById("root")!);
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(current.ready, true);
+    assert.equal(current.choice, "medium");
+    assert.equal(writes, previousWrites + 1);
+  } finally { loseAcknowledgement = false; await React.act(async () => root.unmount()); }
+});
+
+test("review: abort is not rollback; a late server commit remains owner scoped", async () => {
+  version = 50;
+  failWrite = false;
+  function Harness() {
+    current = hooks.useModelPreference("9:codex:7:gpt-6-astra", "codex", 7, "gpt-6-astra");
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  let release!: () => void;
+  let pending: Promise<void> | undefined;
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    const previousWrites = writes;
+    commitAfterAbort = true;
+    writeGate = new Promise<void>((resolve) => { release = resolve; });
+    await React.act(async () => { pending = current.save("quick", "medium"); });
+    const previousSignal = writeSignal;
+    version = 51;
+    await React.act(async () => window.dispatchEvent(new dom.window.Event("nucleagent:session-change")));
+    assert.equal(previousSignal?.aborted, true);
+    await React.act(async () => { release(); await pending; });
+    assert.equal(current.ready, true);
+    assert.equal(current.choice, "");
+    version = 50;
+    await React.act(async () => window.dispatchEvent(new dom.window.Event("nucleagent:session-change")));
+    assert.equal(current.choice, "medium");
+    assert.equal(writes, previousWrites + 1);
+  } finally {
+    release?.();
+    await pending;
+    writeGate = undefined;
+    commitAfterAbort = false;
+    await React.act(async () => root.unmount());
+  }
 });
