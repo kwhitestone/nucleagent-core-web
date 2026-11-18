@@ -12,7 +12,7 @@ export const EN_STRINGS: IslandStrings = {
     unavailable_auth_401: "Upstream auth failed (401)", unavailable_capacity: "Upstream at capacity", unavailable_route_disabled: "Route disabled", unavailable_upstream_offline: "Upstream offline", unavailable_unknown: "Upstream error",
     visionBlocked: "This model cannot read images; pick one that can", visionBlockedHint: "cannot read images, so the image cannot be sent.", visionUnverifiedHint: "has no verified image input and may not read the image.",
     visionSwitchTo: " Pick an image-capable model in the model menu: {models}.", visionNoAlternative: " No available model is verified for images yet.",
-    workflow: "Generation workflow", workflowChoose: "Select", workflowRun: "Run workflow",
+    workflow: "Generation tools", workflowChoose: "Select", workflowRun: "Run workflow",
     workflowHint: "Uses the execution model shown below and workflow parameters. Status and files appear in the conversation.",
     workflowExecutionModel: "Execution model", workflowDeclaredModel: "Source model",
     workflowUnavailable: "Parameters unavailable or file input unsupported.",

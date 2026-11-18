@@ -10,7 +10,7 @@ export const ZH_STRINGS = {
     unavailable_auth_401: "上游鉴权失败(401)", unavailable_capacity: "上游容量不足", unavailable_route_disabled: "路由已停用", unavailable_upstream_offline: "上游已下线", unavailable_unknown: "上游异常",
     visionBlocked: "该模型不支持图片输入，请换支持图片的模型", visionBlockedHint: "不支持图片输入，无法发送图片。", visionUnverifiedHint: "的图片输入未经验证，可能无法识图。",
     visionSwitchTo: "请在模型菜单换成支持图片的模型：{models}。", visionNoAlternative: "暂无已验证支持图片的可用模型。",
-    workflow: "生成工作流", workflowChoose: "请选择", workflowRun: "执行工作流",
+    workflow: "生成工具", workflowChoose: "请选择", workflowRun: "执行工作流",
     workflowHint: "使用下方显示的执行模型和工作流参数；状态与附件显示在会话。",
     workflowExecutionModel: "执行模型", workflowDeclaredModel: "来源声明模型",
     workflowUnavailable: "参数不可用或需要暂不支持的附件参数。",

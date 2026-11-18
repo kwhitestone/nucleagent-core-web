@@ -3,6 +3,8 @@ import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
+import { ZH_STRINGS } from "../src/chat-react/islandStringsZh.ts";
+import { EN_STRINGS } from "../src/chat-react/islandStringsEn.ts";
 
 let vite: ViteDevServer;
 let React: typeof import("react");
@@ -52,6 +54,28 @@ before(async () => {
   dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.href); };
 });
 after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close(); });
+
+test("generation tools picker exposes the localized visible and accessible name without submitting", async () => {
+  for (const strings of [ZH_STRINGS, EN_STRINGS]) {
+    const view = await fixture();
+    response = () => ({ data: [] });
+    let submissions = 0;
+    const translate = (key: string) => strings[key.replace("chatReact.", "") as keyof typeof strings] ?? key;
+    try {
+      await view.render(React.createElement(WorkflowForm, { t: translate, submit: async () => { submissions++; } }));
+      assert.equal(view.container.querySelector("summary")!.textContent, strings.workflow);
+      await React.act(async () => {
+        const details = view.container.querySelector("details")!;
+        details.open = true;
+        details.dispatchEvent(new window.Event("toggle"));
+      });
+      assert.equal(view.container.querySelector("select")!.getAttribute("aria-label"), strings.workflow);
+      assert.doesNotMatch(view.container.textContent!, /生成工作流|Generation workflow/);
+      assert.equal(submissions, 0);
+      assert.deepEqual(writes, []);
+    } finally { await view.close(); }
+  }
+});
 
 test("workflow form uses schema parameters and holds an unknown submission without replay", async () => {
   const view = await fixture();
