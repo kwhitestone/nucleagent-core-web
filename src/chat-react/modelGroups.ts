@@ -1,13 +1,15 @@
 import type { Provider, TypedModel } from "../contracts/model-catalog.ts";
 import type { ExecutionBackendOption, ModelChoice } from "../addons/conversation/api/types.ts";
 import { pickerOptions } from "../addons/conversation/components/modelPickerOptions.ts";
+import { availabilityOf, visionOf, type UnavailableReason, type Vision } from "./modelCaps.ts";
 
 export type GroupKind = "chat" | "image" | "video" | "executor";
 export type Choice =
   | { kind: "chat" | "image" | "video"; model: ModelChoice }
   | { kind: "executor"; backend: string };
 /** `label` is the model (or executor) name; `hint` the provider; `upstream` the real gateway upstream, when the catalog says. */
-export interface Option { value: string; label: string; hint?: string; upstream?: string; choice: Choice }
+/** MUYU-418: `vision` (chat only), `unavailable` reason (greyed, not pickable), `unprobed` = no availability evidence yet. */
+export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
@@ -24,13 +26,19 @@ const UPSTREAM_NAMES: Record<string, string> = { "aihub-gateway": "AIHub", "ever
  */
 export function modelGroups(providers: Provider[], typed: Record<string, TypedModel[]> | null, backends: ExecutionBackendOption[]): Group[] {
   const models = (["chat", "image", "video"] as const).map((kind): Group => {
-    const upstreams = new Map((typed?.[kind] ?? []).filter((m) => m.upstream).map((m) => [`${m.providerId}:${m.model}`, m.upstream!]));
+    const entries = typed?.[kind] ?? [];
+    const upstreams = new Map(entries.filter((m) => m.upstream).map((m) => [`${m.providerId}:${m.model}`, m.upstream!]));
+    const byKey = new Map(entries.map((m) => [`${m.providerId}:${m.model}`, m]));
     return {
       kind,
       options: pickerOptions(providers, typed?.[kind] ?? [], kind).flatMap((g) => g.models.map((model) => {
         const choice: Choice = { kind, model: { providerId: g.id, model } };
         const upstream = upstreams.get(`${g.id}:${model}`);
-        return { value: choiceValue(choice), label: model, hint: g.name, ...(upstream ? { upstream: UPSTREAM_NAMES[upstream] ?? upstream } : {}), choice };
+        const entry = byKey.get(`${g.id}:${model}`);
+        const availability = entry ? availabilityOf(entry) : undefined;
+        return { value: choiceValue(choice), label: model, hint: g.name, ...(upstream ? { upstream: UPSTREAM_NAMES[upstream] ?? upstream } : {}),
+          ...(kind === "chat" && entry ? { vision: visionOf(entry) } : {}),
+          ...(availability?.state === "unavailable" ? { unavailable: availability.reason } : availability?.state === "unprobed" ? { unprobed: true as const } : {}), choice };
       })),
     };
   });

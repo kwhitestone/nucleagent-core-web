@@ -71,14 +71,3 @@ export function measurementHint(strategy: ChatStrategy | null, model: ModelChoic
   const thinking = sample.thinking ? `思考能力${sample.thinking.supported ? "支持" : "不支持"}（${sample.thinking.source}）` : "思考能力未知";
   return `文字 n=${sample.n}，p50 ${sample.medianMs}ms，max ${sample.maxMs}ms；${qualifies(sample) ? "文字p50≤2秒，并非每次≤2秒" : "未达标或样本不足"}；${sample.date} · ${sample.versions}；${thinking}；质量依据：${sample.quality}${strategy && same(strategy.candidate, model) ? "；仅当前已测集合的临时推荐，非全目录最优" : ""}`;
 }
-
-export function imageGuidance(strategy: ChatStrategy | null, selected: ModelChoice | null, models: TypedModel[]): string {
-  const enabled = (choice: ModelChoice) => models.some((entry) => same(entry, choice) && entry.capabilities.includes("vision_in"));
-  const selectedEnabled = !!selected && enabled(selected);
-  const sample = evidenceFor(strategy, selectedEnabled ? selected : strategy?.candidate ?? null);
-  const vision = sample?.vision;
-  const timing = vision ? ` ${sample.model} 视觉 n=${vision.n}，p50 ${vision.medianMs}ms${qualifies(vision) ? "（并非每次≤2秒）" : "，未达2秒或样本不足"}；${sample.date} · ${sample.versions}。` : " 视觉延迟未知。";
-  if (selectedEnabled) return `目录已启用图片输入。${timing}`;
-  const suggestion = strategy && enabled(strategy.candidate) && evidenceFor(strategy, strategy.candidate)?.vision;
-  return `当前模型图片输入能力未知或未启用目录 vision_in，请先选择支持图片的模型。${suggestion ? `可切换至 ${strategy.candidate.model}（需手动选择）。` : "请联系管理员确认图片能力；实测通过不等于当前已启用。"}${timing}`;
-}

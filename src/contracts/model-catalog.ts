@@ -48,13 +48,25 @@ export interface TypedModel {
   capabilities: string[];
   /** Toolgate upstream name (route rule); only sent by a Core that forwards it (MUYU-365 gap2). Absent = unknown. */
   upstream?: string;
+  /** MUYU-418 contract v1, absent on an older Core: true / false (with `unavailableReason`) / null = not probed. */
+  available?: boolean | null;
+  unavailableReason?: string | null;
+  probedAt?: string | null;
+  /** supported / unsupported / unverified (never guessed from the name). */
+  vision_in?: string;
+  visionEvidence?: { source: string; ref: string; testedAt: string | null } | null;
+}
+
+export interface TypedModelQuery {
+  /** Also list route-disabled models (`available:false`), so a selector can grey them out with the reason. */
+  includeUnavailable?: boolean;
 }
 
 export interface ModelCatalog {
   readonly listProviders: () => Promise<Provider[]>;
   readonly fetchVisibleModels: () => Promise<UserVisibleModel[]>;
   /** `null` = old Core (404) or no types synced yet (`typesAvailable:false`). */
-  readonly listTypedModels: (type: ModelType) => Promise<TypedModel[] | null>;
+  readonly listTypedModels: (type: ModelType, query?: TypedModelQuery) => Promise<TypedModel[] | null>;
 }
 
 let activeCatalog: ModelCatalog | undefined;
@@ -76,13 +88,13 @@ export const listProviders = (): Promise<Provider[]> => getModelCatalog().listPr
 export const fetchVisibleModels = (): Promise<UserVisibleModel[]> => (
   getModelCatalog().fetchVisibleModels()
 );
-export const listTypedModels = (type: ModelType): Promise<TypedModel[] | null> => (
-  getModelCatalog().listTypedModels(type)
+export const listTypedModels = (type: ModelType, query?: TypedModelQuery): Promise<TypedModel[] | null> => (
+  getModelCatalog().listTypedModels(type, query)
 );
 
 /** Every type's list, or `null` when the Core has no types (old Core). */
-export async function listAllTypedModels(): Promise<Record<ModelType, TypedModel[]> | null> {
-  const lists = await Promise.all(MODEL_TYPES.map((type) => listTypedModels(type)));
+export async function listAllTypedModels(query?: TypedModelQuery): Promise<Record<ModelType, TypedModel[]> | null> {
+  const lists = await Promise.all(MODEL_TYPES.map((type) => listTypedModels(type, query)));
   if (lists.some((list) => list === null)) return null;
   return Object.fromEntries(MODEL_TYPES.map((type, i) => [type, lists[i]])) as Record<ModelType, TypedModel[]>;
 }

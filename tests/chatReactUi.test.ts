@@ -715,3 +715,36 @@ test("model menu: upstream tag beside the model and on the trigger title, only w
   assert.match(unknown, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel"/);
   assert.doesNotMatch(unknown, /mc-model-upstream/);
 });
+
+test("model menu (MUYU-418): unavailable models are greyed with the reason, vision is tagged, unprobed is said", () => {
+  const opt = (model: string, over: Record<string, unknown>) => ({ value: `chat:1:${model}`, label: model, hint: "P", choice: { kind: "chat" as const, model: { providerId: 1, model } }, ...over });
+  const chat = { kind: "chat" as const, options: [
+    opt("see", { vision: "supported" }), opt("blind", { vision: "unsupported" }), opt("maybe", { vision: "unverified", unprobed: true }),
+    opt("down", { vision: "supported", unavailable: "capacity" }),
+  ] };
+  let picked: unknown = "none";
+  const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: (c: unknown) => { picked = c; }, defaultOpen: true }));
+  const row = (model: string) => open.match(new RegExp(`<button[^>]*role="menuitemradio"[^>]*>(?:(?!</button>).)*?mc-menu-text">${model}<.*?</button>`))?.[0] ?? "";
+  assert.match(row("see"), /data-testid="mc-vision"[^>]*data-vision="supported"[^>]*>chatReact.visionSupported</);
+  assert.match(row("blind"), /data-vision="unsupported"[^>]*>chatReact.visionUnsupported</);
+  assert.match(row("maybe"), /data-vision="unverified"[^>]*>chatReact.visionUnverified</);
+  assert.match(row("maybe"), /data-testid="mc-unprobed"[^>]*>chatReact.availabilityUnprobed</);
+  assert.match(row("down"), /aria-disabled="true"/);
+  assert.match(row("down"), /title="chatReact.unavailable_capacity"/);
+  assert.match(row("down"), /data-testid="mc-unavailable"[^>]*>chatReact.unavailable_capacity</);
+  assert.doesNotMatch(row("see"), /aria-disabled/);
+  assert.equal(picked, "none");
+});
+
+test("model menu (MUYU-418): with an image attached, models that cannot read images are blocked in the selector", () => {
+  const opt = (model: string, vision: string) => ({ value: `chat:1:${model}`, label: model, hint: "P", vision, choice: { kind: "chat" as const, model: { providerId: 1, model } } });
+  const chat = { kind: "chat" as const, options: [opt("see", "supported"), opt("blind", "unsupported"), opt("maybe", "unverified")] };
+  const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true, hasImage: true }));
+  const row = (model: string) => open.match(new RegExp(`<button[^>]*role="menuitemradio"[^>]*>(?:(?!</button>).)*?mc-menu-text">${model}<.*?</button>`))?.[0] ?? "";
+  assert.match(row("blind"), /aria-disabled="true"/);
+  assert.match(row("blind"), /title="chatReact.visionBlocked"/);
+  assert.doesNotMatch(row("see"), /aria-disabled/);
+  assert.doesNotMatch(row("maybe"), /aria-disabled/, "unverified is warned at send, not hidden");
+  const noImage = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
+  assert.doesNotMatch(noImage, /aria-disabled/);
+});

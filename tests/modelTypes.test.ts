@@ -82,6 +82,19 @@ test("W1 ModelPicker: type prop defaults to chat and the template renders picker
   }
 });
 
+test("MUYU-418 catalog: the React selector can ask for unavailable models too (includeUnavailable=1)", async () => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const params: unknown[] = [];
+  const unregister = registerPlatformRuntime({ http: { get: async (_url: string, cfg: any) => { params.push(cfg?.params); return { data: { code: 0, typesAvailable: true, data: [] } }; } } });
+  try {
+    await catalog.modelCatalog.listTypedModels("chat");
+    await catalog.modelCatalog.listTypedModels("chat", { includeUnavailable: true });
+    assert.deepEqual(params, [{ type: "chat" }, { type: "chat", includeUnavailable: 1 }]);
+  } finally {
+    unregister();
+  }
+});
+
 test("W1 catalog: /provider/models 404 or typesAvailable=false means old Core (null)", async () => {
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   let reply: () => unknown = () => ({ data: { code: 0, typesAvailable: true, data: typed.slice(0, 2) } });

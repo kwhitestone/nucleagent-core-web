@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseChatStrategy, initialChatModel, measurementHint, imageGuidance, loadChatStrategy } from "../src/chat-react/chatStrategy.ts";
+import { parseChatStrategy, initialChatModel, measurementHint, loadChatStrategy } from "../src/chat-react/chatStrategy.ts";
 
 const choice = { providerId: 1, model: "candidate" };
 const measurement = { ...choice, n: 6, medianMs: 1929.75, maxMs: 3104.5, date: "2026-11-15", versions: "Core v0.1.1 / Executor v1.2.3", quality: "仅短问和固定图片事实", thinking: null, vision: { n: 5, medianMs: 2584.8, source: "catalog snapshot and fixed image review" } };
@@ -48,17 +48,6 @@ test("small samples and slower p50 cannot qualify; thinking never inferred from 
   assert.match(measurementHint(policy(), { providerId: 2, model: "other" }), /n=0.*未知/);
 });
 
-test("image guidance distinguishes tested facts from enabled catalog capability", () => {
-  const disabled = imageGuidance(policy(), choice, catalog);
-  assert.match(disabled, /未启用.*vision_in/);
-  assert.match(disabled, /视觉.*2584.8.*未达2秒/);
-  assert.doesNotMatch(disabled, /可切换至/);
-  const enabled = [{ ...catalog[0]!, capabilities: ["vision_in"] }];
-  assert.match(imageGuidance(policy(), null, enabled), /可切换至 candidate/);
-  assert.match(imageGuidance(policy(), choice, enabled), /目录已启用图片输入/);
-  assert.match(imageGuidance(null, null, []), /图片输入能力未知/);
-});
-
 test("missing, malformed and failed optional config safely retain existing defaults", async () => {
   for (const fetcher of [async () => new Response("", { status: 404 }), async () => new Response("bad json"), async () => { throw new Error("offline"); }]) {
     assert.equal(await loadChatStrategy(config.origin, fetcher), null);
@@ -89,4 +78,10 @@ test("explicit unsupported effort preserves the rest of the strategy instead of 
   assert.ok(parsed);
   assert.deepEqual(parsed.measurements[0]?.effort, effort);
   assert.deepEqual(parsed.candidate, choice);
+});
+
+test("MUYU-418: the strategy default never lands on a model the catalog marks unavailable", async () => {
+  const { availabilityOf } = await import("../src/chat-react/modelCaps.ts");
+  const models = [{ ...catalog[0]!, available: false, unavailableReason: "capacity" }];
+  assert.equal(initialChatModel({ ...input(), models: models.filter((m) => availabilityOf(m).state !== "unavailable") }), null);
 });

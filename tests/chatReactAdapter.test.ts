@@ -592,3 +592,17 @@ test("assistant turn identity is Core's step_id, never a message id; absent or a
   assert.equal(turnOf([user, item("9001")]), undefined);
   assert.equal(turnOf([item("9001", { data: data(9001, "step-a") }), user]), undefined, "user rows carry no turn identity");
 });
+
+test("model groups (MUYU-418): options carry vision_in and availability from the catalog fields only", () => {
+  const providers = [{ id: 1, name: "P1", isActive: true, config: { models: ["a", "b", "c", "d"] } }];
+  const typed = { chat: [
+    { providerId: 1, model: "a", type: "chat", capabilities: ["vision_in"], available: true, vision_in: "supported" },
+    { providerId: 1, model: "b", type: "chat", capabilities: [], available: false, unavailableReason: "auth_401", vision_in: "unverified" },
+    { providerId: 1, model: "c", type: "chat", capabilities: [], available: null, vision_in: "unsupported" },
+    { providerId: 1, model: "d", type: "chat", capabilities: [] },
+  ] };
+  const [chat] = modelGroups(providers as never, typed as never, []);
+  assert.deepEqual(chat!.options.map((o) => [o.label, o.vision, o.unavailable, o.unprobed]), [
+    ["a", "supported", undefined, undefined], ["b", "unverified", "auth_401", undefined], ["c", "unsupported", undefined, true], ["d", "unverified", undefined, undefined],
+  ]);
+});

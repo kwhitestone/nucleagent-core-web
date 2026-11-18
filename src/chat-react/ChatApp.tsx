@@ -29,7 +29,7 @@ import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
-import { choiceValue, modelGroups, type Choice, type Group } from "./modelGroups";
+import { choiceValue, modelGroups, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
 import {
   AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
@@ -39,7 +39,8 @@ import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type File
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
-import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, imageGuidance, effortEvidence, type ChatStrategy } from "./chatStrategy";
+import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, effortEvidence, type ChatStrategy } from "./chatStrategy";
+import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
 import { cap, defaultEffort, effortView, sentEffort, serverEvidence, storedEffort, storeEffort, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
@@ -268,7 +269,7 @@ function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t:
   );
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageHint?: string; modelHint?: string; direct?: DirectMedia | null; params?: Record<string, string>; setParam?(name: string, value: string): void };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * MUYU-408 profile choices for the Controls slot. The panel keeps its slot mounted while hidden, so the chunk and
@@ -301,13 +302,16 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
   const actions = composerActions(running, empty);
   const sendLabel = t(running ? "chatReact.queueSend" : "common.send"); // queue while a reply runs
   // Media mode sends only with the model's job tool, every required choice made, and no active run (never queued).
-  const blocked = settings.busy || (!!settings.media && (running || !settings.direct
+  // MUYU-418: an image never goes to a model the catalog says cannot read it.
+  const visionBlocked = hasImage && !settings.media && !!settings.imageGate?.block;
+  const imageText = hasImage && !settings.media && settings.imageGate ? imageHint(settings.imageGate, t) : undefined;
+  const blocked = settings.busy || visionBlocked || (!!settings.media && (running || !settings.direct
     || !!settings.direct.schema.inputSchema.required?.some((name) => name !== settings.direct!.prompt && !settings.params?.[name])));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <ComposerPrimitive.Root className="mc-composer">
         <ComposerAttachmentChips t={t} />
-        {hasImage && !settings.media && settings.imageHint && <p className="mc-hint" role="status">{settings.imageHint}</p>}
+        {imageText && <p className="mc-hint" role="status" data-testid="mc-image-hint" data-vision={settings.imageGate!.state}>{imageText}</p>}
         <ComposerPrimitive.Queue>
           {() => (
             <div className="mc-queued" data-testid="mc-queued">
@@ -323,13 +327,13 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
             <EnumSelect t={t} options={field.enum} value={settings.params?.[name] ?? ""} onChange={(event) => settings.setParam?.(name, event.target.value)} /></label>) : <p>{t("chatReact.mediaUnavailable")}</p>}
           <button type="button" className="mc-pill" onClick={() => settings.pick(settings.model ? { kind: "chat", model: settings.model } : null)}>{t("chatReact.returnToChat")}</button>
         </div>}
-        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={settings.media && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
+        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         <div className="mc-toolbar">
           <AttachButton t={t} />
           <MediaPill kind="image" t={t} settings={settings} running={running} />
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} />
+            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
           {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
@@ -658,7 +662,7 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
  * menuitemradio buttons: arrows/Home/End move, Enter/Space pick, Escape or an outside click closes.
  * Image/video models fold into one disabled 即将开放 row in the MVP (no paid calls).
  */
-export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean }) {
+export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean }) {
   const { t, groups } = props;
   const { open, setOpen, root, trigger, close: shut, rove } = useMenu(props.defaultOpen);
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
@@ -673,12 +677,18 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
     if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); shut(); return; }
     if (rove(e.key)) e.preventDefault();
   };
-  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string, upstream?: string) => (
-    <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked} onClick={onSelect}>
+  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string, upstream?: string, o?: Option) => {
+    // MUYU-418: unavailable (reason shown) and, with an image attached, image-incapable models cannot be picked.
+    const blocked = o?.unavailable ? t(`chatReact.unavailable_${o.unavailable}`) : props.hasImage && o?.vision === "unsupported" ? t("chatReact.visionBlocked") : undefined;
+    return <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked}
+      aria-disabled={blocked ? true : undefined} title={blocked} onClick={blocked ? undefined : onSelect}>
       <span className="mc-menu-text">{text}{hint && <span className="mc-menu-hint">{hint}</span>}</span>
+      {o?.unavailable && <span className="mc-menu-tag" data-testid="mc-unavailable">{blocked}</span>}
+      {o?.unprobed && <span className="mc-menu-tag" data-testid="mc-unprobed">{t("chatReact.availabilityUnprobed")}</span>}
+      {o?.vision && <span className="mc-menu-tag" data-testid="mc-vision" data-vision={o.vision}>{t(`chatReact.vision${cap(o.vision)}`)}</span>}
       {upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{upstream}</span>}{checked && <CheckMark size={14} />}
-    </button>
-  );
+    </button>;
+  };
   const section = (kind: string, title: string, body: ReactNode, bare?: boolean) => (
     <div key={kind} role="group" aria-label={title} data-kind={kind} className="mc-menu-group">
       {!bare && <div className="mc-menu-label" aria-hidden="true">{title}</div>}{body}
@@ -694,10 +704,10 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
         {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
         {section("chat", t("model.types.chat"), <>
           {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
-          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint, o.upstream))}
+          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint, o.upstream, o))}
         </>)}
         {groups.filter((g) => g.kind !== "chat").map((g) => section(g.kind, label(g),
-          g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value), () => choose(o.choice), o.hint)),
+          g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value), () => choose(o.choice), o.hint, undefined, o)),
           // A lone executor named like its group shows once.
           g.kind === "executor" && g.options.length === 1 && g.options[0]!.label === label(g)))}
       </div>
@@ -762,7 +772,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     setBusy(true);
     void Promise.all([
       listProviders().catch(() => [] as Provider[]),
-      listAllTypedModels().catch(() => null),
+      listAllTypedModels({ includeUnavailable: true }).catch(() => null),
       listExecutionBackends().catch(() => [] as ExecutionBackendOption[]),
       conversationId ? getConversation(conversationId).catch(() => null) : Promise.resolve(null),
     ]).then(([p, typed, b, conversation]) => {
@@ -775,7 +785,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
       if (selectionRevision.current === revision) {
         setModel(initialChatModel({
           strategy: policy, conversationId, selected: conversation ? conversationModelChoice(conversation) : null,
-          explicit: false, backend: nextBackend, models: chatModels,
+          explicit: false, backend: nextBackend, models: chatModels.filter((entry) => availabilityOf(entry).state !== "unavailable"),
           allowed: (candidate) => {
             const option = b.find((entry) => entry.id === nextBackend);
             return !!option && executionBackendCompatibility(option, candidate, p).allowed;
@@ -816,6 +826,8 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
       setMedia(null);
       return;
     }
+    const entry = choice?.kind === "chat" ? models.find((m) => String(m.providerId) === String(choice.model.providerId) && m.model === choice.model.model) : undefined;
+    if (entry && availabilityOf(entry).state === "unavailable") return;
     const nextModel = choice === null ? null : choice.kind === "chat" ? choice.model : model;
     const nextBackend = choice?.kind === "executor" ? choice.backend : backend;
     if (!allowedFor(nextModel, nextBackend)) { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
@@ -840,5 +852,5 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   }) : groups;
   return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
-    imageHint: imageGuidance(strategy, model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
+    imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

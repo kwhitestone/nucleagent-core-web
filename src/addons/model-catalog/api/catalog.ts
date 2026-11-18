@@ -27,10 +27,10 @@ export const modelCatalog: ModelCatalog = {
     return response.data?.data ?? [];
   },
 
-  async listTypedModels(type) {
+  async listTypedModels(type, query) {
     try {
       const response = await getPlatformRuntime().http.get<Envelope<TypedModel[]> & { typesAvailable?: boolean }>(
-        "/api/v1/addons/provider/models", { params: { type } },
+        "/api/v1/addons/provider/models", { params: query?.includeUnavailable ? { type, includeUnavailable: 1 } : { type } },
       );
       return response.data?.typesAvailable ? response.data.data ?? [] : null;
     } catch (error) {
