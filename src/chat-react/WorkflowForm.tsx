@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
-import { listToolCatalog, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
+import { listToolCatalogPages, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
 import type { ToolInvocation } from "../addons/conversation/api/types";
 import { workflowFields, workflowInvocation, type WorkflowSchema } from "./workflowParams";
 import type { Translate } from "./ChatApp";
@@ -25,7 +25,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
   }, []);
   useEffect(() => {
     let live = true;
-    if (open) void listToolCatalog().then((rows) => { if (live) setTools(rows.filter((row) => row.imported && row.status === "ready")); }).catch(() => { if (live) setError("workflowUnavailable"); });
+    if (open) void listToolCatalogPages().then((rows) => { if (live) setTools(rows.filter((row) => row.imported && row.status === "ready")); }).catch(() => { if (live) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [open]);
   useEffect(() => {
@@ -54,6 +54,9 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
         <option value={0}>{t("chatReact.workflowChoose")}</option>
         {tools.map((tool) => <option key={tool.id} value={tool.id}>{tool.name}</option>)}
       </select>
+      {schema?.model && <p className="mc-hint">{t("chatReact.workflowExecutionModel")}: {schema.model}
+        {schema.declaredModel && schema.declaredModel !== schema.model && <> · {t("chatReact.workflowDeclaredModel")}: {schema.declaredModel}</>}
+      </p>}
       {schema && workflowFields(schema).map(([name, field]) => {
         const control = { required: schema.inputSchema.required?.includes(name), disabled: busy, value: values[name] ?? "", onChange: (event: { target: { value: string } }) => setValues({ ...values, [name]: event.target.value }) };
         return <label key={name}>

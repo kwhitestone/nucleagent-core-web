@@ -2,6 +2,8 @@ import type { ToolInvocation } from "../addons/conversation/api/types.ts";
 
 type Field = { type?: string; description?: string; maxLength?: number; enum?: string[] };
 export interface WorkflowSchema {
+  model?: string;
+  declaredModel?: string;
   invocation?: { toolId: number; revision: string };
   inputSchema: { type: string; additionalProperties: boolean; required?: string[]; properties: Record<string, Field> };
 }

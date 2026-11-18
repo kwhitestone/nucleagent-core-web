@@ -55,7 +55,8 @@ after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close();
 
 test("workflow form uses schema parameters and holds an unknown submission without replay", async () => {
   const view = await fixture();
-  response = (url) => ({ data: url.endsWith("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
+  response = (url) => ({ data: url.includes("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
+    model: "doubao-seedream-5-0-260128", declaredModel: "doubao-seedream-5-5-261028",
     invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["style"], properties: { style: { type: "string", enum: ["水彩"], maxLength: 8 } } },
   } });
   const submitted: unknown[] = [];
@@ -64,6 +65,8 @@ test("workflow form uses schema parameters and holds an unknown submission witho
     await React.act(async () => { const details = view.container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
     const selects = () => view.container.querySelectorAll("select");
     await React.act(async () => { selects()[0]!.value = "37"; selects()[0]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.match(view.container.textContent!, /doubao-seedream-5-0-260128/);
+    assert.match(view.container.textContent!, /doubao-seedream-5-5-261028/);
     await React.act(async () => { selects()[1]!.value = "水彩"; selects()[1]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
     await React.act(async () => view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
     assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { style: "水彩" } }]);
@@ -91,6 +94,26 @@ async function fixture() {
     close: async () => { await React.act(async () => root.unmount()); container.remove(); },
   };
 }
+
+test("workflow selector finds later-page tools without admitting held or unimported tools", async () => {
+  const view = await fixture();
+  response = (url) => {
+    const page = new URL(url, "https://test.example").searchParams.get("page") ?? "1";
+    return page === "1" ? { hasMore: true, data: [{ id: 1, name: "first", imported: true, status: "ready" }] }
+      : { hasMore: false, data: [
+        { id: 290, name: "image", imported: true, status: "ready" },
+        { id: 291, name: "held", imported: true, status: "held" },
+        { id: 294, name: "unimported", imported: false, status: "ready" },
+      ] };
+  };
+  try {
+    await view.render(React.createElement(WorkflowForm, { t, submit: async () => { throw new Error("unexpected submission"); } }));
+    await React.act(async () => { const details = view.container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
+    assert.deepEqual([...view.container.querySelectorAll("option")].map(option => option.value), ["0", "1", "290"]);
+    assert.equal(reads.length, 2);
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
 
 test("history remount fetches fresh token; download validates current task state and never writes", async () => {
   const view = await fixture();
