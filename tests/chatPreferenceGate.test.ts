@@ -44,6 +44,7 @@ before(async () => {
           export function useExternalStoreRuntime(adapter) { globalThis.preferenceGateFixture.capture(adapter); return {}; }`;
         if (id === "\0preference-gate-core") return `import { createConversationState } from "/src/addons/conversation/task-conversation/core/index.ts";
           export function useCoreConversation(id) { return id ? { state: createConversationState(id), controller: {
+            authoritativeReady: { value: true },
             send: globalThis.preferenceGateFixture.send, stop: async () => {}, loadOlder: async () => {} } } : null; }`;
       },
     }] });

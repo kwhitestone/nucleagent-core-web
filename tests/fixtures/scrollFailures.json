@@ -1,0 +1,6 @@
+[
+  {"environment":"dev","conversationId":1082,"before":{"top":1151.4285888671875,"height":3080,"client":776},"messagesUnchanged":true,"positionRetained":false},
+  {"environment":"test","conversationId":1464,"before":{"top":0,"height":1047,"client":776},"messagesUnchanged":true,"positionRetained":false},
+  {"environment":"pre","conversationId":217,"before":{"top":0,"height":909,"client":776},"messagesUnchanged":true,"positionRetained":false},
+  {"environment":"prod","conversationId":891,"before":{"top":1468,"height":3711,"client":776},"messagesUnchanged":true,"positionRetained":false}
+]

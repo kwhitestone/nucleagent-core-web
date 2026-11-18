@@ -51,6 +51,7 @@ export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
+import { ScrollViewport } from './ScrollViewport';
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
 /** A home suggestion card resolved for the locale (suggestions.ts). */
@@ -156,7 +157,7 @@ export function ChatApp(props: ChatProps) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root className="mc-root" data-conversation-key={conversationId ?? ""}>
-        <ThreadPrimitive.Viewport className="mc-viewport">
+        <ScrollViewport conversationId={conversationId} ready={!conversationId || !!core?.controller.authoritativeReady.value} className="mc-viewport">
           <AuiIf condition={(s) => s.thread.hasEarlier}>
             <ThreadPrimitive.LoadEarlier className="mc-earlier">{t("chatReact.earlier")}</ThreadPrimitive.LoadEarlier>
           </AuiIf>
@@ -175,7 +176,7 @@ export function ChatApp(props: ChatProps) {
               await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
             }} />}
           </ThreadPrimitive.ViewportFooter>
-        </ThreadPrimitive.Viewport>
+        </ScrollViewport>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
@@ -630,6 +631,7 @@ function Parts({ t }: { t: Translate }) {
  * pointer), and always on the last reply.
  */
 export function MessageRow({ role, t, conversationId = "", evidence, actions }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
+  const messageId = useAuiState((state) => state.message.id);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
   const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
@@ -639,7 +641,7 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
   const time = formatMessageTime(createdAt?.toISOString());
   const author = isUser ? t("conversation.you") : t("home.greeting");
   return (
-    <MessagePrimitive.Root className="mc-msg" data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
+    <MessagePrimitive.Root className="mc-msg" data-scroll-message={messageId} data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
       <div className="mc-header">
         {/* The user side shows only the avatar ("你"), labelled for screen readers instead of a duplicate name. */}
         <span className="mc-avatar" aria-hidden={isUser ? undefined : "true"} role={isUser ? "img" : undefined} aria-label={isUser ? author : undefined}
