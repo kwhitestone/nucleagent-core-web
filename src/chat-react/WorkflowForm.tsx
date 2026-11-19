@@ -4,6 +4,7 @@ import { listToolCatalogPages, type ToolCatalogItem } from "../addons/conversati
 import type { ToolInvocation } from "../addons/conversation/api/types";
 import { workflowFields, workflowInvocation, workflowToolEligible, validateWorkflowTool, type WorkflowSchema, type WorkflowValue } from "./workflowParams";
 import type { Translate } from "./ChatApp";
+import { AudioFilePicker } from "./AudioFilePicker";
 
 export const toolSchema = (id: number) => getPlatformRuntime().http.get<{ data: WorkflowSchema & { model?: string } }>(`/api/v1/addons/tool/${id}/schema`).then((response) => response.data.data);
 export const EnumSelect = ({ t, options, ...rest }: { t: Translate; options: string[] } & React.SelectHTMLAttributes<HTMLSelectElement>) =>
@@ -18,31 +19,35 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitted = useRef(false);
+  const generation = useRef(0);
+  const renderGeneration = generation.current;
   useEffect(() => {
-    const reset = () => { setOpen(false); setSelected(0); setSchema(undefined); setValues({}); setTools([]); };
+    const reset = () => { generation.current++; submitted.current = false; setBusy(false); setError(""); setOpen(false); setSelected(0); setSchema(undefined); setValues({}); setTools([]); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
     return () => window.removeEventListener(SESSION_CHANGE_EVENT, reset);
   }, []);
   useEffect(() => {
     let live = true;
-    if (open) void listToolCatalogPages().then((rows) => { if (live) setTools(rows.filter(workflowToolEligible)); }).catch(() => { if (live) setError("workflowUnavailable"); });
+    const current = generation.current;
+    if (open) void listToolCatalogPages().then((rows) => { if (live && current === generation.current) setTools(rows.filter(workflowToolEligible)); }).catch(() => { if (live && current === generation.current) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [open]);
   useEffect(() => {
     let live = true;
+    const current = generation.current;
     setSchema(undefined); setValues({});
     if (selected && open) void toolSchema(selected).then((found) => {
       const tool = tools.find((row) => row.id === selected);
       if (!tool) throw new Error("Invalid workflow");
       validateWorkflowTool(tool, found);
-      if (live) { setSchema(found); setError(""); }
-    }).catch(() => { if (live) setError("workflowUnavailable"); });
+      if (live && current === generation.current) { setSchema(found); setError(""); }
+    }).catch(() => { if (live && current === generation.current) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [selected, open, tools]);
   const missingImage = !!schema?.inputSchema.required?.includes("image_url");
   const run = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (submitted.current || !schema || disabled || missingImage) return;
+    if (submitted.current || !schema || disabled || missingImage || renderGeneration !== generation.current) return;
     let request: ToolInvocation;
     try {
       const tool = tools.find((row) => row.id === selected);
@@ -66,6 +71,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
         {schema.declaredModel && schema.declaredModel !== schema.model && <> · {t("chatReact.workflowDeclaredModel")}: {schema.declaredModel}</>}
       </p>}
       {schema && workflowFields(schema, true).map(([name, field]) => {
+        if (name === "fileId" && schema.nativeCapability === "nucleagent.audio.stt.v1") return <AudioFilePicker key={`${selected}:${schema.invocation?.revision}`} value={String(values.fileId ?? "")} disabled={busy || !!disabled} onChange={(fileId) => setValues(fileId ? { fileId } : {})} />;
         const options = field.enum ?? (field.type === "boolean" ? [true, false] : undefined);
         const control = {
           required: schema.inputSchema.required?.includes(name), disabled: busy,

@@ -46,20 +46,18 @@ test("normal picker renders native audio and submits one bound input and voice i
 });
 after(async () => { dispose?.(); await vite?.close(); dom?.window.close(); });
 
-test("normal native STT form binds one file ID and never repeats its intent", async () => {
+test("native STT cannot bypass an unavailable owner picker through a manual file ID", async () => {
   nativeAudio = true;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("", { status: 403 });
   const view = await fixture({ nativeCapability: "nucleagent.audio.stt.v1", model: "whisper-1", output: "text/plain", invocation: { toolId: 72, revision: "10" }, inputSchema: {
     type: "object", additionalProperties: false, required: ["fileId"], properties: { fileId: { type: "string", maxLength: 128 } },
   } });
   try {
-    await view.change("fileId", "https://example.invalid/audio.wav");
+    assert.equal(view.container.querySelector('input[type="text"]'), null);
     await view.submit();
     assert.equal(view.requests.length, 0);
-    await view.change("fileId", "2b65c83c-9e18-4a2e-b449-8bfc512bd483");
-    await view.submit();
-    await view.submit();
-    assert.deepEqual(view.requests, [{ toolId: 72, revision: "10", arguments: { fileId: "2b65c83c-9e18-4a2e-b449-8bfc512bd483" } }]);
-  } finally { await view.close(); nativeAudio = false; }
+  } finally { await view.close(); nativeAudio = false; globalThis.fetch = previousFetch; }
 });
 
 async function fixture(schema: WorkflowSchema) {
