@@ -1,4 +1,5 @@
 import type { FileChip } from "./attachments.ts";
+import { sha256Hex } from "../addons/conversation/api/fileDigest.ts";
 
 export async function readAudioBlob(file: FileChip, signal: AbortSignal, resolve: (id: string) => Promise<string>, read: (url: string, options: RequestInit) => Promise<Response> = fetch): Promise<Blob> {
   if (!file.verified || file.mimeType !== "audio/wav" || !file.size || file.size < 44 || file.size > 65536 || !file.sha256 || !/^[a-f0-9]{64}$/.test(file.sha256)) throw new Error("Audio unavailable");
@@ -19,9 +20,9 @@ export async function readAudioBlob(file: FileChip, signal: AbortSignal, resolve
       data.set(next.value, size); size += next.value.length;
     }
   } finally { await reader.cancel(); }
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  const hash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+  const blob = new Blob([data], { type: "audio/wav" });
+  const hash = await sha256Hex(blob);
   signal.throwIfAborted();
   if (size !== file.size || hash !== file.sha256) throw new Error("Audio unavailable");
-  return new Blob([data], { type: "audio/wav" });
+  return blob;
 }

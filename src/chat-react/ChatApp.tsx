@@ -14,7 +14,6 @@ import { getConversation, listExecutionBackends, updateConversationSettings } fr
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
 import { MediaCard } from "./MediaCard";
 import { EnumSelect, toolSchema, WorkflowForm } from "./WorkflowForm";
-import { AudioPreview } from "./AudioPreview";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
 import { directMediaRequest, directMediaTool, workflowFields, type DirectMedia } from "./workflowParams";
@@ -424,7 +423,7 @@ export function FileChipView({ file, t }: { file: FileChip; t: Translate }) {
   return (
     <><button type="button" className="mc-chip mc-chip--link" title={`${t("common.attachmentDownload")} ${file.name}`} aria-busy={busy || undefined} disabled={busy} onClick={download}>
       {icon}<span className="mc-chip-name">{file.name}</span>{size}
-    </button><AudioPreview file={file} t={t} /><StoredMediaPreview file={file} t={t} /></>
+    </button><StoredMediaPreview key={JSON.stringify(file)} file={file} t={t} /></>
   );
 }
 

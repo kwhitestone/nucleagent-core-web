@@ -473,7 +473,7 @@
   outline-offset: 2px;
 }
 .mc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.mc-stored-media { flex-basis: 100%; min-width: 0; }
+.mc-preview { flex-basis: 100%; min-width: 0; }
 .mc-chips:not(:empty) { margin-bottom: 8px; }
 .mc-chips--sent { margin: 8px 0 0; }
 .mc-chip {

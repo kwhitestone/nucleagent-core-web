@@ -4,6 +4,7 @@ import type { MessageAttachment } from "./types";
 import { buildUploadRequestBody } from "./uploadPayload";
 import { assertSafeDownloadUrl } from "./downloadUrlPolicy";
 import { fetchImageContent } from "./imageContent";
+import { sha256Hex } from "./fileDigest.ts";
 import { configValue } from "@/runtimeConfig";
 
 /**
@@ -81,26 +82,6 @@ export class UploadError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "UploadError";
-  }
-}
-
-/**
- * 计算文件的 SHA-256（hex）。
- *
- * 用途是端到端完整性校验：storage 存进元数据，后续可与下载内容比对。
- * crypto.subtle 只在安全上下文（https 或 localhost）可用，取不到时返回空串 ——
- * 校验和是增强项，不能因为它缺失就阻断上传。
- */
-async function sha256Hex(file: File): Promise<string> {
-  if (!globalThis.crypto?.subtle) return "";
-  try {
-    const buf = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest("SHA-256", buf);
-    return Array.from(new Uint8Array(digest))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  } catch {
-    return "";
   }
 }
 

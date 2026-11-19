@@ -20,12 +20,16 @@ const originalFetch = globalThis.fetch;
 const originalAdapter = axios.defaults.adapter;
 const file = { id: "owner-image", name: "result.jpg", mimeType: "image/jpeg", size: 4, verified: true };
 const translate = (key: string) => key;
+const wav = new Uint8Array(48);
+wav.set(new TextEncoder().encode("RIFF"));
+wav.set(new TextEncoder().encode("WAVEfmt "), 8);
+const wavHash = Buffer.from(await crypto.subtle.digest("SHA-256", wav)).toString("hex");
 
 before(async () => {
   const dom = new JSDOM("", { url: "https://test.example/" });
   Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
   Object.defineProperty(globalThis, "document", { configurable: true, value: dom.window.document });
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, AbortController: dom.window.AbortController });
   URL.createObjectURL = () => `blob:test-${++sequence}`;
   URL.revokeObjectURL = (url) => revoked.push(url);
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
@@ -37,12 +41,13 @@ before(async () => {
   globalThis.fetch = async (input) => {
     reads.push(String(input));
     if (delay) await new Promise<void>((resolve) => { delayed = resolve; });
+    if (String(input).endsWith('.wav')) return new Response(wav, { headers: { "Content-Type": "audio/wav" } });
     return denied ? new Response(null, { status: 403 }) : new Response(new Uint8Array([255, 216, 255, 217]), { headers: { "Content-Type": "image/jpeg", "Content-Length": "4", "Content-Disposition": 'attachment; filename="result.jpg"' } });
   };
   axios.defaults.adapter = async (config) => {
     reads.push(config.url!);
     if (denied) throw new Error("denied");
-    return { data: { data: { url: `https://cdn.example.com/owned-${++sequence}.mp4` } }, status: 200, statusText: "OK", headers: {}, config };
+    return { data: { data: { url: `https://cdn.example.com/owned-${++sequence}.${config.url?.includes('owner-audio') ? 'wav' : 'mp4'}` } }, status: 200, statusText: "OK", headers: {}, config };
   };
   ({ FileChipView } = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx"));
 });
@@ -61,13 +66,13 @@ test("real file-chip path previews verified images, reauthorizes refresh and rej
     assert.match(first ?? "", /^blob:/);
     assert.equal(container.querySelector("img")?.alt, file.name);
     denied = true;
-    await React.act(async () => (container.querySelector('[data-testid="mc-media-refresh"]') as HTMLButtonElement).click());
+    await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
     assert.equal(container.querySelector("img"), null);
     assert.equal(reads.length, 2);
     assert(revoked.includes(first!));
-    assert(container.querySelector('[role="alert"]'));
+    assert.match(container.textContent!, /mediaReadFailed/);
     denied = false; delay = true;
-    await React.act(async () => (container.querySelector('[data-testid="mc-media-refresh"]') as HTMLButtonElement).click());
+    await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
     await React.act(async () => { window.dispatchEvent(new window.Event("nucleagent:session-change")); delayed!(); });
     assert.equal(container.querySelector("img"), null);
     delay = false;
@@ -94,10 +99,32 @@ test("archived video uses newly authorized download URLs and exposes retry after
     const first = video.src;
     await React.act(async () => video.dispatchEvent(new window.Event("error")));
     assert.equal(container.querySelector("video"), null);
-    await React.act(async () => (container.querySelector('[data-testid="mc-media-refresh"]') as HTMLButtonElement).click());
+    await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
     assert.notEqual(container.querySelector("video")?.src, first);
     assert.deepEqual(reads, ["/api/v1/files/owner-video/download", "/api/v1/files/owner-video/download"]);
     await React.act(async () => window.dispatchEvent(new window.Event("nucleagent:session-change")));
     assert.equal(container.querySelector("video"), null);
+  } finally { await React.act(async () => root.unmount()); container.remove(); }
+});
+
+test("audio remains on demand and still rejects bytes that fail the existing digest contract", async () => {
+  reads = []; denied = false;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await React.act(async () => root.render(React.createElement(FileChipView, { file: { ...file, id: "owner-audio", name: "result.wav", mimeType: "audio/wav", size: 48, sha256: "0".repeat(64) }, t: translate })));
+    assert.equal(reads.length, 0);
+    assert.equal(container.querySelector("audio"), null);
+    await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
+    assert.equal(reads.length, 2);
+    assert.equal(container.querySelector("audio"), null);
+    await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
+    assert.match(container.textContent!, /mediaReadFailed/);
+    await React.act(async () => root.render(React.createElement(FileChipView, { file: { ...file, id: "owner-audio", name: "result.wav", mimeType: "audio/wav", size: 48, sha256: wavHash }, t: translate })));
+    assert.equal(reads.length, 2);
+    await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
+    await React.act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
+    assert(container.querySelector("audio")?.controls);
+    assert.match(container.querySelector("audio")?.src ?? "", /^blob:/);
   } finally { await React.act(async () => root.unmount()); container.remove(); }
 });
