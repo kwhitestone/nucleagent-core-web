@@ -183,7 +183,7 @@ test("switch: shell query arriving after boot locks or reloads, once per page lo
   assert.equal(loadedChatUi(), "react");
 });
 
-test("thinking provenance survives a refreshed snapshot; status-only and empty bodies never become reasoning", () => {
+test("thinking provenance is excluded from ordinary projection including refreshed snapshots", () => {
   const projected = (content: string, metadata: Record<string, unknown>, status: ConversationItem["status"]) => item("thought", {
     lane: "process", userReadable: true, content, status,
     data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking",
@@ -198,9 +198,8 @@ test("thinking provenance survives a refreshed snapshot; status-only and empty b
       ], status === "streaming" ? "running" : "completed");
       const content = toThreadMessages(history)[1]?.content;
       assert.ok(Array.isArray(content));
-      assert.deepEqual(content.filter((part) => part.type === "data-thinking"), [
-        { type: "data-thinking", id: "thought", data: { text: "真实思考正文", active: status === "streaming" } },
-      ]);
+      assert.deepEqual(content.filter((part) => part.type === "data-thinking"), []);
+      assert.doesNotMatch(JSON.stringify(content), /真实思考正文/);
     }
   }
   for (const thought of [
@@ -228,8 +227,8 @@ test("adapter: user items split turns; process → data-process header + one par
   const [process, step, answer] = messages[1].content as readonly { type: string; text?: string; data?: { summary: string } }[];
   assert.equal(process.type, "data-process");
   assert.equal(process.data?.summary, "1 个步骤 · 已完成");
-  assert.deepEqual(step, { type: "reasoning", id: "t1", text: "思考过程\nplan", providerMetadata: { core: { status: "complete" } },
-    timing: { startedAt: Date.parse("2026-11-13T00:00:00Z"), completedAt: Date.parse("2026-11-13T00:00:00Z") } });
+  assert.deepEqual(step, { type: "data-process-step", id: "t1", data: { name: "思考过程", content: "plan", status: "complete",
+    timing: { startedAt: Date.parse("2026-11-13T00:00:00Z"), completedAt: Date.parse("2026-11-13T00:00:00Z") } } });
   assert.deepEqual(answer, { type: "text", text: "**hello**" });
   assert.equal(JSON.stringify(messages).includes("secret"), false, "hidden tool lane never reaches aui");
   assert.deepEqual(messages[1].status, { type: "complete", reason: "stop" });
@@ -314,8 +313,9 @@ test("adapter: step durations follow the Vue rule (until the next step / the ans
     item("p3", { lane: "process", title: "收尾", userReadable: true, timestamp: at(5), data: { durationMs: 250 } }),
     item("a1", { content: "done", timestamp: at(9) }),
   ]));
-  const spans = (reply.content as readonly { timing?: { startedAt: number; completedAt?: number } }[]).slice(1, 4)
-    .map((p) => p.timing && (p.timing.completedAt ?? 0) - p.timing.startedAt);
+  const spans = (reply.content as readonly { timing?: { startedAt: number; completedAt?: number }; data?: { timing?: { startedAt: number; completedAt?: number } } }[]).slice(1, 4)
+    .map((part) => part.timing ?? part.data?.timing)
+    .map((timing) => timing && (timing.completedAt ?? 0) - timing.startedAt);
   assert.deepEqual(spans, [3000, 1000, 250]);
   const p2 = (reply.content as readonly Record<string, unknown>[])[2];
   assert.equal(p2.isError, true, "failed tool step is an aui error result");
@@ -334,7 +334,7 @@ test("adapter: contiguous process steps merge into one 执行过程 summary with
   ]);
   const [, reply] = toThreadMessages(state, { locale: "zh-CN", nowMs: Date.parse(at(30)) });
   const parts = reply.content as readonly { type: string; data?: { summary: string; timing: string } }[];
-  assert.deepEqual(parts.map((p) => p.type), ["data-process", "reasoning", "reasoning", "reasoning", "text"], "late process joins the run before the answer");
+  assert.deepEqual(parts.map((p) => p.type), ["data-process", "data-process-step", "data-process-step", "data-process-step", "text"], "late process joins the run before the answer");
   assert.equal(parts[0].data?.summary, "3 个步骤 · 已完成");
   assert.equal(parts[0].data?.timing, "总耗时 12.0 秒");
   const en = toThreadMessages(state, { locale: "en-US", nowMs: Date.parse(at(30)) })[1].content as readonly { data?: { summary: string; timing: string } }[];

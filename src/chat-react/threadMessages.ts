@@ -24,7 +24,6 @@ function statusOf(items: readonly ConversationItem[]): Status {
   return { type: "complete", reason: "stop" };
 }
 
-/** Header of one "执行过程" group (same summary as the Vue view); its steps follow as reasoning / tool-call parts. */
 export interface ProcessPartData {
   summary: string;
   timing: string;
@@ -49,7 +48,6 @@ function stepTiming(item: ConversationItem, endedAt: string | undefined) {
   return ms === undefined || active(item) || !Number.isFinite(startedAt) ? {} : { timing: { startedAt, completedAt: startedAt + ms } };
 }
 
-/** One Core process step → an aui part: tool calls become `tool-call`, everything else `reasoning` (Core status in providerMetadata.core). */
 function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
   const toolCallId = typeof item.data?.toolCallId === "string" ? item.data.toolCallId : undefined;
   const timing = stepTiming(item, endedAt);
@@ -61,7 +59,7 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
       ...(!active(item) ? { result, isError: item.status === "failed" } : {}), ...timing,
     };
   }
-  return { type: "reasoning", id: item.id, text: [item.title, item.content].filter(Boolean).join("\n"), providerMetadata: { core: { status: item.status } }, ...timing };
+  return { type: "data-process-step", id: item.id, data: { name: item.title ?? "", content: item.content, status: item.status, ...timing } };
 }
 
 /**
@@ -87,12 +85,8 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
   };
   // Late process rows move before the answer, as in the Vue view.
   for (const raw of orderTurnItemsForDisplay(group)) {
+    if (raw.data?.modelThinking === true) continue;
     const item = processItemForDisplay(raw, locale);
-    if (item.data?.modelThinking === true && item.content) {
-      flush(item.timestamp);
-      parts.push({ type: "data-thinking", id: item.id, data: { text: item.content, active: active(item) } });
-      continue;
-    }
     // tool/progress rows join the fold too, so every step group has its 执行过程 header.
     if (item.lane === "process" || item.lane === "tool" || item.lane === "progress") {
       if (item.lane === "process" || item.title || item.content) run.push(item);
@@ -111,7 +105,7 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
 /**
  * Core items (same visibility rules as the Vue view, via selectTurns) → assistant-ui messages.
  * Each user item is one user message; the items between two user items join one assistant
- * message (contiguous process items → a `data-process` header followed by one reasoning or
+ * message (contiguous process items → a `data-process` header followed by one data-process-step or
  * tool-call part per step, grouped in the view by MessagePrimitive.GroupedParts; answer/system → text;
  * media generation → `data-media`; produced files → `data-files`).
  */

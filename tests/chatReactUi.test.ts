@@ -93,7 +93,7 @@ test("every assistant response has an UNKNOWN usage area; user messages and raw 
   assert.doesNotMatch(html, /untrusted|9000/);
 });
 
-test("actual thinking has an independent default-closed fold, streaming label and escaped text", (context) => {
+test("actual thinking stays out of ordinary DOM for live and restored messages", (context) => {
   const started = performance.now();
   for (const status of ["streaming", "complete"] as const) {
     const state = stateOf([
@@ -103,12 +103,8 @@ test("actual thinking has an independent default-closed fold, streaming label an
     ], status === "streaming" ? "running" : "completed");
     const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
       ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-    assert.match(html, /<details class="mc-process mc-reasoning">/);
-    assert.match(html, /chatReact.reasoning/);
-    assert.equal(html.includes("chatReact.thinking"), status === "streaming");
-    assert.match(html, /Model &lt;script&gt;thinking&lt;\/script&gt;/);
-    assert.doesNotMatch(html, /<script>|mc-reasoning" open/);
-    assert.equal(html.split("Model &lt;script&gt;").length - 1, 1);
+    assert.doesNotMatch(html, /mc-reasoning|Model &lt;script&gt;|chatReact.reasoning/);
+    assert.match(html, /Answer/);
   }
   const html = render(stateOf([item("heartbeat", { lane: "process", userReadable: true, title: "Waiting", data: { thinking: true, thinkingStatus: true } })]),
     () => React.createElement(aui.ThreadPrimitive.Messages, null,
@@ -211,7 +207,7 @@ test("media composer blocks send and queue, identifies selected model, hides uns
   }
 });
 
-test("process row: failed step → one severity color (alert icon, no dot), opens on the failure, done steps fold to one row; aria-expanded", () => {
+test("process row: existing failure summary permits folding while all attempts remain available", () => {
   const at = (sec: number) => `2026-11-13T00:00:0${sec}Z`;
   const state = stateOf([
     item("u1", { role: "user", content: "q", timestamp: at(0) }),
@@ -221,27 +217,27 @@ test("process row: failed step → one severity color (alert icon, no dot), open
   ]);
   const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-  assert.match(html, /<details class="mc-process" data-status="failed" data-hide-done="true" open="">/, "failure: open, done steps hidden");
-  assert.match(html, /<summary class="mc-process-head" aria-expanded="true"/);
+  assert.match(html, /<details class="mc-process" data-status="failed">/);
+  assert.match(html, /<summary class="mc-process-head" aria-expanded="false"/);
   assert.match(html, /class="mc-process-alert"/);
   assert.doesNotMatch(html, /mc-process-dot/, "alert icon replaces the dot, not both");
-  assert.match(html, /class="mc-step-more"[^>]*>.*1 chatReact.doneSteps</s);
+  assert.doesNotMatch(html, /mc-step-more|mc-step-time|data-hide-done/);
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.match(css, /\.mc-process\[data-hide-done\] > \.mc-step\[data-state="done"\] \{ display: none; \}/);
   assert.doesNotMatch(css.slice(css.indexOf(".mc-process {"), css.indexOf(".mc-step-detail {")), /amber/, "one severity color");
-  assert.match(html, /class="mc-step" data-state="done".*排队等待.*class="mc-step-time">2.0s</s);
-  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*toolCalls.status.failed.*class="mc-step-time">5.0s<.*exit 1/s);
+  assert.match(html, /class="mc-step" data-state="done".*排队等待/s);
+  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*toolCalls.status.failed.*exit 1/s);
   assert.equal(app.stepState("streaming", { type: "complete" }), "running");
   assert.equal(app.stepState(undefined, { type: "running" }), "running");
   assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
   assert.equal(app.stepState("cancelled", { type: "complete" }), "cancelled");
 });
 
-test("process fold defaults: closed when all done, open while running, open on failure with done steps folded", () => {
-  assert.deepEqual(app.foldView(["done", "done"], false), { open: false, hideDone: false, done: 2 });
-  assert.deepEqual(app.foldView(["done", "running"], true), { open: true, hideDone: false, done: 1 });
-  assert.deepEqual(app.foldView(["done", "done", "done", "failed"], false), { open: true, hideDone: true, done: 3 });
-  assert.deepEqual(app.foldView(["failed"], false), { open: true, hideDone: false, done: 0 });
+test("process fold defaults collapse except when the running summary would hide failure", () => {
+  assert.deepEqual(app.foldView(["done", "done"], "complete"), { open: false, hideDone: false, done: 2 });
+  assert.deepEqual(app.foldView(["done", "running"], "streaming"), { open: false, hideDone: false, done: 1 });
+  assert.deepEqual(app.foldView(["done", "done", "done", "failed"], "failed"), { open: false, hideDone: false, done: 3 });
+  assert.deepEqual(app.foldView(["failed"], "failed"), { open: false, hideDone: false, done: 0 });
   const html = render(stateOf([item("u1", { role: "user", content: "q" }), item("p1", { lane: "process", title: "排队", userReadable: true }), item("a1", { content: "答" })]),
     () => React.createElement(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.match(html, /<details class="mc-process" data-status="complete"><summary class="mc-process-head" aria-expanded="false"/);
@@ -345,7 +341,7 @@ test("island strings: zh/en chunks have the same keys, mount picks the current l
   assert.match(readFileSync("src/addons/conversation/views/ChatHost.vue", "utf8"), /import\("@\/chat-react\/islandStringsEn"\) : import\("@\/chat-react\/islandStringsZh"\)/, "host prefetches the strings chunk with the island");
 });
 
-test("process head: 首字 X 秒 · 总耗时 Y 秒 from server_timing; detail row carries raw ms; 401 turn shows — and only the total", () => {
+test("process timing is not repeated in the header; independent TTFT diagnostic and missing marker remain", () => {
   const at = (sec: number) => `2026-11-16T01:53:${String(sec).padStart(2, "0")}Z`;
   const st = { version: 2, first_body_write_ms: 2495, first_body_write_outcome: "written", agent_ready_ms: 789, attachments_prepared_ms: 547, run_return_ms: 3670 };
   const turn = (u: string, end: number, serverTiming: Record<string, unknown>) => [
@@ -355,11 +351,11 @@ test("process head: 首字 X 秒 · 总耗时 Y 秒 from server_timing; detail r
   ];
   const html = render(stateOf(turn("u1", 4, st)), () => React.createElement(aui.ThreadPrimitive.Messages, null,
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-  assert.match(html, /class="mc-process-timing">chatReact.firstToken 2.5chatReact.sec · 总耗时 4.0 秒</);
+  assert.doesNotMatch(html, /mc-process-timing/);
   assert.match(html, /<p class="mc-process-ttft" data-queue-ms="40" data-agent-ms="789" data-first-ms="2535" data-first-source="server">/);
   const failed = render(stateOf(turn("u2", 19, { ...st, first_body_write_ms: -1, first_body_write_outcome: "missing" })), () => React.createElement(aui.ThreadPrimitive.Messages, null,
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-  assert.match(failed, /class="mc-process-timing">总耗时 19.0 秒</, "no first token → total only, never 首字 0");
+  assert.doesNotMatch(failed, /mc-process-timing/);
   assert.match(failed, /<p class="mc-process-ttft" data-queue-ms="40" data-agent-ms="789">[^<]*chatReact.firstToken —</);
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
 });

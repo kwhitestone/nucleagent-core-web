@@ -5,7 +5,6 @@ import {
 import { useActionBarCopy } from "@assistant-ui/core/react";
 import { useMessagePartText, useSmooth } from "@assistant-ui/react";
 import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
-import { formatProcessDuration } from "@/addons/conversation/task-conversation/vue/processPresentation";
 import { formatReadout } from "./ttft";
 import {
   ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
@@ -495,8 +494,6 @@ export const stepState = (core: unknown, aui: { type: string }, isError?: boolea
   return core === undefined && aui.type === "running" ? "running" : "done";
 };
 const coreStatus = (part: object) => ((part as { providerMetadata?: unknown }).providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
-const elapsed = (timing?: { startedAt: number; completedAt?: number }) =>
-  timing?.completedAt === undefined ? "" : formatProcessDuration(timing.completedAt - timing.startedAt);
 
 const StepIcon = ({ state }: { state: StepState }) => (
   <span className="mc-step-icon" data-state={state} aria-hidden="true">
@@ -504,8 +501,7 @@ const StepIcon = ({ state }: { state: StepState }) => (
   </span>
 );
 
-/** One row of the 执行过程 list: status icon, name, (tool tag), duration, then the step's summary or tool outcome. */
-function Step({ state, name, tool, duration, t, children }: { state: StepState; name: string; tool?: boolean; duration: string; t: Translate; children?: ReactNode }) {
+function Step({ state, name, tool, t, children }: { state: StepState; name: string; tool?: boolean; t: Translate; children?: ReactNode }) {
   return (
     <div className="mc-step" data-state={state}>
       <div className="mc-step-head">
@@ -513,19 +509,17 @@ function Step({ state, name, tool, duration, t, children }: { state: StepState; 
         <span className="mc-step-name">{name}</span>
         {tool && <span className="mc-step-tag"><ToolMark />{t("chatReact.tool")}</span>}
         {state !== "done" && <span className="mc-step-state">{t(state === "cancelled" ? "conversation.stopped" : `toolCalls.status.${state}`)}</span>}
-        {duration && <span className="mc-step-time">{duration}</span>}
       </div>
       {children}
     </div>
   );
 }
 
-/** Generic Core tool step: name, state, duration and the outcome (query / sources / text). Core sends no args. */
 function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isError?: boolean; status: { type: string }; timing?: { startedAt: number; completedAt?: number }; providerMetadata?: unknown }; t: Translate }) {
   const r = part.result as ToolResult | undefined;
   const sources = (r?.sources ?? []).filter((s) => s.url && /^https?:\/\//i.test(s.url));
   return (
-    <Step state={stepState(coreStatus(part), part.status, part.isError)} name={part.toolName} tool duration={elapsed(part.timing)} t={t}>
+    <Step state={stepState(coreStatus(part), part.status, part.isError)} name={part.toolName} tool t={t}>
       {r?.query && <p className="mc-step-detail"><b>{t("chatReact.query")}</b> {r.query}</p>}
       {sources.length > 0 && (
         <ul className="mc-tool-sources" aria-label={t("chatReact.sources")}>
@@ -538,80 +532,65 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
   );
 }
 
-/** Contiguous Core process steps (the header part + reasoning/tool-call parts) render as one 执行过程 fold. */
 const groupBy = (part: { type: string }) =>
-  part.type === "data" || part.type === "reasoning" || part.type === "tool-call"
-    ? (part.type === "data" && (part as { name?: string }).name !== "process" ? null : ["group-process" as const])
+  part.type === "data" || part.type === "tool-call"
+    ? (part.type === "data" && !["process", "process-step"].includes((part as { name?: string }).name ?? "") ? null : ["group-process" as const])
     : null;
 
-/**
- * 执行过程 defaults: open while running or after a failure; after a failure the successful steps fold
- * into one "N 步成功" row so the failed step is what shows.
- */
-export function foldView(states: readonly StepState[], running: boolean) {
-  const failed = !running && states.includes("failed");
+export function foldView(states: readonly StepState[], summaryStatus?: string) {
+  const hiddenFailure = states.includes("failed") && summaryStatus !== "failed";
   const done = states.filter((s) => s === "done").length;
-  return { open: running || failed, hideDone: failed && done > 0, done };
+  return { open: hiddenFailure, hideDone: false, done };
 }
 
 /** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
-function ProcessFold({ indices, running, t, children }: { indices: readonly number[]; running: boolean; t: Translate; children: ReactNode }) {
+function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: Translate; children: ReactNode }) {
   const parts = useAuiState((s) => s.message.parts);
   const group = indices.map((i) => parts[i]!);
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
-  const view = foldView(group.filter((p) => p.type !== "data").map((p) => stepState(coreStatus(p), p.status, (p as { isError?: boolean }).isError)), running);
+  const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
   const [open, setOpen] = useState(view.open);
-  const [showDone, setShowDone] = useState(false);
   useEffect(() => { if (view.open) setOpen(true); }, [view.open]);
   const failed = head?.status === "failed";
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
-    <details className="mc-process" data-status={head?.status} data-hide-done={(view.hideDone && !showDone) || undefined} open={open}
+    <details className="mc-process" data-status={head?.status} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}>
         <span className="mc-process-chevron"><ChevronMark size={16} /></span>
         {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
         <span className="mc-process-label">{t("chatReact.process")}</span>
         <span className="mc-process-summary">{head?.summary}</span>
-        {(ttft?.head || head?.timing) && <span className="mc-process-timing">{[ttft?.head, head?.timing].filter(Boolean).join(" · ")}</span>}
       </summary>
       {ttft && <p className="mc-process-ttft" {...Object.fromEntries(Object.entries(head!.ttft!).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v]))}>{ttft.detail}</p>}
-      {view.hideDone && !showDone && (
-        <button type="button" className="mc-step-more" onClick={() => setShowDone(true)}><CheckMark size={13} />{`${view.done} ${t("chatReact.doneSteps")}`}</button>
-      )}
       {children}
     </details>
   );
 }
 
 function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
+  const messageId = useAuiState((state) => state.message.id);
   return (
     <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="empty">
       {({ part, children }) => {
         switch (part.type) {
           case "group-process":
-            return <ProcessFold indices={part.indices} running={part.status.type === "running"} t={t}>{children}</ProcessFold>;
+            return <ProcessFold key={`${messageId}:${part.indices[0]}`} indices={part.indices} t={t}>{children}</ProcessFold>;
           case "indicator":
             return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
           case "text":
             return raw ? null : <MarkdownText t={t} />;
-          case "reasoning": {
-            const [title, ...rest] = part.text.split("\n");
-            return (
-              <Step state={stepState(coreStatus(part), part.status)} name={title ?? ""} duration={elapsed(part.timing)} t={t}>
-                {rest.length > 0 && <pre className="mc-step-detail">{rest.join("\n")}</pre>}
-              </Step>
-            );
-          }
+          case "reasoning":
+            return null;
           case "tool-call":
             return <ToolStep part={part} t={t} />;
           case "data":
-            if (part.name === "thinking") {
-              const thought = part.data as { text: string; active: boolean };
-              return <details className="mc-process mc-reasoning">
-                <summary className="mc-process-head"><span className="mc-process-chevron"><ChevronMark size={16} /></span>{t("chatReact.reasoning")}{thought.active && <span role="status"> · {t("chatReact.thinking")}</span>}</summary>
-                <pre className="mc-step-detail">{thought.text}</pre>
-              </details>;
+            if (part.name === "thinking") return null;
+            if (part.name === "process-step") {
+              const step = part.data as { name: string; content: string; status: string };
+              return <Step state={stepState(step.status, part.status)} name={step.name} t={t}>
+                {step.content && <pre className="mc-step-detail">{step.content}</pre>}
+              </Step>;
             }
             // The header is drawn by ProcessFold.
             if (part.name === "process") return <></>;
