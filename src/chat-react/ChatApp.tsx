@@ -35,7 +35,7 @@ import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } 
 import { choiceValue, modelGroups, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
 import {
-  AlertMark, AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
+  AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
 import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type FileChip } from "./attachments";
@@ -532,20 +532,13 @@ export const stepState = (core: unknown, aui: { type: string }, isError?: boolea
 };
 const coreStatus = (part: object) => ((part as { providerMetadata?: unknown }).providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
 
-const StepIcon = ({ state }: { state: StepState }) => (
-  <span className="mc-step-icon" data-state={state} aria-hidden="true">
-    {state === "running" ? <span className="mc-spinner" /> : state === "failed" ? <AlertMark size={13} /> : state === "cancelled" ? <CrossMark size={12} /> : <CheckMark size={13} />}
-  </span>
-);
-
 function Step({ state, name, tool, t, children }: { state: StepState; name: string; tool?: boolean; t: Translate; children?: ReactNode }) {
   return (
     <div className="mc-step" data-state={state} tabIndex={-1}>
       <div className="mc-step-head">
-        <StepIcon state={state} />
+        <span className="mc-step-icon" aria-hidden="true"><ToolMark /></span>
         <span className="mc-step-name">{name}</span>
         {tool && <span className="mc-step-tag"><ToolMark />{t("chatReact.tool")}</span>}
-        {state !== "done" && <span className="mc-step-state">{t(state === "cancelled" ? "conversation.stopped" : `toolCalls.status.${state}`)}</span>}
       </div>
       {children}
     </div>
@@ -563,7 +556,7 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
           {sources.map((s) => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.domain || s.url}</a></li>)}
         </ul>
       )}
-      {r?.content && <pre className="mc-step-detail">{r.content}</pre>}
+      {r?.content && <details className="mc-call-record"><summary>{t("chatReact.callRecord")}</summary><pre className="mc-step-detail">{r.content}</pre></details>}
       {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} t={t} /></Suspense>}
     </Step>
   );
@@ -582,41 +575,22 @@ export function foldView(states: readonly StepState[], _summaryStatus?: string) 
 /** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
 function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: Translate; children: ReactNode }) {
   const parts = useAuiState((s) => s.message.parts);
-  const running = useAuiState((state) => state.message.status?.type === 'running');
   const group = indices.map((i) => parts[i]!);
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
   const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
   const [open, setOpen] = useState(view.open);
-  const history = useRef<HTMLDivElement>(null);
-  const steps = group.filter((part) => part.type === "tool-call" || (part.type === "data" && part.name === "process-step"));
-  const stateOf = (part: typeof steps[number]) => stepState(part.type === "data" ? (part.data as { status?: string }).status : coreStatus(part), part.status, (part as { isError?: boolean }).isError);
-  const current = [...steps].reverse().find((part) => stateOf(part) === "running");
-  const currentName = current?.type === "tool-call" ? current.toolName : current?.type === "data" ? (current.data as { name: string }).name : undefined;
-  const failureCount = steps.filter((part) => stateOf(part) === "failed").length;
-  const [showFailure, setShowFailure] = useState(false);
-  useEffect(() => {
-    if (!showFailure || !open) return;
-    const target = history.current?.querySelector<HTMLElement>('[data-state="failed"]');
-    target?.focus({ preventScroll: true });
-    if (target && history.current) history.current.scrollTop += target.getBoundingClientRect().top - history.current.getBoundingClientRect().top;
-    setShowFailure(false);
-  }, [showFailure, open]);
-  const failed = head?.status === "failed";
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
     <div className="mc-process-block">
-      {(currentName || running) && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{currentName || t('chatReact.thinking')}</p>}
-      {failureCount > 0 && <button type="button" className="mc-process-failures" onClick={() => { setOpen(true); setShowFailure(true); }}>{t("toolCalls.status.failed")} · {failureCount}</button>}
     <details className="mc-process" data-status={head?.status} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}>
         <span className="mc-process-chevron"><ChevronMark size={16} /></span>
-        {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
         <span className="mc-process-label">{t("chatReact.process")}</span>
         <span className="mc-process-summary">{head?.summary}</span>
       </summary>
       {ttft && <p className="mc-process-ttft" {...Object.fromEntries(Object.entries(head!.ttft!).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v]))}>{ttft.detail}</p>}
-      <div ref={history} className="mc-process-history" tabIndex={0} role="region" aria-label={t("chatReact.process")}>{children}</div>
+      <div className="mc-process-history" tabIndex={0} role="region" aria-label={t("chatReact.process")}>{children}</div>
     </details>
     </div>
   );
@@ -631,7 +605,7 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "group-process":
             return <ProcessFold key={`${messageId}:${part.indices[0]}`} indices={part.indices} t={t}>{children}</ProcessFold>;
           case "indicator":
-            return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
+            return null;
           case "text":
             return raw ? null : <MarkdownText t={t} />;
           case "reasoning":
@@ -641,13 +615,10 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "data":
             if (part.name === "thinking") {
               const thought = part.data as { text: string; active: boolean };
-              return <ThinkingFold {...thought} label={t("chatReact.reasoning")} running={t("chatReact.thinking")} latest={t("chatReact.toBottom")} />;
+              return <ThinkingFold text={thought.text} label={t("chatReact.reasoning")} latest={t("chatReact.toBottom")} />;
             }
             if (part.name === "process-step") {
-              const step = part.data as { name: string; content: string; status: string };
-              return <Step state={stepState(step.status, part.status)} name={step.name} t={t}>
-                {step.content && <pre className="mc-step-detail">{step.content}</pre>}
-              </Step>;
+              return null;
             }
             // The header is drawn by ProcessFold.
             if (part.name === "process") return <></>;
@@ -681,6 +652,12 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
   const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
   const failed = useAuiState((s) => (s.message.metadata.custom as { failed?: boolean }).failed === true);
+  const activity = useAuiState((state) => {
+    const active = (state.message.metadata.custom as { turnActive?: boolean }).turnActive ?? state.message.status?.type === 'running';
+    if (!active) return null;
+    const call = [...state.message.parts].reverse().find(part => part.type === 'tool-call' && stepState(coreStatus(part), part.status, part.isError) === 'running');
+    return call?.type === 'tool-call' ? call.toolName : '';
+  });
   const isLast = useAuiState((s) => s.message.isLast);
   const isUser = role === "user";
   const time = formatMessageTime(createdAt?.toISOString());
@@ -697,6 +674,7 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
           onClick={() => setRawKey(raw ? null : sourceKey)}>{t(raw ? "chatReact.renderedView" : "chatReact.rawView")}</button>}
       </div>
       <div className="mc-bubble">
+        {!isUser && activity !== null && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{activity || t('chatReact.processing')}</p>}
         {raw && <pre className="mc-raw-body" role="region" aria-label={t("chatReact.rawView")} tabIndex={0}>{source}</pre>}
         <Parts t={t} raw={raw} />
         {isUser && <MessageAttachmentChips t={t} />}

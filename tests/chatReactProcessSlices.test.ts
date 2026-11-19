@@ -40,7 +40,7 @@ const item = (id: string, over: Partial<ConversationItem> = {}): ConversationIte
 const stateOf = (items: ConversationItem[]) => reducer.reduceConversation(reducer.createConversationState("7"), {
   type: "event.received", event: { protocolVersion: 2, type: "snapshot", conversationKey: "7", eventId: "s", cursor: "c", turnId: "main",
     streamId: "snapshot", lane: "system", revision: 0, seq: 0, timestamp: "2026-11-19T00:00:00Z",
-    snapshot: { items, status: "completed", hasOlder: false, cursor: "c" } },
+    snapshot: { items, status: items.some(item => item.status === 'streaming') ? 'running' : 'completed', hasOlder: false, cursor: "c" } },
 });
 const fixture = () => [
   item("thought", { lane: "process", userReadable: true, content: "SANITIZED_OWNER_CONTENT", status: "streaming", data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking", msgType: "streaming", content: "SANITIZED_OWNER_CONTENT", metadata: { thinkingCapturedAs: "full", thinkingVisibility: "full" }, createdAt: "2026-11-19T00:00:00Z" }) }),
@@ -88,12 +88,12 @@ test("native reasoning stays hidden while projected thinking has its own collaps
   assert.match(html, /普通答复/);
 });
 
-test("same-image fold keeps all attempts and existing failure evidence, without duplicate timers", () => {
+test("same-image fold keeps all attempts and backend failure with a neutral call count", () => {
   const html = htmlFor(projection.toThreadMessages(stateOf(fixture())));
   const dom = new JSDOM(html).window.document;
   assert.equal(dom.querySelectorAll('.mc-step[data-state="failed"]').length, 5);
   assert.equal(dom.querySelectorAll('.mc-step[data-state="done"]').length, 13);
-  assert.match(dom.querySelector(".mc-process-summary")!.textContent!, /18 个步骤 · 存在失败/);
+  assert.equal(dom.querySelector(".mc-process-summary")!.textContent!, '18 次调用');
   assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), false);
   assert.equal(dom.querySelectorAll(".mc-step-more, .mc-step-time, .mc-process-timing").length, 0);
   assert.equal(dom.querySelectorAll("a[href]").length, 0);
@@ -139,15 +139,16 @@ test("cancelled tool status is preserved in the product projection", () => {
   assert.equal(app.stepState(undefined, { type: "complete" }, false), "done");
 });
 
-test("a failed native tool with no trusted group summary cannot be hidden by the default fold", () => {
+test("a failed native tool without summary keeps its actual output in a neutral fold", () => {
   const html = htmlFor([{ id: "native-tool", role: "assistant", content: [{ type: "tool-call", toolCallId: "failure", toolName: "命令执行", args: {}, result: { content: "失败" }, isError: true }] }]);
   const dom = new JSDOM(html).window.document;
   assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), false);
-  assert.ok(dom.querySelector(".mc-process-failures"));
+  assert.equal(dom.querySelector(".mc-process-failures"), null);
+  assert.equal(dom.querySelector('.mc-call-record pre')?.textContent, '失败');
   assert.equal(dom.querySelectorAll('.mc-step[data-state="failed"]').length, 1);
 });
 
-test("1/10/50 independent calls keep current action and failures outside collapsed history", () => {
+test("1/10/50 independent calls keep one current action and neutral collapsed history", () => {
   for (const count of [1, 10, 50]) {
     const calls = Array.from({ length: count }, (_, index) => item(`msg-${index + 1}`, {
       lane: "process", kind: "tool_call", title: index === count - 1 ? "当前真实动作" : "历史动作", userReadable: true,
@@ -158,6 +159,6 @@ test("1/10/50 independent calls keep current action and failures outside collaps
     assert.equal(dom.querySelector(".mc-process-current")!.closest("details"), null);
     assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), false);
     assert.equal(dom.querySelectorAll(".mc-process-history .mc-step").length, count);
-    assert.equal(dom.querySelectorAll(".mc-process-failures").length, count > 1 ? 1 : 0);
+    assert.equal(dom.querySelectorAll(".mc-process-failures").length, 0);
   }
 });

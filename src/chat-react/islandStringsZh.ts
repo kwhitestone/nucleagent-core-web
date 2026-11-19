@@ -21,7 +21,7 @@ export const ZH_STRINGS = {
     returnToChat: "切回聊天", mediaReadFailed: "媒体读取失败或链接已失效，请刷新重试。",
     mediaRefresh: "刷新媒体状态",
     media_queued: "等待生成", media_submitting: "正在提交", media_running: "正在生成", media_ingesting: "正在保存媒体",
-    reasoning: "思考过程",
+    reasoning: "思考过程", processing: "处理中", callRecord: "调用记录",
     attachmentPending: "附件待核验，暂不可下载",
     stop: "停止", executor: "目鱼执行器",  pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",

@@ -6,7 +6,7 @@ import type { ConversationItem, ConversationLocale } from "../addons/conversatio
 import { selectTurns, type ConversationState } from "../addons/conversation/task-conversation/core/reducer.ts";
 import { executionTimingLabel, executionTimings } from "../addons/conversation/task-conversation/vue/executionTiming.ts";
 import { ttftReadout, type TtftReadout } from "./ttft.ts";
-import { orderTurnItemsForDisplay, processGroupStatus, processGroupSummary, processItemForDisplay, processStepEndedAt, processToolDetails, resolveProcessStepDurationMs } from "../addons/conversation/task-conversation/vue/processPresentation.ts";
+import { orderTurnItemsForDisplay, processGroupStatus, processItemForDisplay, processStepEndedAt, processToolDetails, resolveProcessStepDurationMs } from "../addons/conversation/task-conversation/vue/processPresentation.ts";
 
 type Status = NonNullable<ThreadMessageLike["status"]>;
 type Part = Exclude<ThreadMessageLike["content"], string>[number];
@@ -77,14 +77,18 @@ export interface ThreadOptions { locale: ConversationLocale; nowMs: number }
 function partsOf(group: readonly ConversationItem[], timing: string, locale: ConversationLocale, ttft?: TtftReadout): Part[] {
   const parts: Part[] = [];
   const ordered = orderTurnItemsForDisplay(group).map((item) => processItemForDisplay(item, locale));
-  let run = ordered.filter((item) => item.data?.modelThinking !== true &&
+  const process = ordered.filter((item) => item.data?.modelThinking !== true &&
     (item.lane === "process" || item.lane === "tool" || item.lane === "progress") &&
     (item.lane === "process" || item.title || item.content));
+  let run = process.filter(item => item.kind === 'tool_call' || typeof item.data?.toolCallId === 'string');
+  if (!run.length && ttft && ordered.some(item => item.lane === 'process' && item.data?.modelThinking !== true)) {
+    parts.push({ type: 'data-process', data: { summary: '', timing, status: processGroupStatus(ordered), ttft } });
+  }
   // A step ends when the next one starts; the last one when the next non-process item arrives (Vue's rule).
   const flush = (groupEnd?: string) => {
     if (!run.length) return;
-    const data: ProcessPartData = { summary: processGroupSummary(run, locale), timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}) };
-    parts.push({ type: "data-process", id: run[0].id, data }, ...run.map((step, i) => stepPart(step, run[i + 1]?.timestamp ?? groupEnd)));
+    const data: ProcessPartData = { summary: locale === "zh-CN" ? `${run.length} 次调用` : `${run.length} ${run.length === 1 ? "call" : "calls"}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}) };
+    parts.push({ type: "data-process", id: run[0].id, data }, ...run.map(step => stepPart(step, process[process.indexOf(step) + 1]?.timestamp ?? groupEnd)));
     run = [];
   };
   // Late process rows move before the answer, as in the Vue view.
@@ -117,6 +121,7 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
  */
 export function toThreadMessages(state: ConversationState, options: ThreadOptions = { locale: "zh-CN", nowMs: Date.now() }): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
+  const visible = selectTurns(state).flatMap((turn) => turn.items);
   const timings = executionTimings(state.loadedOrder.map((id) => state.items[id]!).filter(Boolean), { nowMs: options.nowMs, status: state.status });
   let group: ConversationItem[] = [];
   let user: ConversationItem | undefined;
@@ -129,12 +134,13 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
     out.push({
       id: group[0].id, role: "assistant", content, status: statusOf(group),
       createdAt: new Date(group[0].timestamp),
-      metadata: { custom: { failed: group.some((i) => i.lane === "system" && i.status === "failed"), ...(turnId ? { turnId } : {}),
+      metadata: { custom: { turnActive: state.status === "running" && group.at(-1)?.id === visible.at(-1)?.id,
+        failed: group.some((i) => i.lane === "system" && i.status === "failed"), ...(turnId ? { turnId } : {}),
         question: messageQuestion(user), feedbackMessageId: persistedMessageID([...group].reverse().find((item) => item.role === 'assistant' && item.lane === 'answer' && (item.kind === 'result' || item.kind === 'text'))?.id ?? '') } },
     });
     group = [];
   };
-  for (const item of selectTurns(state).flatMap((t) => t.items)) {
+  for (const item of visible) {
     if (item.role !== "user") { group.push(item); continue; }
     flush();
     if (item.data?.clarifyResponse !== true) user = item;

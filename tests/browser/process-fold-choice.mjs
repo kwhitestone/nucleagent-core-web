@@ -18,10 +18,12 @@ export async function checkProcessFoldChoice({ page, open, check }) {
     assert.equal(await page.locator('.mc-process').evaluate(node => node.open), false);
   };
 
-  await check('untouched running fold automatically reveals a new mixed failure', async () => {
+  await check('untouched running fold stays collapsed across a new mixed failure', async () => {
     await open('running');
     await expectOpen(false);
     await update('mixed');
+    await expectOpen(false);
+    await toggle().click();
     await expectOpen(true);
     assert.equal(await page.locator('.mc-step[data-state="failed"]:visible').count(), 1);
   });
@@ -34,9 +36,10 @@ export async function checkProcessFoldChoice({ page, open, check }) {
       await expectOpen(true);
     }
   });
-  await check('explicit close after automatic failure opening survives later failures', async () => {
+  await check('explicit close survives later failures', async () => {
     await open('running');
     await update('mixed');
+    await toggle().click();
     await expectOpen(true);
     await toggle().click();
     await expectOpen(false);
@@ -64,18 +67,15 @@ export async function checkProcessFoldChoice({ page, open, check }) {
       assert.equal(await page.locator('.mc-step[data-state="failed"]:visible').count(), 1);
     });
   }
-  await check('message identity resets explicit close and restores automatic failure visibility', async () => {
+  await check('message identity resets to a collapsed neutral history', async () => {
     await open('mixed');
-    await expectOpen(true);
-    await toggle().click();
     await expectOpen(false);
     await page.evaluate(() => window.sliceHarness.switchMessage());
-    await expectOpen(true);
-    assert.equal(await page.locator('.mc-step[data-state="failed"]:visible').count(), 1);
+    await expectOpen(false);
     await update('running');
     await page.evaluate(() => window.sliceHarness.switchMessage());
     await expectOpen(false);
     await update('mixed');
-    await expectOpen(true);
+    await expectOpen(false);
   });
 }

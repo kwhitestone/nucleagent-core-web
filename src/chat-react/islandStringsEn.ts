@@ -23,7 +23,7 @@ export const EN_STRINGS: IslandStrings = {
     returnToChat: "Return to chat", mediaReadFailed: "Media could not be loaded or the link expired. Refresh to retry.",
     mediaRefresh: "Refresh media status",
     media_queued: "Queued", media_submitting: "Submitting", media_running: "Generating", media_ingesting: "Saving media",
-    reasoning: "Thinking process",
+    reasoning: "Thinking process", processing: "Working", callRecord: "Call record",
     attachmentPending: "Attachment verification pending; download unavailable",
     stop: "Stop", executor: "Executors",  pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",

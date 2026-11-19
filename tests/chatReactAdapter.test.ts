@@ -215,7 +215,7 @@ test("server-sanitized owner Message fixtures survive live and refreshed snapsho
   }
 });
 
-test("adapter: user items split turns; process → data-process header + one part per step, answer → text; hidden lanes dropped", () => {
+test("adapter: user items split turns; synthetic process is excluded; answer and final error survive", () => {
   const messages = toThreadMessages(stateOf([
     item("u1", { role: "user", content: "hi" }),
     item("t1", { lane: "process", title: "思考过程", content: "plan", userReadable: true }),
@@ -225,11 +225,9 @@ test("adapter: user items split turns; process → data-process header + one par
     item("e1", { lane: "system", status: "failed", content: "boom" }),
   ]));
   assert.deepEqual(messages.map((m) => [m.id, m.role]), [["u1", "user"], ["t1", "assistant"], ["u2", "user"], ["e1", "assistant"]]);
-  const [process, step, answer] = messages[1].content as readonly { type: string; text?: string; data?: { summary: string } }[];
+  const [process, answer] = messages[1].content as readonly { type: string; text?: string; data?: { summary: string } }[];
   assert.equal(process.type, "data-process");
-  assert.equal(process.data?.summary, "1 个步骤 · 已完成");
-  assert.deepEqual(step, { type: "data-process-step", id: "t1", data: { name: "思考过程", content: "plan", status: "complete",
-    timing: { startedAt: Date.parse("2026-11-13T00:00:00Z"), completedAt: Date.parse("2026-11-13T00:00:00Z") } } });
+  assert.equal(process.data?.summary, '');
   assert.deepEqual(answer, { type: "text", text: "**hello**" });
   assert.equal(JSON.stringify(messages).includes("secret"), false, "hidden tool lane never reaches aui");
   assert.deepEqual(messages[1].status, { type: "complete", reason: "stop" });
@@ -312,18 +310,18 @@ test("adapter: step durations follow the Vue rule (until the next step / the ans
     item("u1", { role: "user", content: "q", timestamp: at(0) }),
     item("p1", { lane: "process", title: "排队", userReadable: true, timestamp: at(1) }),
     item("p2", { lane: "process", kind: "tool_call", title: "命令", status: "failed", userReadable: true, timestamp: at(4), data: { toolCallId: "c" } }),
-    item("p3", { lane: "process", title: "收尾", userReadable: true, timestamp: at(5), data: { durationMs: 250 } }),
+    item("p3", { lane: "process", kind: 'tool_call', title: "收尾", userReadable: true, timestamp: at(5), data: { durationMs: 250 } }),
     item("a1", { content: "done", timestamp: at(9) }),
   ]));
-  const spans = (reply.content as readonly { timing?: { startedAt: number; completedAt?: number }; data?: { timing?: { startedAt: number; completedAt?: number } } }[]).slice(1, 4)
+  const spans = (reply.content as readonly { timing?: { startedAt: number; completedAt?: number }; data?: { timing?: { startedAt: number; completedAt?: number } } }[]).slice(1, 3)
     .map((part) => part.timing ?? part.data?.timing)
     .map((timing) => timing && (timing.completedAt ?? 0) - timing.startedAt);
-  assert.deepEqual(spans, [3000, 1000, 250]);
-  const p2 = (reply.content as readonly Record<string, unknown>[])[2];
+  assert.deepEqual(spans, [1000, 250]);
+  const p2 = (reply.content as readonly Record<string, unknown>[])[1];
   assert.equal(p2.isError, true, "failed tool step is an aui error result");
 });
 
-test("adapter: contiguous process steps merge into one 执行过程 summary with the run's total time", () => {
+test("adapter: synthetic process preserves timing without claiming tool calls", () => {
   const at = (s: number) => `2026-11-13T00:00:${String(s).padStart(2, "0")}Z`;
   const proc = (id: string, s: number, over: Partial<ConversationItem> = {}) =>
     item(id, { lane: "process", role: "assistant", kind: "status", userReadable: true, timestamp: at(s), ...over });
@@ -336,11 +334,11 @@ test("adapter: contiguous process steps merge into one 执行过程 summary with
   ]);
   const [, reply] = toThreadMessages(state, { locale: "zh-CN", nowMs: Date.parse(at(30)) });
   const parts = reply.content as readonly { type: string; data?: { summary: string; timing: string } }[];
-  assert.deepEqual(parts.map((p) => p.type), ["data-process", "data-process-step", "data-process-step", "data-process-step", "text"], "late process joins the run before the answer");
-  assert.equal(parts[0].data?.summary, "3 个步骤 · 已完成");
+  assert.deepEqual(parts.map((p) => p.type), ["data-process", "text"]);
+  assert.equal(parts[0].data?.summary, '');
   assert.equal(parts[0].data?.timing, "总耗时 12.0 秒");
   const en = toThreadMessages(state, { locale: "en-US", nowMs: Date.parse(at(30)) })[1].content as readonly { data?: { summary: string; timing: string } }[];
-  assert.deepEqual([en[0].data?.summary, en[0].data?.timing], ["3 steps · Completed", "Total time 12.0s"]);
+  assert.deepEqual([en[0].data?.summary, en[0].data?.timing], ['', "Total time 12.0s"]);
 });
 
 function streamingAdapter() {
@@ -520,12 +518,12 @@ test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行�
   assert.equal(html.match(/<button[^>]*class="mc-icon-btn"[^>]*aria-label="复制"/g)?.length, 2, "aui ActionBar copy on both rows");
   assert.equal(html.match(/aria-label="chatReact.reload"/g)?.length, 1, "重新生成 only on the assistant row");
   assert.equal(html.match(/class="mc-process"/g)?.length, 1, "two process steps → one fold");
-  assert.equal(html.match(/class="mc-step"/g)?.length, 2);
+  assert.equal(html.match(/class="mc-step"/g)?.length ?? 0, 0);
   // Same policy as markdown.ts: no raw HTML, no images, no script URLs.
   assert.doesNotMatch(html, /<img|href="javascript:|<[^>]*onerror=/);
   assert.match(html, /\[x\]\(javascript:alert\(1\)\)/, "script URL stays inert text (markdown-it validateLink), as in the Vue view");
   assert.match(html, /&lt;img/);
-  assert.match(html, /aria-label="执行过程 · 2 个步骤 · 已完成"/);
+  assert.match(html, /aria-label="执行过程 · "/);
   assert.doesNotMatch(html, /lucide/);
 });
 

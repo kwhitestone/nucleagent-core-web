@@ -109,7 +109,8 @@ test("authorized thinking renders escaped inside a collapsed fold for live and r
     assert.equal(fold.hasAttribute("open"), false);
     assert.equal(fold.querySelector("pre")?.textContent, "Model <script>thinking</script>");
     assert.equal(fold.querySelector("script"), null);
-    assert.equal(!!fold.querySelector('[role="status"]'), status === "streaming");
+    assert.equal(fold.querySelector('[role="status"]'), null);
+    assert.equal(document.querySelectorAll('.mc-process-current').length, status === 'streaming' ? 1 : 0);
     assert.match(html, /Answer/);
   }
   const html = render(stateOf([item("heartbeat", { lane: "process", userReadable: true, title: "Waiting", data: { thinking: true, thinkingStatus: true } })]),
@@ -214,7 +215,7 @@ test("media composer blocks send and queue, identifies selected model, hides uns
   }
 });
 
-test("process row: existing failure summary permits folding while all attempts remain available", () => {
+test("process row: neutral calls retain original failure and exclude synthetic queue rows", () => {
   const at = (sec: number) => `2026-11-13T00:00:0${sec}Z`;
   const state = stateOf([
     item("u1", { role: "user", content: "q", timestamp: at(0) }),
@@ -226,21 +227,20 @@ test("process row: existing failure summary permits folding while all attempts r
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.match(html, /<details class="mc-process" data-status="failed">/);
   assert.match(html, /<summary class="mc-process-head" aria-expanded="false"/);
-  assert.match(html, /class="mc-process-alert"/);
-  assert.doesNotMatch(html, /mc-process-dot/, "alert icon replaces the dot, not both");
+  assert.doesNotMatch(html, /mc-process-alert|mc-process-dot|mc-process-failures|toolCalls.status.failed/);
   assert.doesNotMatch(html, /mc-step-more|mc-step-time|data-hide-done/);
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.match(css, /\.mc-process\[data-hide-done\] > \.mc-step\[data-state="done"\] \{ display: none; \}/);
   assert.doesNotMatch(css.slice(css.indexOf(".mc-process {"), css.indexOf(".mc-step-detail {")), /amber/, "one severity color");
-  assert.match(html, /class="mc-step" data-state="done".*排队等待/s);
-  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.tool.*toolCalls.status.failed.*exit 1/s);
+  assert.doesNotMatch(html, /排队等待/);
+  assert.match(html, /class="mc-step" data-state="failed".*命令执行.*chatReact.callRecord.*exit 1/s);
   assert.equal(app.stepState("streaming", { type: "complete" }), "running");
   assert.equal(app.stepState(undefined, { type: "running" }), "running");
   assert.equal(app.stepState("complete", { type: "complete" }, true), "failed");
   assert.equal(app.stepState("cancelled", { type: "complete" }), "cancelled");
 });
 
-test("process fold defaults collapse except when the running summary would hide failure", () => {
+test("process fold defaults collapsed for all intermediate statuses", () => {
   assert.deepEqual(app.foldView(["done", "done"], "complete"), { open: false, hideDone: false, done: 2 });
   assert.deepEqual(app.foldView(["done", "running"], "streaming"), { open: false, hideDone: false, done: 1 });
   assert.deepEqual(app.foldView(["done", "done", "done", "failed"], "failed"), { open: false, hideDone: false, done: 3 });
@@ -248,7 +248,7 @@ test("process fold defaults collapse except when the running summary would hide 
   const html = render(stateOf([item("u1", { role: "user", content: "q" }), item("p1", { lane: "process", title: "排队", userReadable: true }), item("a1", { content: "答" })]),
     () => React.createElement(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.match(html, /<details class="mc-process" data-status="complete"><summary class="mc-process-head" aria-expanded="false"/);
-  assert.match(html, /mc-process-dot/);
+  assert.doesNotMatch(html, /mc-process-dot|mc-process-alert/);
 });
 
 test("hover action bar: under the bubble, real buttons (keyboard focusable, ≥28px via .mc-icon-btn), last reply marked", () => {
