@@ -5,6 +5,7 @@
  */
 import { ThreadPrimitiveRoot } from "@aui-dist/primitives/thread/ThreadRoot.js";
 import { ThreadPrimitiveViewport } from "@aui-dist/primitives/thread/ThreadViewport.js";
+import { ThreadPrimitiveViewportProvider } from "@aui-dist/context/providers/ThreadViewportProvider.js";
 import { ThreadPrimitiveViewportFooter } from "@aui-dist/primitives/thread/ThreadViewportFooter.js";
 import { ThreadPrimitiveMessages } from "@aui-dist/primitives/thread/ThreadMessages.js";
 import { ThreadPrimitiveEmpty } from "@aui-dist/primitives/thread/ThreadEmpty.js";
@@ -33,6 +34,7 @@ import { ActionBarPrimitiveRoot } from "@aui-dist/primitives/actionBar/ActionBar
 import { MessagePrimitiveGroupedParts } from "@assistant-ui/core/react";
 
 export const ThreadPrimitive = {
+  ViewportProvider: ThreadPrimitiveViewportProvider,
   Root: ThreadPrimitiveRoot, Viewport: ThreadPrimitiveViewport, ViewportFooter: ThreadPrimitiveViewportFooter,
   Messages: ThreadPrimitiveMessages, Empty: ThreadPrimitiveEmpty, ScrollToBottom: ThreadPrimitiveScrollToBottom,
   LoadEarlier: ThreadPrimitiveLoadEarlier, Suggestions: ThreadPrimitiveSuggestions,

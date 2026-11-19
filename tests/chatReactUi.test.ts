@@ -648,7 +648,7 @@ test("settlement reader: a pending turn is re-read after a growing wait until it
   const row = (state: string, revision: number) => ({ conversationId: "7", turnId: "step-a", state, points: state === "settled" ? "4" : null, upstreams: ["alpha"], revision });
   let resolvers: ((rows: unknown) => void)[] = [];
   const reader = () => new Promise<never>((resolve) => resolvers.push(resolve as (rows: unknown) => void));
-  const Probe = ({ id }: { id: string }) => React.createElement(app.TurnUsage, { t, usage: turnUsage({ conversationId: id, turnId: "step-a" }, app.useSettlement(id, reader)) });
+  const Probe = ({ id, expected = '' }: { id: string; expected?: string }) => React.createElement(app.TurnUsage, { t, usage: turnUsage({ conversationId: id, turnId: expected || "step-a" }, app.useSettlement(id, reader, undefined, expected)) });
   const settle = (rows: unknown) => React.act(async () => resolvers.at(-1)!(rows));
   const wait = (ms: number) => React.act(async () => context.mock.timers.tick(ms));
   const shown = () => container.querySelector("[data-testid=mc-turn-usage]")!.getAttribute("data-settlement");
@@ -687,14 +687,26 @@ test("settlement reader: a pending turn is re-read after a growing wait until it
     }
     assert.equal(resolvers.length, 7);
     assert.equal(shown(), "pending");
-    // A failed re-read drops the stale state and is not retried.
     await React.act(async () => root.render(React.createElement(Probe, { id: "7" })));
     await settle([row("pending", 1)]);
     await wait(3000);
     await React.act(async () => resolvers.at(-1)!(Promise.reject(new Error("offline"))));
     assert.equal(shown(), "unknown");
+    await wait(6000);
+    assert.equal(resolvers.length, 10);
+    await settle([row("settled", 3)]);
+    assert.equal(shown(), "settled");
     await wait(1e7);
-    assert.equal(resolvers.length, 9);
+    assert.equal(resolvers.length, 10);
+    await React.act(async () => root.render(React.createElement(Probe, { id: "7", expected: "step-b" })));
+    await settle([row("settled", 3)]);
+    assert.equal(shown(), "unknown");
+    await wait(3000);
+    assert.equal(resolvers.length, 12, 'an older settled turn cannot stop polling for the current missing step');
+    await settle([{ ...row("settled", 4), turnId: "step-b" }]);
+    assert.equal(shown(), "settled");
+    await wait(1e7);
+    assert.equal(resolvers.length, 12);
   } finally {
     await React.act(async () => root.unmount());
     container.remove();

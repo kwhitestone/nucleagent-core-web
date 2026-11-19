@@ -99,6 +99,22 @@ test("same-image fold keeps all attempts and existing failure evidence, without 
   assert.equal(dom.querySelectorAll("a[href]").length, 0);
 });
 
+test("one process owner spans interleaved authorized thinking and answer while preserving distinct calls", () => {
+  for (const status of ["streaming", "complete"] as const) {
+    const calls = fixture().slice(1, 5);
+    const thought = { ...fixture()[0], status };
+    const messages = projection.toThreadMessages(stateOf([calls[0], calls[1], thought, item("partial"), calls[2], calls[3]]));
+    const dom = new JSDOM(htmlFor(messages)).window.document;
+    assert.equal(dom.querySelectorAll('.mc-process-block').length, 1);
+    assert.equal(dom.querySelectorAll('.mc-step').length, 4);
+    assert.equal(dom.querySelectorAll('.mc-reasoning').length, 1);
+    const content = messages[0].content as { type: string; toolCallId?: string }[];
+    assert.equal(new Set(content.filter(part => part.type === 'tool-call').map(part => part.toolCallId)).size, 4);
+    assert.equal(messages[0].status?.type, status === 'streaming' ? 'running' : 'complete');
+    assert.equal(dom.querySelectorAll('.mc-process-current').length, status === 'streaming' ? 1 : 0);
+  }
+});
+
 test("failure followed by success retains failed attempt and existing aggregate failure", () => {
   const calls = fixture().slice(14, 16);
   calls[1].status = "complete";

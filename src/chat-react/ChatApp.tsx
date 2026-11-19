@@ -51,7 +51,8 @@ export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
 import { getPlatformRuntime } from "@/contracts/platform-runtime";
-import { ScrollViewport } from './ScrollViewport';
+import { ScrollViewport, ScrollToLatest } from './ScrollViewport';
+import { ThinkingFold } from './ThinkingFold';
 
 export type Translate = (key: string, named?: Record<string, unknown>) => string;
 /** A home suggestion card resolved for the locale (suggestions.ts). */
@@ -105,7 +106,8 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
-  const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status);
+  const settlementSteps = [...new Set(Object.values(core?.state.items ?? {}).flatMap((item) => item.data?.mainRun !== false && typeof item.data?.runStepId === 'string' ? [item.data.runStepId] : []))].sort().join(',');
+  const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status, settlementSteps);
 
   const guard = <A extends unknown[], R>(send: (...args: A) => Promise<R>) => guardMediaSend(settings.direct ? null : settings.media, send, t("chatReact.mediaUnavailable"));
   // New conversation with the current model and executor, then open it.
@@ -160,6 +162,7 @@ export function ChatApp(props: ChatProps) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <ThreadPrimitive.ViewportProvider>
       <ThreadPrimitive.Root className="mc-root" data-conversation-key={conversationId ?? ""}>
         <ScrollViewport conversationId={conversationId} ready={!conversationId || (core?.state.conversationKey === conversationId && core.controller.authoritativeReady.value)} className="mc-viewport">
           <AuiIf condition={(s) => s.thread.hasEarlier}>
@@ -171,17 +174,18 @@ export function ChatApp(props: ChatProps) {
               : <Welcome t={t} />}
           </ThreadPrimitive.Empty>
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
-          <ThreadPrimitive.ViewportFooter className="mc-footer">
-            <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
+        </ScrollViewport>
+          <div className="mc-footer">
+            <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
             <Composer t={t} settings={settings} effort={effort}
               controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
             {!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
               await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
             }} />}
-          </ThreadPrimitive.ViewportFooter>
-        </ScrollViewport>
+          </div>
       </ThreadPrimitive.Root>
+      </ThreadPrimitive.ViewportProvider>
     </AssistantRuntimeProvider>
   );
 }
@@ -546,6 +550,7 @@ export function foldView(states: readonly StepState[], _summaryStatus?: string) 
 /** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
 function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: Translate; children: ReactNode }) {
   const parts = useAuiState((s) => s.message.parts);
+  const running = useAuiState((state) => state.message.status?.type === 'running');
   const group = indices.map((i) => parts[i]!);
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
   const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
@@ -568,7 +573,7 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
     <div className="mc-process-block">
-      {currentName && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{currentName}</p>}
+      {(currentName || running) && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{currentName || t('chatReact.thinking')}</p>}
       {failureCount > 0 && <button type="button" className="mc-process-failures" onClick={() => { setOpen(true); setShowFailure(true); }}>{t("toolCalls.status.failed")} · {failureCount}</button>}
     <details className="mc-process" data-status={head?.status} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
@@ -604,10 +609,7 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "data":
             if (part.name === "thinking") {
               const thought = part.data as { text: string; active: boolean };
-              return <details className="mc-process mc-reasoning">
-                <summary className="mc-process-head"><span className="mc-process-chevron"><ChevronMark size={16} /></span>{t("chatReact.reasoning")}{thought.active && <span role="status"> · {t("chatReact.thinking")}</span>}</summary>
-                <pre className="mc-step-detail">{thought.text}</pre>
-              </details>;
+              return <ThinkingFold {...thought} label={t("chatReact.reasoning")} running={t("chatReact.thinking")} latest={t("chatReact.toBottom")} />;
             }
             if (part.name === "process-step") {
               const step = part.data as { name: string; content: string; status: string };
@@ -743,27 +745,35 @@ const NO_EVIDENCE: readonly SettlementEvidence[] = [];
  * Without a reader nothing is requested. A newer read cancels the older one; a failed or malformed read
  * drops what was shown instead of keeping a stale total.
  */
-export function useSettlement(conversationId: string | undefined, read: SettlementReader | undefined, refresh?: unknown) {
+export function useSettlement(conversationId: string | undefined, read: SettlementReader | undefined, refresh?: unknown, steps = '') {
   const [evidence, setEvidence] = useState(NO_EVIDENCE);
   useEffect(() => {
     if (!conversationId || !read) { setEvidence(NO_EVIDENCE); return; }
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let outstanding = false;
+    let pending = true;
     const load = (wait: number) => {
+      if (outstanding || abort.signal.aborted) return;
+      outstanding = true;
       // A rejection (an Error) is no rows, like any other malformed result.
       const show = (rows: unknown) => {
         if (abort.signal.aborted) return;
+        outstanding = false;
         const next = settlementRows(rows);
         setEvidence(next);
-        // shortcut: 6 re-reads over ~3 min (3 s doubling), then pending stays until the run status changes or a
-        // reload; a failed read is not retried. Replace with a Core push event when one exists.
-        if (wait < 1e5 && next.some((row) => row.state === "pending")) timer = setTimeout(load, wait, wait * 2);
+        const expected = steps ? steps.split(',') : next.filter((row) => row.conversationId === conversationId).map((row) => row.turnId);
+        pending = !expected.length || expected.some((turnId) => turnUsage({ conversationId, turnId }, next).state !== 'settled');
+        if (wait < 1e5 && pending) timer = setTimeout(load, wait, wait * 2);
       };
       read(conversationId, abort.signal).then(show, show);
     };
+    const resume = () => { if (pending && document.visibilityState !== 'hidden') { clearTimeout(timer); load(3000); } };
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
     load(3000);
-    return () => { abort.abort(); clearTimeout(timer); };
-  }, [conversationId, read, refresh]);
+    return () => { abort.abort(); clearTimeout(timer); window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
+  }, [conversationId, read, refresh, steps]);
   return evidence;
 }
 
