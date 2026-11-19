@@ -17,11 +17,13 @@ export interface WorkflowSchema {
 
 type WorkflowTool = { id: number; imported?: boolean; status?: string; nativeCapability?: string; nativeModel?: string; mediaModel?: string };
 const audioCapability = "nucleagent.audio.tts.v1";
+const sttCapability = "nucleagent.audio.stt.v1";
 
 export function workflowToolEligible(row: WorkflowTool): boolean {
   if (row.status !== "ready") return false;
   if (!row.nativeCapability) return row.imported === true;
-  return row.imported === false && row.nativeCapability === audioCapability && row.nativeModel === "qwen3-tts-flash" && !row.mediaModel;
+  return row.imported === false && !row.mediaModel && ((row.nativeCapability === audioCapability && row.nativeModel === "qwen3-tts-flash")
+    || (row.nativeCapability === sttCapability && row.nativeModel === "whisper-1"));
 }
 
 export function validateWorkflowTool(row: WorkflowTool, definition: WorkflowSchema): void {
@@ -32,6 +34,13 @@ export function validateWorkflowTool(row: WorkflowTool, definition: WorkflowSche
     return;
   }
   const schema = definition.inputSchema;
+  if (row.nativeCapability === sttCapability) {
+    const field = schema.properties.fileId;
+    if (definition.nativeCapability !== sttCapability || definition.model !== row.nativeModel || definition.output !== "text/plain" || definition.declaredModel ||
+      Object.keys(schema).sort().join() !== "additionalProperties,properties,required,type" || schema.required?.join() !== "fileId" || Object.keys(schema.properties).join() !== "fileId" ||
+      field?.type !== "string" || field.maxLength !== 128 || Object.keys(field).sort().join() !== "maxLength,type") throw new Error("Invalid workflow");
+    return;
+  }
   if (definition.nativeCapability !== audioCapability || definition.model !== row.nativeModel || definition.output !== "audio/wav" || definition.declaredModel ||
     Object.keys(schema).sort().join() !== "additionalProperties,properties,required,type" || schema.required?.slice().sort().join() !== "input,voice" || Object.keys(schema.properties).sort().join() !== "input,voice") throw new Error("Invalid workflow");
   for (const [name, limit] of [["input", 256], ["voice", 64]] as const) {
@@ -78,6 +87,7 @@ function validValue(field: Field, value: unknown): value is WorkflowValue {
 
 export function workflowInvocation<Values extends Record<string, WorkflowValue>>(toolId: number, definition: WorkflowSchema, values: Values): Omit<ToolInvocation, "arguments"> & { arguments: Values } {
   const fields = workflowFields(definition, true);
+  if (definition.nativeCapability === sttCapability && (typeof values.fileId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(values.fileId))) throw new Error("Invalid workflow");
   if (toolId !== definition.invocation?.toolId || Object.keys(values).some((name) => !fields.some(([key]) => key === name))) throw new Error("Invalid workflow");
   for (const [name, field] of fields) {
     if (!Object.hasOwn(values, name) && !definition.inputSchema.required?.includes(name)) continue;

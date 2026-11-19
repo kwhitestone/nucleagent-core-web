@@ -30,6 +30,7 @@ export interface ToolConfig {
     input_schema?: Record<string, unknown>;
     url?: string;
     server_name?: string;
+    own_audio?: { version: 1; operation: "stt"; model: "whisper-1" };
   };
   [key: string]: unknown;
 }

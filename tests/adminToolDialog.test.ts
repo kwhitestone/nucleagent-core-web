@@ -23,6 +23,34 @@ before(async () => {
 });
 after(async () => { await vite.close(); });
 
+test("STT preset registers through the normal tool create contract", async () => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const { toast } = await vite.ssrLoadModule("/src/composables/useToast.ts");
+  const previousShow = toast.show;
+  toast.show = () => {};
+  const requests: any[] = [];
+  const dispose = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
+    get: async () => ({ data: { data: [], total: 0, hasMore: false } }),
+    post: async (url: string, body: any) => { requests.push({ url, body }); return { data: { data: { tool: { ...body, id: 72, revision: "1" } } } }; },
+  } });
+  let state: any;
+  const probe = defineComponent({ setup() { state = component.setup({}, { expose() {} }); return () => h("div", "STT"); } });
+  const app = createSSRApp(probe);
+  app.use(createI18n({ legacy: false, locale: "zh", messages: { zh: {} } }));
+  try {
+    await renderToString(app);
+    state.openCreate();
+    state.selectSTT();
+    await state.submit();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/v1/addons/tool");
+    assert.equal(requests[0].body.slug, "nuc-audio-stt");
+    assert.deepEqual(requests[0].body.config, { type: "mcp", mcp_config: { type: "builtin", own_audio: { version: 1, operation: "stt", model: "whisper-1" }, input_schema: { type: "object", additionalProperties: false, required: ["fileId"], properties: { fileId: { type: "string", maxLength: 128 } } } } });
+    state.openCreate();
+    assert.equal(state.form.nativeSTT, false);
+  } finally { dispose(); toast.show = previousShow; }
+});
+
 test("tool dialog follows create, edit and close transitions without stale form state", async () => {
   const probe = defineComponent({
     setup() {

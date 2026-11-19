@@ -26,7 +26,7 @@ before(async () => {
   ({ WorkflowForm } = await vite.ssrLoadModule("/src/chat-react/WorkflowForm.tsx"));
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   dispose = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
-    get: async (url: string) => ({ data: url.endsWith("/schema") ? { data: definition } : { data: [{ id: definition.invocation!.toolId, name: "fixture", imported: !nativeAudio, status: "ready", ...(nativeAudio ? { nativeCapability: "nucleagent.audio.tts.v1", nativeModel: "qwen3-tts-flash" } : {}) }], hasMore: false } }),
+    get: async (url: string) => ({ data: url.endsWith("/schema") ? { data: definition } : { data: [{ id: definition.invocation!.toolId, name: "fixture", imported: !nativeAudio, status: "ready", ...(nativeAudio ? { nativeCapability: definition.nativeCapability, nativeModel: definition.model } : {}) }], hasMore: false } }),
     post: async () => { throw new Error("network writes forbidden"); },
   } });
 });
@@ -45,6 +45,22 @@ test("normal picker renders native audio and submits one bound input and voice i
   } finally { await view.close(); nativeAudio = false; }
 });
 after(async () => { dispose?.(); await vite?.close(); dom?.window.close(); });
+
+test("normal native STT form binds one file ID and never repeats its intent", async () => {
+  nativeAudio = true;
+  const view = await fixture({ nativeCapability: "nucleagent.audio.stt.v1", model: "whisper-1", output: "text/plain", invocation: { toolId: 72, revision: "10" }, inputSchema: {
+    type: "object", additionalProperties: false, required: ["fileId"], properties: { fileId: { type: "string", maxLength: 128 } },
+  } });
+  try {
+    await view.change("fileId", "https://example.invalid/audio.wav");
+    await view.submit();
+    assert.equal(view.requests.length, 0);
+    await view.change("fileId", "2b65c83c-9e18-4a2e-b449-8bfc512bd483");
+    await view.submit();
+    await view.submit();
+    assert.deepEqual(view.requests, [{ toolId: 72, revision: "10", arguments: { fileId: "2b65c83c-9e18-4a2e-b449-8bfc512bd483" } }]);
+  } finally { await view.close(); nativeAudio = false; }
+});
 
 async function fixture(schema: WorkflowSchema) {
   definition = schema;

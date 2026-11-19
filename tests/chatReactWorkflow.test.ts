@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { workflowFields, workflowInvocation } from "../src/chat-react/workflowParams.ts";
+import { workflowFields, workflowInvocation, workflowToolEligible, validateWorkflowTool } from "../src/chat-react/workflowParams.ts";
+
+test("STT eligibility requires the exact native capability, model and schema", () => {
+  const row = { id: 72, imported: false, status: "ready", nativeCapability: "nucleagent.audio.stt.v1", nativeModel: "whisper-1" };
+  const definition = { nativeCapability: row.nativeCapability, model: row.nativeModel, output: "text/plain", invocation: { toolId: 72, revision: "1" }, inputSchema: { type: "object", additionalProperties: false, required: ["fileId"], properties: { fileId: { type: "string", maxLength: 128 } } } };
+  assert.equal(workflowToolEligible(row), true);
+  validateWorkflowTool(row, definition);
+  for (const changed of [{ imported: true }, { nativeModel: "other" }, { nativeCapability: "unknown" }, { status: "held" }, { mediaModel: "whisper-1" }]) {
+    assert.equal(workflowToolEligible({ ...row, ...changed }), false);
+  }
+  assert.equal(workflowToolEligible({ id: 73, imported: false, status: "ready" }), false);
+  for (const changed of [{ output: "audio/wav" }, { model: "other" }, { inputSchema: { ...definition.inputSchema, properties: { url: { type: "string" } } } }]) {
+    assert.throws(() => validateWorkflowTool(row, { ...definition, ...changed }));
+  }
+});
 
 const schema = { invocation: { toolId: 37, revision: "9007199254740993" }, inputSchema: {
   type: "object", additionalProperties: false, required: ["style"],

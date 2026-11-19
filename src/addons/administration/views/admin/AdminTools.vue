@@ -49,6 +49,7 @@ const form = reactive({
   name: "",
   slug: "",
   type: "http" as "http" | "builtin",
+  nativeSTT: false,
   url: "",
   description: "",
   schemaText: "",
@@ -92,6 +93,7 @@ function openCreate(): void {
   form.name = "";
   form.slug = "";
   form.type = "http";
+  form.nativeSTT = false;
   form.url = "";
   form.description = "";
   form.schemaText = "";
@@ -110,6 +112,15 @@ function openEdit(tool: Tool): void {
   toolId.value = tool.id;
 }
 
+function selectSTT(): void {
+  form.nativeSTT = true;
+  form.type = "builtin";
+  form.slug = "nuc-audio-stt";
+  form.name = zh.value ? "语音转写" : "Audio transcription";
+  form.url = "";
+  form.schemaText = "";
+}
+
 function closeForm(): void {
   if (saving.value) return;
   initialSkills.reset();
@@ -119,6 +130,10 @@ function closeForm(): void {
 }
 
 function buildConfig(): ToolConfig {
+  if (form.nativeSTT) return { type: "mcp", mcp_config: {
+    type: "builtin", own_audio: { version: 1, operation: "stt", model: "whisper-1" },
+    input_schema: { type: "object", additionalProperties: false, required: ["fileId"], properties: { fileId: { type: "string", maxLength: 128 } } },
+  } };
   const mcp: NonNullable<ToolConfig["mcp_config"]> = {
     type: form.type,
     description: form.description,
@@ -374,7 +389,7 @@ async function importChecked(): Promise<void> {
           </label>
           <label class="field">
             <span class="field-label">{{ t("admin.tools.fieldSlug") }} *</span>
-            <input v-model="form.slug" type="text" :disabled="!isCreate" :placeholder="t('admin.tools.phSlug')" />
+            <input v-model="form.slug" type="text" :disabled="!isCreate || form.nativeSTT" :placeholder="t('admin.tools.phSlug')" />
           </label>
           <div class="field">
             <span class="field-label">{{ t("admin.tools.fieldType") }}</span>
@@ -383,14 +398,15 @@ async function importChecked(): Promise<void> {
                 class="type-btn"
                 :class="{ active: form.type === 'http' }"
                 type="button"
-                @click="form.type = 'http'"
+                @click="form.type = 'http'; form.nativeSTT = false"
               >HTTP MCP</button>
               <button
                 class="type-btn"
-                :class="{ active: form.type === 'builtin' }"
+                :class="{ active: form.type === 'builtin' && !form.nativeSTT }"
                 type="button"
-                @click="form.type = 'builtin'"
+                @click="form.type = 'builtin'; form.nativeSTT = false"
               >Builtin</button>
+              <button class="type-btn" :class="{ active: form.nativeSTT }" type="button" @click="selectSTT">{{ zh ? '语音转写' : 'Audio transcription' }}</button>
             </div>
           </div>
           <label v-if="form.type === 'http'" class="field">
@@ -399,11 +415,11 @@ async function importChecked(): Promise<void> {
           </label>
           <label class="field">
             <span class="field-label">{{ t("admin.tools.fieldDescription") }}</span>
-            <input v-model="form.description" type="text" :placeholder="t('admin.tools.phDescription')" />
+            <input v-model="form.description" type="text" :disabled="form.nativeSTT" :placeholder="t('admin.tools.phDescription')" />
           </label>
           <label class="field">
             <span class="field-label">{{ t("admin.tools.fieldSchema") }}</span>
-            <textarea v-model="form.schemaText" rows="6" class="mono" placeholder='{ "type": "object", "properties": {} }' />
+            <textarea v-model="form.schemaText" :disabled="form.nativeSTT" rows="6" class="mono" placeholder='{ "type": "object", "properties": {} }' />
           </label>
           <label class="switch-row">
             <input v-model="form.isActive" type="checkbox" class="switch" />
