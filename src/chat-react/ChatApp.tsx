@@ -550,13 +550,15 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
   const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
   const [open, setOpen] = useState(view.open);
-  useEffect(() => { if (view.open) setOpen(true); }, [view.open]);
+  const userToggled = useRef(false);
+  useEffect(() => { if (view.open && !userToggled.current) setOpen(true); }, [view.open]);
   const failed = head?.status === "failed";
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
     <details className="mc-process" data-status={head?.status} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}>
+      <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}
+        onClick={() => { userToggled.current = true; }}>
         <span className="mc-process-chevron"><ChevronMark size={16} /></span>
         {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
         <span className="mc-process-label">{t("chatReact.process")}</span>
