@@ -706,7 +706,8 @@ test("model menu: upstream tag beside the model and on the trigger title, only w
   assert.match(open, /<span class="mc-menu-text">a<span class="mc-menu-hint">P<\/span><\/span><span class="mc-menu-tag" data-testid="mc-upstream">AIHub<\/span>/);
   assert.equal(open.match(/data-testid="mc-upstream"/g)?.length, 1, "no tag when the catalog has no upstream");
   assert.match(open, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel · chatReact.upstream: AIHub"/);
-  assert.match(open, /mc-model-name">a<\/span><span class="mc-model-exec" data-testid="mc-model-upstream">· <!-- -->AIHub</);
+  assert.match(open, /aria-label="chatReact.pickerLabel · a · P · AIHub"/);
+  assert.doesNotMatch(open, /mc-model-upstream/);
   const unknown = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:d", backend: null, disabled: false, onPick: () => {} }));
   assert.match(unknown, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel"/);
   assert.doesNotMatch(unknown, /mc-model-upstream/);

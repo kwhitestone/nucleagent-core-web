@@ -316,6 +316,7 @@
 
 /* Composer: aui Input autosizes 1–8 rows; one toolbar row of round/pill controls; send is a brand circle. */
 .mc-composer {
+  position: relative;
   max-width: 760px;
   width: 100%;
   margin: 0 auto;
@@ -394,7 +395,14 @@
 .mc-pill--off { color: var(--fg-tertiary); background: var(--bg-dialog-muted); cursor: not-allowed; }
 .mc-pill--off:hover:not(:disabled) { background: var(--bg-dialog-muted); color: var(--fg-tertiary); }
 .mc-model { position: relative; min-width: 0; }
-.mc-model-trigger { max-width: 260px; }
+.mc-model-picker { position: static; }
+.mc-toolbar > .mc-controls { flex: none; }
+.mc-model-picker > .mc-menu { width: min(320px, 100%); }
+.mc-model-picker .mc-menu-item { flex-wrap: wrap; }
+.mc-model-picker .mc-menu-text { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+.mc-model-picker .mc-menu-hint { display: block; margin-left: 0; }
+.mc-model-picker .mc-menu-tag { max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+.mc-model-trigger { max-width: min(260px, 100%); }
 .mc-model-trigger[aria-expanded="true"] { border-color: var(--fg-brand); background: var(--bg-brand-soft); color: var(--fg-primary); }
 .mc-model-trigger > svg { flex: none; transition: transform 0.15s; }
 .mc-model-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
@@ -506,7 +514,7 @@
   .mc-composer { border-radius: 16px; }
   .mc-hint { display: none; }
   .mc-pill-text, .mc-model-exec { display: none; }
-  .mc-model-trigger { max-width: 140px; }
+  .mc-model-trigger { max-width: min(140px, 100%); }
   .mc-menu { width: min(300px, calc(100vw - 32px)); }
 }
 .mc-tool-io { margin: 8px 0; font-size: 12px; }

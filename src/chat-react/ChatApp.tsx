@@ -693,10 +693,11 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
     </div>
   );
   return (
-    <div className="mc-model" ref={root} onKeyDown={onKeyDown}>
+    <div className="mc-model mc-model-picker" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
+        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor].filter(Boolean).join(" · ")}
         title={current?.upstream ? `${t("chatReact.pickerLabel")} · ${t("chatReact.upstream")}: ${current.upstream}` : t("chatReact.pickerLabel")} disabled={props.disabled} onClick={() => setOpen((v) => !v)}>
-        <span className="mc-model-name">{model}</span>{current?.upstream && <span className="mc-model-exec" data-testid="mc-model-upstream">· {current.upstream}</span>}{executor && <span className="mc-model-exec">· {executor}</span>}<ChevronMark size={12} />
+        <span className="mc-model-name">{model}</span><ChevronMark size={12} />
       </button>
       <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
         {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
