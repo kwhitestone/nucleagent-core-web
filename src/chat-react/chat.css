@@ -161,6 +161,11 @@
   line-height: 1.5;
 }
 .mc-process[open] { background: var(--bg-card); border-color: var(--border-divider); }
+.mc-process-current { display: flex; align-items: center; gap: 8px; margin: 4px 10px; font-size: 13px; overflow-wrap: anywhere; }
+.mc-process-failures { margin: 4px 10px; padding: 3px 6px; border: 0; background: transparent; color: var(--fg-error); font: inherit; font-size: 12px; cursor: pointer; }
+.mc-process-history { max-height: 184px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.mc-process-history:focus-visible, .mc-process-failures:focus-visible, .mc-step:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
+.mc-process-summary { min-width: 0; overflow-wrap: anywhere; }
 .mc-process-head {
   display: flex;
   align-items: center;

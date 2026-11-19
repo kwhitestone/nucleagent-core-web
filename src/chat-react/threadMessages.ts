@@ -56,6 +56,7 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
     const result: ToolResult = { content: item.content, messageId: Number(item.id.slice(4)), ...(details?.query ? { query: details.query } : {}), ...(details?.sources ? { sources: details.sources } : {}) };
     return {
       type: "tool-call", toolCallId: toolCallId ?? item.id, toolName: item.title || item.kind, args: {},
+      providerMetadata: { core: { status: item.status } },
       ...(!active(item) ? { result, isError: item.status === "failed" } : {}), ...timing,
     };
   }

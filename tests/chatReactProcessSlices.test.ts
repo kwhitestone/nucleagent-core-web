@@ -4,6 +4,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import type { ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
+import { messageTimingData } from "../src/addons/conversation/composables/conversationTiming.ts";
 
 let vite: ViteDevServer;
 let app: typeof import("../src/chat-react/ChatApp.tsx");
@@ -42,7 +43,7 @@ const stateOf = (items: ConversationItem[]) => reducer.reduceConversation(reduce
     snapshot: { items, status: "completed", hasOlder: false, cursor: "c" } },
 });
 const fixture = () => [
-  item("thought", { lane: "process", userReadable: true, content: "RAW_REASONING_SENTINEL", status: "streaming", data: { modelThinking: true } }),
+  item("thought", { lane: "process", userReadable: true, content: "SANITIZED_OWNER_CONTENT", status: "streaming", data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking", msgType: "streaming", content: "SANITIZED_OWNER_CONTENT", metadata: { thinkingCapturedAs: "full", thinkingVisibility: "full" }, createdAt: "2026-11-19T00:00:00Z" }) }),
   ...Array.from({ length: 18 }, (_, index) => item(`msg-${index + 1}`, {
     lane: "process", kind: "tool_call", title: "命令执行", userReadable: true,
     status: index < 13 ? "complete" : "failed", content: index < 13 ? "操作完成" : `执行命令失败 · ${index === 17 ? "5.5" : "0.0"} 秒`,
@@ -59,12 +60,12 @@ function htmlFor(messages: ReturnType<typeof projection.toThreadMessages>) {
   return renderToString(React.createElement(App));
 }
 
-test("same-image live and restored projection preserves authorized thought and all 18 calls", () => {
+test("server-sanitized owner Message fixture preserves its content and all 18 calls in live and restored projections", () => {
   for (const status of ["streaming", "complete"] as const) {
     const items = fixture();
     items[0].status = status;
     const messages = projection.toThreadMessages(stateOf(items));
-    assert.match(JSON.stringify(messages), /RAW_REASONING_SENTINEL/);
+    assert.match(JSON.stringify(messages), /SANITIZED_OWNER_CONTENT/);
     const content = messages[0].content as { type: string; isError?: boolean; toolCallId?: string }[];
     const calls = content.filter(part => part.type === "tool-call");
     assert.equal(calls.length, 18);
@@ -107,17 +108,17 @@ test("failure followed by success retains failed attempt and existing aggregate 
   assert.equal(dom.querySelector(".mc-process")!.getAttribute("data-status"), "failed");
 });
 
-test("safe running defaults collapse, ambiguous mixed running failure fold stays frozen", () => {
+test("mixed running and failure stays compact with independently visible failure access", () => {
   assert.equal(app.foldView(["running"], "streaming").open, false);
-  assert.equal(app.foldView(["failed", "running"], "streaming").open, true);
-  assert.equal(app.foldView(["failed"]).open, true);
+  assert.equal(app.foldView(["failed", "running"], "streaming").open, false);
+  assert.equal(app.foldView(["failed"]).open, false);
 });
 
-test("baseline cancellation status gap is preserved, not silently migrated", () => {
+test("cancelled tool status is preserved in the product projection", () => {
   const messages = projection.toThreadMessages(stateOf([item("msg-1", { lane: "process", kind: "tool_call", userReadable: true, status: "cancelled", data: { toolCallId: "cancelled-call" } })]));
   const content = messages[0].content as { type: string; data?: { status?: string }; providerMetadata?: unknown; isError?: boolean }[];
   assert.equal(content[0].data?.status, "cancelled");
-  assert.equal(content[1].providerMetadata, undefined);
+  assert.deepEqual(content[1].providerMetadata, { core: { status: "cancelled" } });
   assert.equal(content[1].isError, false);
   assert.equal(app.stepState(undefined, { type: "complete" }, false), "done");
 });
@@ -125,6 +126,22 @@ test("baseline cancellation status gap is preserved, not silently migrated", () 
 test("a failed native tool with no trusted group summary cannot be hidden by the default fold", () => {
   const html = htmlFor([{ id: "native-tool", role: "assistant", content: [{ type: "tool-call", toolCallId: "failure", toolName: "命令执行", args: {}, result: { content: "失败" }, isError: true }] }]);
   const dom = new JSDOM(html).window.document;
-  assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), true);
+  assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), false);
+  assert.ok(dom.querySelector(".mc-process-failures"));
   assert.equal(dom.querySelectorAll('.mc-step[data-state="failed"]').length, 1);
+});
+
+test("1/10/50 independent calls keep current action and failures outside collapsed history", () => {
+  for (const count of [1, 10, 50]) {
+    const calls = Array.from({ length: count }, (_, index) => item(`msg-${index + 1}`, {
+      lane: "process", kind: "tool_call", title: index === count - 1 ? "当前真实动作" : "历史动作", userReadable: true,
+      status: index === count - 1 ? "streaming" : "failed", data: { toolCallId: `call-${index}` },
+    }));
+    const dom = new JSDOM(htmlFor(projection.toThreadMessages(stateOf(calls)))).window.document;
+    assert.match(dom.querySelector(".mc-process-current")!.textContent!, /当前真实动作/);
+    assert.equal(dom.querySelector(".mc-process-current")!.closest("details"), null);
+    assert.equal(dom.querySelector(".mc-process")!.hasAttribute("open"), false);
+    assert.equal(dom.querySelectorAll(".mc-process-history .mc-step").length, count);
+    assert.equal(dom.querySelectorAll(".mc-process-failures").length, count > 1 ? 1 : 0);
+  }
 });

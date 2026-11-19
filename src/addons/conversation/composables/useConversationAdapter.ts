@@ -422,6 +422,7 @@ export function createConversationAdapter(
 
   const versionTracker = createConversationStreamVersionTracker();
   const settledPhaseSteps = new Map<number, unknown>();
+  const terminalMessageStatuses = new Map<number, ConversationItem["status"]>();
   const deletedMessageIds = new Set<number>();
   let cursorHighWater: string | undefined;
   let conversationStatusRevision = 0;
@@ -558,6 +559,10 @@ export function createConversationAdapter(
         return settled;
       });
       versionTracker.seed(items);
+      terminalMessageStatuses.clear();
+      for (const item of items) {
+        if (["complete", "failed", "cancelled"].includes(item.status)) terminalMessageStatuses.set(Number(item.id.slice(4)), item.status);
+      }
       conversationStatusRevision = 0;
       cursorHighWater = snapshotMessageCursor(list);
       return {
@@ -613,6 +618,10 @@ export function createConversationAdapter(
           continue;
         }
         if (deletedMessageIds.has(msg.id) || !shouldEmit(msg)) continue;
+        const incomingStatus = mapStatus(msg);
+        const terminalStatus = terminalMessageStatuses.get(msg.id);
+        if (terminalStatus && incomingStatus !== terminalStatus) continue;
+        if (["complete", "failed", "cancelled"].includes(incomingStatus)) terminalMessageStatuses.set(msg.id, incomingStatus);
         if (isExecutionPhase(msg)) {
           if (msg.metadata?.phase_status === "running" && settledPhaseSteps.has(msg.id) &&
               settledPhaseSteps.get(msg.id) === msg.metadata?.step_id) continue;

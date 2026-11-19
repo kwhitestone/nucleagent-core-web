@@ -58,6 +58,22 @@ const message = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
+test("late streaming replay cannot replace a terminal message, while a new retry id still streams", async () => {
+  const settled = message({ id: 9901, content: "final public answer" });
+  http.defaults.adapter = async (config: any) => ({ config, data: messageEnvelope(config, [settled]), headers: {}, status: 200, statusText: "OK" });
+  const rows = [message({ id: 9901, msgType: "streaming", content: "old partial" }), message({ id: 9901, msgType: "error", content: "stale error" }), message({ id: 9902, msgType: "streaming", content: "new retry" })];
+  globalThis.fetch = (async () => new Response(rows.map(row => `id: ${row.id}\nevent: message-updated\ndata: ${JSON.stringify(row)}\n\n`).join(""), { headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+  const adapter = createConversationAdapter(() => "284");
+  await adapter.loadSnapshot({ conversationKey: "284", signal: new AbortController().signal });
+  const events = adapter.subscribe({ conversationKey: "284", signal: new AbortController().signal });
+  try {
+    const event = await events.next();
+    assert.equal(event.value.item.id, "msg-9902");
+  } finally {
+    await events.return(undefined);
+  }
+});
+
 test("queue snapshot and SSE position changes keep one independently timed process row", async () => {
   const queued = message({ id: 7301, conversationId: 730, senderType: "system", senderName: "execution_queue", msgType: "status", content: "排队等待 · 3 秒", metadata: {
     step_id: "queue-step", execution_phase: "execution_queue", phase_status: "running", queue_position: 3, queue_reason: "executor_capacity",

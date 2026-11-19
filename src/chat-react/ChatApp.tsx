@@ -504,7 +504,7 @@ const StepIcon = ({ state }: { state: StepState }) => (
 
 function Step({ state, name, tool, t, children }: { state: StepState; name: string; tool?: boolean; t: Translate; children?: ReactNode }) {
   return (
-    <div className="mc-step" data-state={state}>
+    <div className="mc-step" data-state={state} tabIndex={-1}>
       <div className="mc-step-head">
         <StepIcon state={state} />
         <span className="mc-step-name">{name}</span>
@@ -538,10 +538,9 @@ const groupBy = (part: { type: string }) =>
     ? (part.type === "data" && !["process", "process-step"].includes((part as { name?: string }).name ?? "") ? null : ["group-process" as const])
     : null;
 
-export function foldView(states: readonly StepState[], summaryStatus?: string) {
-  const hiddenFailure = states.includes("failed") && summaryStatus !== "failed";
+export function foldView(states: readonly StepState[], _summaryStatus?: string) {
   const done = states.filter((s) => s === "done").length;
-  return { open: hiddenFailure, hideDone: false, done };
+  return { open: false, hideDone: false, done };
 }
 
 /** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
@@ -551,23 +550,38 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
   const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
   const [open, setOpen] = useState(view.open);
-  const userToggled = useRef(false);
-  useEffect(() => { if (view.open && !userToggled.current) setOpen(true); }, [view.open]);
+  const history = useRef<HTMLDivElement>(null);
+  const steps = group.filter((part) => part.type === "tool-call" || (part.type === "data" && part.name === "process-step"));
+  const stateOf = (part: typeof steps[number]) => stepState(part.type === "data" ? (part.data as { status?: string }).status : coreStatus(part), part.status, (part as { isError?: boolean }).isError);
+  const current = [...steps].reverse().find((part) => stateOf(part) === "running");
+  const currentName = current?.type === "tool-call" ? current.toolName : current?.type === "data" ? (current.data as { name: string }).name : undefined;
+  const failureCount = steps.filter((part) => stateOf(part) === "failed").length;
+  const [showFailure, setShowFailure] = useState(false);
+  useEffect(() => {
+    if (!showFailure || !open) return;
+    const target = history.current?.querySelector<HTMLElement>('[data-state="failed"]');
+    target?.focus({ preventScroll: true });
+    if (target && history.current) history.current.scrollTop += target.getBoundingClientRect().top - history.current.getBoundingClientRect().top;
+    setShowFailure(false);
+  }, [showFailure, open]);
   const failed = head?.status === "failed";
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
+    <div className="mc-process-block">
+      {currentName && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{currentName}</p>}
+      {failureCount > 0 && <button type="button" className="mc-process-failures" onClick={() => { setOpen(true); setShowFailure(true); }}>{t("toolCalls.status.failed")} · {failureCount}</button>}
     <details className="mc-process" data-status={head?.status} open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}
-        onClick={() => { userToggled.current = true; }}>
+      <summary className="mc-process-head" aria-expanded={open} aria-label={`${t("chatReact.process")} · ${head?.summary ?? ""}`}>
         <span className="mc-process-chevron"><ChevronMark size={16} /></span>
         {failed ? <span className="mc-process-alert"><AlertMark /></span> : <span className="mc-process-dot" aria-hidden="true" />}
         <span className="mc-process-label">{t("chatReact.process")}</span>
         <span className="mc-process-summary">{head?.summary}</span>
       </summary>
       {ttft && <p className="mc-process-ttft" {...Object.fromEntries(Object.entries(head!.ttft!).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v]))}>{ttft.detail}</p>}
-      {children}
+      <div ref={history} className="mc-process-history" tabIndex={0} role="region" aria-label={t("chatReact.process")}>{children}</div>
     </details>
+    </div>
   );
 }
 

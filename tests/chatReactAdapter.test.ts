@@ -183,7 +183,7 @@ test("switch: shell query arriving after boot locks or reloads, once per page lo
   assert.equal(loadedChatUi(), "react");
 });
 
-test("authorized thinking survives live and refreshed snapshot projection", () => {
+test("server-sanitized owner Message fixtures survive live and refreshed snapshot projection", () => {
   const projected = (content: string, metadata: Record<string, unknown>, status: ConversationItem["status"]) => item("thought", {
     lane: "process", userReadable: true, content, status,
     data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking",
@@ -193,13 +193,13 @@ test("authorized thinking survives live and refreshed snapshot projection", () =
     for (const status of ["streaming", "complete"] as const) {
       const history = stateOf([
         item("u1", { role: "user", content: "hi" }),
-        projected("真实思考正文", { thinkingVisibility: visibility }, status),
+        projected("合成授权正文", { thinkingCapturedAs: visibility, thinkingVisibility: visibility }, status),
         item("answer", { content: "answer", status }),
       ], status === "streaming" ? "running" : "completed");
       const content = toThreadMessages(history)[1]?.content;
       assert.ok(Array.isArray(content));
       assert.deepEqual(content.filter((part) => part.type === "data-thinking"), [
-        { type: "data-thinking", id: "thought", data: { text: "真实思考正文", active: status === "streaming" } },
+        { type: "data-thinking", id: "thought", data: { text: "合成授权正文", active: status === "streaming" } },
       ]);
     }
   }
@@ -252,6 +252,7 @@ test("adapter: Core tool steps → aui tool-call parts (result only once settled
   assert.deepEqual(parts.map((p) => p.type), ["data-process", "tool-call", "tool-call", "tool-call", "text", "data-files", "data-media"]);
   const { timing, ...first } = parts[1] as { timing?: unknown };
   assert.deepEqual(first, { type: "tool-call", toolCallId: "call-1", toolName: "联网搜索", args: {},
+    providerMetadata: { core: { status: "complete" } },
     result: { content: "找到 2 条", messageId: 12, query: "aui", sources: [{ title: "A", url: "https://a.example" }] }, isError: false });
   assert.ok(timing, "settled tool step carries aui timing");
   assert.equal("timing" in parts[2], false, "a running step has no duration yet");
