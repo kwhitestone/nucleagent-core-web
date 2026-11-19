@@ -39,3 +39,9 @@ MUYU-365最新运行仍running（任务01a1f224-3135-78fb-84db-23de675df26a）�
 本次0元；继承已结0.05525元，三笔UNKNOWN预留1.50元原样保留，不重复核账或重放。DEV双身份用户允许的集成替代、运行digest未知、Storage保留为既有披露例外，不新设门。未发布、未生成新的外部业务事务。
 
 子执行不写issue评论/状态；父执行者独立核验本包后回交协调者。七项在线证据未完成，不建议结单；done仍由父协调者或人工处理。
+
+## 实际提交与远端权限
+
+G1及G2脱敏记录已在独立分支 `docs/muyu410-g1-g2-closeout-20261119` 提交，文档提交完整SHA为 `2bbaeda8e68c1cbf0d5d4b85e4ca85439f8d63b2`。本节随后以独立文档提交补记交付回执；最终分支SHA见私有 `commit-delivery.json` 和git bundle。
+
+首次非交互push发现任务HOME没有GitHub登录。随后通过既有 `GH_CONFIG_DIR=/home/wsl/.config/gh` 的原生gh登录及credential helper恢复调用，不读取/导出token，不改共享配置。现有账号880723_ndhy的正常push明确返回：`Permission to kwhitestone/nucleagent-core-web.git denied to 880723_ndhy`，HTTP403。这是实际仓库写权限拒绝，不是待同意或CI等待。没有改remote、转推其它仓库、强推或绕过ACL。远端分支交付未完成；保留英文提交及bundle供原有具备该仓权限的交付入口正常推送，后续必须核远端完整SHA。
