@@ -3,7 +3,7 @@ import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
-import { scalarSchema, videoSchema } from "./fixtures/workflowTyped.ts";
+import { scalarSchema, videoSchema, engineFramesInput } from "./fixtures/workflowTyped.ts";
 import type { WorkflowSchema } from "../src/chat-react/workflowParams.ts";
 
 let vite: ViteDevServer;
@@ -122,6 +122,26 @@ test("required image stays visible and unsatisfied without a controlled source",
     assert.deepEqual([...((view.control("duration") as HTMLSelectElement).options)].map((option) => option.value), ["", "5", "10"]);
     await view.change("prompt", "slow movement");
     await view.change("duration", "5");
+    await view.submit();
+    assert.equal(view.requests.length, 0);
+    assert.equal(view.container.querySelector("button")!.disabled, true);
+  } finally { await view.close(); }
+});
+
+test("actual start/end-frame source cannot bypass the controlled image gate through workflow text inputs", async () => {
+  const schema = { ...videoSchema, inputSchema: { type: "object", additionalProperties: false,
+    required: ["prompt", "first_frame_url", "last_frame_url", "duration", "resolution"],
+    properties: Object.fromEntries(["prompt", "first_frame_url", "last_frame_url", "duration", "resolution"].map(name => [name, engineFramesInput.properties[name]])),
+  } };
+  const view = await fixture(schema);
+  try {
+    for (const name of ["first_frame_url", "last_frame_url"]) {
+      assert.equal((view.control(name) as HTMLInputElement).readOnly, true);
+      await view.change(name, "https://example.test/uncontrolled.png");
+    }
+    await view.change("prompt", "move");
+    await view.change("duration", "5");
+    await view.change("resolution", "1080p");
     await view.submit();
     assert.equal(view.requests.length, 0);
     assert.equal(view.container.querySelector("button")!.disabled, true);

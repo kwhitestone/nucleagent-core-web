@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
 import { listToolCatalogPages, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
 import type { ToolInvocation } from "../addons/conversation/api/types";
-import { workflowFields, workflowFormInvocation, workflowToolEligible, validateWorkflowTool, type WorkflowSchema } from "./workflowParams";
+import { workflowFields, workflowFormInvocation, workflowToolEligible, validateWorkflowTool, mediaImageField, type WorkflowSchema } from "./workflowParams";
 import type { Translate } from "./ChatApp";
 import { AudioFilePicker } from "./AudioFilePicker";
 import { ParameterField } from "./ParameterField";
@@ -45,7 +45,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
     }).catch(() => { if (live && current === generation.current) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [selected, open, tools]);
-  const missingImage = !!schema?.inputSchema.required?.includes("image_url");
+  const missingImage = !!schema?.inputSchema.required?.some(mediaImageField);
   const run = async (event: React.FormEvent) => {
     event.preventDefault();
     if (submitted.current || !schema || disabled || missingImage || renderGeneration !== generation.current) return;
@@ -77,11 +77,11 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
           required: schema.inputSchema.required?.includes(name), disabled: busy,
           value: values[name] === undefined ? "" : String(values[name]),
           onChange: (event: { target: { value: string } }) => {
-            if (name === "image_url") return;
+            if (mediaImageField(name)) return;
             setValues((previous) => ({ ...previous, [name]: event.target.value }));
           },
         };
-        return <ParameterField key={name} field={field} name={name} t={t} {...control} readOnly={name === "image_url"} />;
+        return <ParameterField key={name} field={field} name={name} t={t} {...control} readOnly={mediaImageField(name)} />;
       })}
       {(error || missingImage) && <p role="alert" className="mc-hint">{t(`chatReact.${error || "workflowUnavailable"}`)}</p>}
       <button className="mc-pill" type="submit" disabled={!schema || busy || disabled || missingImage}>{t("chatReact.workflowRun")}</button>

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { WorkflowSchema } from "../../src/chat-react/workflowParams.ts";
 
 export const engineInput = JSON.parse(readFileSync(new URL("./engine6792-input.json", import.meta.url), "utf8"));
+export const engineFramesInput = JSON.parse(readFileSync(new URL("./engine6793-input.json", import.meta.url), "utf8"));
 export const scalarInput = JSON.parse(readFileSync(new URL("./core-job-scalars.json", import.meta.url), "utf8"));
 export const videoSchema: WorkflowSchema = {
   model: "video-model", invocation: { toolId: 37, revision: "9007199254740993" },
