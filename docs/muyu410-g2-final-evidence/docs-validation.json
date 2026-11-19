@@ -1,0 +1,14 @@
+{
+  "sourceAnchorEntries": 20,
+  "inheritedGitContentMatches": 15,
+  "inheritedHashChecks": 81,
+  "scope": "Validated inherited numbered anchor structure and recorded checks; did not reread all source or rerun live acceptance.",
+  "localLinks": [
+    {
+      "document": "muyu410-owui-comparison.md",
+      "target": "muyu410-g1-source-comparison.md",
+      "exists": true
+    }
+  ],
+  "sourceAnchorIndexSha256": "7af506179853eb858ccf3853ff925378ba6668183eab4e273f823e84cde4bcfe"
+}

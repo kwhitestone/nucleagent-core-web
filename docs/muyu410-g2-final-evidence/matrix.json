@@ -1,0 +1,58 @@
+[
+  {
+    "unit": "test-markdown",
+    "environment": "test",
+    "conversationId": 1464,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "dev-mobile",
+    "environment": "dev",
+    "conversationId": 1082,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "test-mobile",
+    "environment": "test",
+    "conversationId": 1464,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "pre-mobile",
+    "environment": "pre",
+    "conversationId": 217,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "prod-mobile",
+    "environment": "prod-cn",
+    "conversationId": 891,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "test-empty",
+    "environment": "test",
+    "conversationId": null,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  },
+  {
+    "unit": "pre-empty",
+    "environment": "pre",
+    "conversationId": null,
+    "status": "NOT_RUN",
+    "reason": "Fresh supported open returned NO_FREE_PORT; sole allocation candidate answers CDP version probe",
+    "newScreenshot": null
+  }
+]

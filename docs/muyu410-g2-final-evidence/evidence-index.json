@@ -1,0 +1,31 @@
+{
+  "newScreenshots": 0,
+  "units": 7,
+  "liveUnitsPassed": 0,
+  "files": {
+    "lease-open.json": {
+      "sha256": "a29fd45a5420ddbe62884c77b90c0fa0cd27733ea8c34b7e1500e7df7e4722ce",
+      "bytes": 45
+    },
+    "candidate-probe.json": {
+      "sha256": "b8e30e87ed6eab29320c9ad8caa6d85cb7f876909a23afd0db9e4a71b4cdda23",
+      "bytes": 83
+    },
+    "lease-close.json": {
+      "sha256": "e2bdc0e3b383c6be0bf634eaa4d4ada054c3ee8387fde1a8be9bfb675c055874",
+      "bytes": 39
+    },
+    "lease-repair-tests.txt": {
+      "sha256": "9748ed8cdc7fba24b1467430c9bab605d384dec892bda51dbf829c03953caa89",
+      "bytes": 911
+    },
+    "docs-validation.json": {
+      "sha256": "630e06cf1b8b62b0cbccfb18535d35077ebd33173db3fdfeb17d2b2f908d400d",
+      "bytes": 482
+    },
+    "matrix.json": {
+      "sha256": "de874997f071ac202f85606e646f3875b0e578a8a27482db651f38c5d59a9b48",
+      "bytes": 1783
+    }
+  }
+}

@@ -1,0 +1,17 @@
+✔ old close cannot restore a stale full-ledger snapshot over a different-port open (246.372265ms)
+✔ stale same-port close is fenced even when the task name is reused (158.041311ms)
+✔ duplicate close and PID ownership mismatch preserve unrelated leases (184.237406ms)
+✔ old task cannot close a new owner on the same port (157.446277ms)
+✔ busy ledger returns a contention result without changing any record (93.364185ms)
+✔ interruption before rename leaves the previous ledger intact and releases flock (101.791204ms)
+✔ malformed ledger fails closed without launching or replacing it (140.794777ms)
+✔ same-process concurrent opens serialize despite lockAll inherited-fd handling (40.004016ms)
+✔ 20 rounds of concurrent open/list/purge retain every new generation (1797.811032ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2989.784263

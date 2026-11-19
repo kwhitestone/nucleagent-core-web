@@ -1,4 +1,6 @@
-# MUYU-410 OWUI 对照表（首批，范围收窄）
+# MUYU-410 OWUI 对照表（继承首批 + G1 完整补证）
+
+2026-11-19 补证：[G1 六项逐源码对照与四环境映射](muyu410-g1-source-comparison.md)。下方保留历史记录；其中“移动侧栏未审计”等历史状态由补证文件覆盖。补证仅文档，不改变已发布功能，也不把源码检查当作真实页面验收。
 
 - OWUI 基线：`open-webui` **c38885a1a737da4968f157092f304f3b5481d0bf**（0.13.0，来源链见 MUYU-365 `OWUI-COMPARISON.md` / MUYU-284 证据）。本地源码：任务目录 `owui-src/tar/open-webui-c38885a…/`（此前下载的 v0.13.0 tarball 解压，未重新 clone）。
 - 下表 file:line 均为亲读（首批 + 第二轮 2026-11-16）；路径前缀 `src/lib/components/`。"我方"列为本分支 `feat/gap-owui-chrome` 当前代码。
