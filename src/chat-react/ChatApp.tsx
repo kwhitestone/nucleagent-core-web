@@ -580,7 +580,7 @@ function ProcessFold({ indices, running, t, children }: { indices: readonly numb
   );
 }
 
-function Parts({ t }: { t: Translate }) {
+function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
   return (
     <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="empty">
       {({ part, children }) => {
@@ -590,7 +590,7 @@ function Parts({ t }: { t: Translate }) {
           case "indicator":
             return <p className="mc-thinking" role="status">{t("chatReact.thinking")}</p>;
           case "text":
-            return <MarkdownText t={t} />;
+            return raw ? null : <MarkdownText t={t} />;
           case "reasoning": {
             const [title, ...rest] = part.text.split("\n");
             return (
@@ -632,6 +632,11 @@ function Parts({ t }: { t: Translate }) {
  */
 export function MessageRow({ role, t, conversationId = "", evidence, actions }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
   const messageId = useAuiState((state) => state.message.id);
+  const source = useAuiState((state) => state.message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n\n"));
+  const sourceKey = JSON.stringify([conversationId, messageId]);
+  const [rawKey, setRawKey] = useState<string | null>(null);
+  const raw = rawKey === sourceKey;
+  useEffect(() => { setRawKey(null); }, [sourceKey]);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
   const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
@@ -648,9 +653,12 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
           title={isUser ? time || undefined : undefined}>{isUser ? t("conversation.you") : <AssistantMark />}</span>
         {!isUser && <span className="mc-author" title={time || undefined}>{author}</span>}
         {time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>}
+        {source && <button type="button" className="mc-source-toggle" aria-pressed={raw}
+          onClick={() => setRawKey(raw ? null : sourceKey)}>{t(raw ? "chatReact.renderedView" : "chatReact.rawView")}</button>}
       </div>
       <div className="mc-bubble">
-        <Parts t={t} />
+        {raw && <pre className="mc-raw-body" role="region" aria-label={t("chatReact.rawView")} tabIndex={0}>{source}</pre>}
+        <Parts t={t} raw={raw} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
       <ActionBarPrimitive.Root className="mc-actions" aria-busy={actions?.busy} hideWhenRunning autohide="never">

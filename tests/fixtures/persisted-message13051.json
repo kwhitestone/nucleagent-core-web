@@ -1,0 +1,14 @@
+{
+  "source": "ev/l151/test-proof-raw.json",
+  "sourceSha256": "6c9ec2235b6d1addd076cbf8597b1d06b8e747683bdc024e4a2d1632ec2719d0",
+  "sourcePointers": [
+    "/checks/0/messages/4/content",
+    "/checks/1/messages/4/content"
+  ],
+  "messageId": 13051,
+  "conversationId": 1471,
+  "content": "我会读取“豆瓣资源搜索”技能正文，并按正文转换 query 参数。\n{\"query\":\"{\\\"keyword\\\":\\\"甄嬛传\\\",\\\"cat\\\":\\\"1002\\\"}\"}\n\n分类依据：技能正文规定电视剧的 cat 为“1002”。",
+  "contentSha256": "b3e3a171c76b173e65e921f3e89443418090ec40b7ec6f080bd6b3c0e34be496",
+  "jsonLine": "{\"query\":\"{\\\"keyword\\\":\\\"甄嬛传\\\",\\\"cat\\\":\\\"1002\\\"}\"}",
+  "jsonLineSha256": "c5a29c27e056ae806f73857574883d7a86a8cb6a4822d367e33df4f4d4f18098"
+}
