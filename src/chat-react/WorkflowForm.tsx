@@ -45,7 +45,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
     }).catch(() => { if (live && current === generation.current) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [selected, open, tools]);
-  const missingImage = !!schema?.inputSchema.required?.some(mediaImageField);
+  const missingImage = !!schema?.inputSchema.required?.some(name => mediaImageField(name) && (!schema.inputSchema.properties[name]?.["x-owned-image"] || !values[name]));
   const run = async (event: React.FormEvent) => {
     event.preventDefault();
     if (submitted.current || !schema || disabled || missingImage || renderGeneration !== generation.current) return;
@@ -72,6 +72,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
         {schema.declaredModel && schema.declaredModel !== schema.model && <> · {t("chatReact.workflowDeclaredModel")}: {schema.declaredModel}</>}
       </p>}
       {schema && workflowFields(schema, true).map(([name, field]) => {
+        if (field["x-owned-image"]) return <AudioFilePicker key={`${selected}:${schema.invocation?.revision}:${name}`} image label={name} value={values[name] ?? ""} disabled={busy || !!disabled} onChange={value => setValues(previous => ({ ...previous, [name]: value }))} />;
         if (name === "fileId" && schema.nativeCapability === "nucleagent.audio.stt.v1") return <AudioFilePicker key={`${selected}:${schema.invocation?.revision}`} value={String(values.fileId ?? "")} disabled={busy || !!disabled} onChange={(fileId) => setValues(fileId ? { fileId } : {})} />;
         const control = {
           required: schema.inputSchema.required?.includes(name), disabled: busy,

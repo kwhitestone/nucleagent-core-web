@@ -2,6 +2,7 @@ import type { ToolInvocation } from "../addons/conversation/api/types.ts";
 
 export type WorkflowValue = ToolInvocation["arguments"][string];
 type Field = {
+  "x-owned-image"?: boolean;
   anyOf?: Field[];
   type?: string; description?: string; minLength?: number; maxLength?: number; enum?: WorkflowValue[];
   minimum?: number; maximum?: number; exclusiveMinimum?: number; exclusiveMaximum?: number;
@@ -95,6 +96,7 @@ export function workflowInvocation<Values extends Record<string, WorkflowValue>>
   if (toolId !== definition.invocation?.toolId || Object.keys(values).some((name) => !fields.some(([key]) => key === name))) throw new Error("Invalid workflow");
   for (const [name, field] of fields) {
     if (!Object.hasOwn(values, name) && !definition.inputSchema.required?.includes(name)) continue;
+    if (field["x-owned-image"] && !/^storage-image:[a-zA-Z0-9_-]{1,128}$/.test(values[name] as string)) throw new Error("Invalid workflow");
     if (!Object.hasOwn(values, name) || !validValue(field, values[name])) throw new Error("Invalid workflow");
   }
   return { toolId, revision: definition.invocation.revision, arguments: { ...values } };
@@ -126,7 +128,8 @@ export async function directMediaTool(model: string, rows: MediaRow[], load: (id
 
 /** Conversation request fields of a direct media generation: the model's job tool with server-validated arguments. */
 export function directMediaRequest(direct: DirectMedia, params: Record<string, string>, input: string) {
-  if (direct.schema.inputSchema.required?.some(mediaImageField) || Object.keys(params).some(name => mediaImageField(name) && params[name] !== "" || name === direct.prompt)) throw new Error("Invalid workflow");
+  const uncontrolled = (name: string) => mediaImageField(name) && !direct.schema.inputSchema.properties[name]?.["x-owned-image"];
+  if (direct.schema.inputSchema.required?.some(uncontrolled) || Object.keys(params).some(name => uncontrolled(name) && params[name] !== "" || name === direct.prompt)) throw new Error("Invalid workflow");
   return { toolIds: [direct.toolId], toolInvocation: workflowFormInvocation(direct.toolId, direct.schema, { ...params, [direct.prompt]: input }) };
 }
 
