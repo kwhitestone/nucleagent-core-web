@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import ProfileControls from "./ProfileControls";
+import ToolIO from "./ToolIO";
 import {
   AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
@@ -13,10 +15,11 @@ import { listProviders, listAllTypedModels, type Provider, type TypedModel } fro
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
 import { MediaCard } from "./MediaCard";
-import { EnumSelect, toolSchema, WorkflowForm } from "./WorkflowForm";
+import { toolSchema, WorkflowForm } from "./WorkflowForm";
+import { DirectMediaFields } from "./DirectMediaFields";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
-import { directMediaRequest, directMediaTool, workflowFields, type DirectMedia } from "./workflowParams";
+import { directMediaRequest, directMediaTool, directMediaReady, type DirectMedia } from "./workflowParams";
 import { listToolCatalogPages } from "@/addons/conversation/api/toolCatalog";
 import { getSessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
@@ -71,8 +74,6 @@ export interface ChatProps {
 }
 
 const EMPTY = createConversationState("new");
-const ProfileControls = lazy(() => import("./ProfileControls"));
-const ToolIO = lazy(() => import("./ToolIO"));
 
 // Island-only strings stay out of the main i18n bundle (default-path size, plan §9) and out of the island:
 // locale tables share a lazy compressed chunk (loaded by mount.tsx).
@@ -310,6 +311,7 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
+  const input = useAuiState((s) => s.composer.text);
   const actions = composerActions(running, empty);
   const sendLabel = t(running ? "chatReact.queueSend" : "common.send"); // queue while a reply runs
   // Media mode sends only with the model's job tool, every required choice made, and no active run (never queued).
@@ -317,7 +319,7 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
   const visionBlocked = hasImage && !settings.media && !!settings.imageGate?.block;
   const imageText = hasImage && !settings.media && settings.imageGate ? imageHint(settings.imageGate, t) : undefined;
   const blocked = settings.busy || visionBlocked || (!!settings.media && (running || !settings.direct
-    || !!settings.direct.schema.inputSchema.required?.some((name) => name !== settings.direct!.prompt && !settings.params?.[name])));
+    || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <ComposerPrimitive.Root className="mc-composer">
@@ -334,8 +336,7 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
         </ComposerPrimitive.Queue>
         {settings.media && <div className="mc-hint" role="status" data-testid="mc-media-mode">
           <strong>{t(`model.types.${settings.media.kind}`)} · {settings.media.model.model}</strong>
-          {settings.direct ? workflowFields(settings.direct.schema).map(([name, field]) => field.enum && <label key={name}>{field.description || name}
-            <EnumSelect t={t} options={field.enum} value={settings.params?.[name] ?? ""} onChange={(event) => settings.setParam?.(name, event.target.value)} /></label>) : <p>{t("chatReact.mediaUnavailable")}</p>}
+          {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} /> : <p>{t("chatReact.mediaUnavailable")}</p>}
           <button type="button" className="mc-pill" onClick={() => settings.pick(settings.model ? { kind: "chat", model: settings.model } : null)}>{t("chatReact.returnToChat")}</button>
         </div>}
         <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />

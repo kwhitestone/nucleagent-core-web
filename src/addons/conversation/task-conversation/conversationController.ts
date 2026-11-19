@@ -474,7 +474,7 @@ export const createConversationController = (
   const send = async (
     content: string,
     attachments: readonly ConversationAttachment[] = [],
-    toolInvocation?: { toolId: number; revision: string; arguments: Record<string, string> },
+    toolInvocation?: import("../api/types").ToolInvocation,
   ) => {
     requireAuthoritativeHistory();
     if (!content.trim()) {

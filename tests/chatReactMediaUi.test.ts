@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { ZH_STRINGS } from "../src/chat-react/islandStringsZh.ts";
 import { EN_STRINGS } from "../src/chat-react/islandStringsEn.ts";
+import { engineInput } from "./fixtures/workflowTyped.ts";
 
 let vite: ViteDevServer;
 let React: typeof import("react");
@@ -238,6 +239,32 @@ async function type(view: { container: HTMLElement }, text: string) {
   });
 }
 const settle = async () => { for (let turn = 0; turn < 4; turn++) await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+
+test("direct model form shows actual video typed fields and refuses uncontrolled required images", async () => {
+  const view = await fixture();
+  const base = directResponse([]);
+  response = url => /\/catalog(\?|$)/.test(url) ? { data: [{ id: 788, name: "即梦视频", imported: true, status: "ready", mediaModel: "video-model" }] }
+    : url.endsWith('/788/schema') ? { data: { model: "video-model", invocation: { toolId: 788, revision: "5" }, inputSchema: {
+      type: "object", additionalProperties: false, required: ["prompt", "image_url", "duration", "resolution"],
+      properties: Object.fromEntries(["prompt", "image_url", "duration", "resolution", "seed", "aspect_ratio"].map(name => [name, engineInput.properties[name]])),
+    } } } : base(url);
+  const created: unknown[] = [];
+  try {
+    await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {}, create: async payload => { created.push(payload); return { id: "55" } as never; } }));
+    await settle();
+    await type(view, "video");
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
+    await settle();
+    const mode = view.container.querySelector('[data-testid="mc-media-mode"]')!;
+    assert.ok(mode.querySelector('input[type="number"]'), JSON.stringify({ text: mode.textContent, reads }));
+    assert.match(mode.textContent!, /duration.*5.*10/s);
+    assert.match(mode.textContent!, /image_url \*.*chatReact.mediaUnavailable/s);
+    assert.equal(mode.querySelector('input[type="text"]'), null);
+    assert.equal(sendKey(view).disabled, true);
+    await React.act(async () => sendKey(view).click());
+    assert.deepEqual(created, []);
+  } finally { await view.close(); }
+});
 
 test("direct media send key: enabled only with real text, a loaded job schema and its required choice; one click is one create with the chosen parameters", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));

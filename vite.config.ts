@@ -54,7 +54,6 @@ export default defineConfig(({ mode }) => {
         experimentalMinChunkSize: 500,
         onlyExplicitManualChunks: true,
         manualChunks(id) {
-          if (/\/src\/chat-react\/(ToolIO|ProfileControls)\.tsx$/.test(id)) return "chat-controls";
           if (/\/src\/chat-react\/islandStrings(En|Zh)\.ts$/.test(id)) return "chat-strings";
         },
       } },

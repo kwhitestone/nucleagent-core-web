@@ -191,14 +191,15 @@ test("model menu: typed image/video models are selectable in separate groups", (
 
 test("media composer with the model's job tool sends normally and offers only its real parameters", () => {
   const media = { kind: "image" as const, model: { providerId: "p", model: "real-image" } };
-  const direct = { toolId: 9, schema: { invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false,
+  const direct = { toolId: 9, prompt: "input", schema: { invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false,
     properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1", "16:9"] }, note: { type: "string" } } } } };
   const html = render(stateOf([], "completed"), () => React.createElement(app.Composer, { t, settings: { ...settings, media, direct, params: { aspect_ratio: "16:9" } }, placeholder: "p" }));
   assert.doesNotMatch(html, /chatReact.mediaUnavailable/);
   assert.match(html, /real-image/);
   assert.equal(html.match(/<select/g)?.length, 1);
   assert.match(html, /aspect_ratio[\s\S]*16:9/);
-  assert.doesNotMatch(html, /duration|note</);
+  assert.doesNotMatch(html, /duration/);
+  assert.match(html, /note<input/);
 });
 
 test("media composer blocks send and queue, identifies selected model, hides unsupported parameters", () => {

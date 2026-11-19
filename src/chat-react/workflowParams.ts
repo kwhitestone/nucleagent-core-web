@@ -2,10 +2,10 @@ import type { ToolInvocation } from "../addons/conversation/api/types.ts";
 
 export type WorkflowValue = ToolInvocation["arguments"][string];
 type Field = {
+  anyOf?: Field[];
   type?: string; description?: string; minLength?: number; maxLength?: number; enum?: WorkflowValue[];
   minimum?: number; maximum?: number; exclusiveMinimum?: number; exclusiveMaximum?: number;
 };
-type StringField = Omit<Field, "enum"> & { enum?: string[] };
 export interface WorkflowSchema {
   nativeCapability?: string;
   output?: string;
@@ -49,14 +49,18 @@ export function validateWorkflowTool(row: WorkflowTool, definition: WorkflowSche
   }
 }
 
-export function workflowFields(definition: WorkflowSchema): [string, StringField][];
-export function workflowFields(definition: WorkflowSchema, typed: true): [string, Field][];
-export function workflowFields(definition: WorkflowSchema, typed = false): [string, Field][] {
+export function workflowFields(definition: WorkflowSchema, _typed?: true): [string, Field][] {
   const schema = definition.inputSchema;
   if (!definition.invocation || !/^(0|[1-9][0-9]{0,19})$/.test(definition.invocation.revision) || schema.type !== "object" || schema.additionalProperties !== false) throw new Error("Invalid workflow");
-  const fields = Object.entries(schema.properties).filter(([, field]) => typed ? ["string", "integer", "number", "boolean"].includes(field.type ?? "") : field.type === "string");
+  const fields = Object.entries(schema.properties).map(([name, field]): [string, Field] => {
+    if (!field.anyOf) return [name, field];
+    const branches = field.anyOf;
+    const value = branches.find((branch) => branch.type !== "null");
+    if (Object.keys(field).some((key) => !["anyOf", "description", "title"].includes(key)) || branches.length !== 2 || !branches.some((branch) => branch.type === "null" && Object.keys(branch).length === 1) || !value || value.anyOf) throw new Error("Invalid workflow");
+    return [name, { ...value, description: field.description ?? value.description }];
+  }).filter(([, field]) => ["string", "integer", "number", "boolean"].includes(field.type ?? ""));
   if ((schema.required ?? []).some((name) => !fields.some(([key]) => key === name))) throw new Error("Invalid workflow");
-  if (typed) for (const [, field] of fields) {
+  for (const [, field] of fields) {
     for (const key of ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] as const) {
       const bound = field[key];
       if (bound !== undefined && (!["number", "integer"].includes(field.type ?? "") || !safeNumber(bound))) throw new Error("Invalid workflow");
@@ -100,19 +104,20 @@ type MediaRow = { id: number; imported?: boolean; status?: string; mediaModel?: 
 /** `prompt` names the schema field that carries the composer text ("input", or the source's own free-text prompt). */
 export type DirectMedia = { toolId: number; schema: WorkflowSchema; prompt: string };
 const freeText = (field?: Field) => field?.type === "string" && !field.enum;
+export const mediaImageField = (name: string) => ["image_url", "first_frame_url", "last_frame_url"].includes(name);
 /** The composer text goes to `input`; else to the source's own `prompt` when it is the only free-text required field. */
 function promptField(schema: WorkflowSchema): string | null {
   const { properties, required = [] } = schema.inputSchema;
   const name = freeText(properties.input) ? "input" : freeText(properties.prompt) ? "prompt" : null;
   // Every other required parameter must be a real enum the user can pick.
-  return name && !required.some((key) => key !== name && !properties[key]?.enum) ? name : null;
+  return name && !required.some((key) => key !== name && !properties[key]?.enum && properties[key]?.type === "string" && !mediaImageField(key)) ? name : null;
 }
 /** The Toolgate job tool Core binds to this media model, with its real parameter schema; null = not connected. */
 export async function directMediaTool(model: string, rows: MediaRow[], load: (id: number) => Promise<WorkflowSchema & { model?: string }>): Promise<DirectMedia | null> {
   for (const row of rows.filter((entry) => entry.imported && entry.status === "ready" && entry.mediaModel === model)) {
     try {
       const schema = await load(row.id);
-      const prompt = schema.model === model && schema.invocation?.toolId === row.id && workflowFields(schema) ? promptField(schema) : null;
+      const prompt = schema.model === model && schema.invocation?.toolId === row.id && workflowFields(schema, true) ? promptField(schema) : null;
       if (prompt) return { toolId: row.id, schema, prompt };
     } catch { /* this row stays closed; try the next one */ }
   }
@@ -120,5 +125,28 @@ export async function directMediaTool(model: string, rows: MediaRow[], load: (id
 }
 
 /** Conversation request fields of a direct media generation: the model's job tool with server-validated arguments. */
-export const directMediaRequest = (direct: DirectMedia, params: Record<string, string>, input: string) =>
-  ({ toolIds: [direct.toolId], toolInvocation: workflowInvocation(direct.toolId, direct.schema, { ...Object.fromEntries(Object.entries(params).filter(([, value]) => value)), [direct.prompt]: input }) });
+export function directMediaRequest(direct: DirectMedia, params: Record<string, string>, input: string) {
+  if (direct.schema.inputSchema.required?.some(mediaImageField) || Object.keys(params).some(name => mediaImageField(name) && params[name] !== "" || name === direct.prompt)) throw new Error("Invalid workflow");
+  return { toolIds: [direct.toolId], toolInvocation: workflowFormInvocation(direct.toolId, direct.schema, { ...params, [direct.prompt]: input }) };
+}
+
+export function workflowFormInvocation(toolId: number, schema: WorkflowSchema, params: Record<string, string>) {
+  const fields = workflowFields(schema, true);
+  const values: Record<string, WorkflowValue> = {};
+  for (const [name, text] of Object.entries(params)) {
+    if (text === "") continue;
+    const field = fields.find(([key]) => key === name)?.[1];
+    if (!field) throw new Error("Invalid workflow");
+    if (field.type === "integer" && !/^-?\d+(?:\.0+)?$/.test(text)) throw new Error("Invalid workflow");
+    if (field.type === "boolean" && !["true", "false"].includes(text)) throw new Error("Invalid workflow");
+    values[name] = field.type === "boolean" ? text === "true" : field.type === "number" || field.type === "integer" ? (text.trim() ? Number(text) : NaN) : text;
+  }
+  return workflowInvocation(toolId, schema, values);
+}
+
+export function directMediaReady(direct: DirectMedia, params: Record<string, string>, input: string): boolean {
+  try {
+    directMediaRequest(direct, params, input);
+    return true;
+  } catch { return false; }
+}

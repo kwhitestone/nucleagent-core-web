@@ -42,15 +42,15 @@ test("caller capsule and non-caller parameters remain closed", () => {
   }
   assert.throws(() => workflowInvocation(37, scalarSchema, { prompt: "p" }));
   assert.throws(() => workflowFields({ ...scalarSchema, invocation: { toolId: 38, revision: "1e3" } }, true));
-  assert.throws(() => workflowFields({ ...scalarSchema, inputSchema: { ...scalarSchema.inputSchema, required: ["seed"] } }, true));
+  assert.throws(() => workflowInvocation(38, { ...scalarSchema, inputSchema: { ...scalarSchema.inputSchema, required: ["seed"] } }, {}));
 });
 
-test("legacy string discovery and direct media required input gates stay unchanged", async () => {
-  assert.deepEqual(workflowFields(videoSchema).map(([name]) => name), ["prompt", "image_url", "resolution"]);
+test("shared scalar discovery exposes typed fields without allowing uncontrolled images", async () => {
+  assert.deepEqual(workflowFields(videoSchema).map(([name]) => name), ["prompt", "image_url", "duration", "resolution"]);
   const rows = [{ id: 37, imported: true, status: "ready", mediaModel: "video-model" }];
-  assert.equal(await directMediaTool("video-model", rows, async () => videoSchema), null);
+  assert.ok(await directMediaTool("video-model", rows, async () => videoSchema));
   const requiredNumber = { ...videoSchema, inputSchema: { ...videoSchema.inputSchema, required: ["prompt", "duration"] } };
-  assert.equal(await directMediaTool("video-model", rows, async () => requiredNumber), null);
+  assert.ok(await directMediaTool("video-model", rows, async () => requiredNumber));
 });
 
 test("typed boolean enum and malformed numeric declarations fail closed", () => {

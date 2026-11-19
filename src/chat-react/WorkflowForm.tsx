@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
 import { listToolCatalogPages, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
 import type { ToolInvocation } from "../addons/conversation/api/types";
-import { workflowFields, workflowInvocation, workflowToolEligible, validateWorkflowTool, type WorkflowSchema, type WorkflowValue } from "./workflowParams";
+import { workflowFields, workflowFormInvocation, workflowToolEligible, validateWorkflowTool, type WorkflowSchema } from "./workflowParams";
 import type { Translate } from "./ChatApp";
 import { AudioFilePicker } from "./AudioFilePicker";
+import { ParameterField } from "./ParameterField";
 
 export const toolSchema = (id: number) => getPlatformRuntime().http.get<{ data: WorkflowSchema & { model?: string } }>(`/api/v1/addons/tool/${id}/schema`).then((response) => response.data.data);
 export const EnumSelect = ({ t, options, ...rest }: { t: Translate; options: string[] } & React.SelectHTMLAttributes<HTMLSelectElement>) =>
@@ -15,7 +16,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [selected, setSelected] = useState(0);
   const [schema, setSchema] = useState<WorkflowSchema>();
-  const [values, setValues] = useState<Record<string, WorkflowValue>>({});
+  const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitted = useRef(false);
@@ -53,7 +54,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
       const tool = tools.find((row) => row.id === selected);
       if (!tool) throw new Error("Invalid workflow");
       validateWorkflowTool(tool, schema);
-      request = workflowInvocation(selected, schema, values);
+      request = workflowFormInvocation(selected, schema, values);
     } catch { setError("workflowUnavailable"); return; }
     submitted.current = true; setBusy(true); setError("");
     try { await submit(request, tools.find((tool) => tool.id === selected)?.name ?? ""); }
@@ -72,32 +73,15 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
       </p>}
       {schema && workflowFields(schema, true).map(([name, field]) => {
         if (name === "fileId" && schema.nativeCapability === "nucleagent.audio.stt.v1") return <AudioFilePicker key={`${selected}:${schema.invocation?.revision}`} value={String(values.fileId ?? "")} disabled={busy || !!disabled} onChange={(fileId) => setValues(fileId ? { fileId } : {})} />;
-        const options = field.enum ?? (field.type === "boolean" ? [true, false] : undefined);
         const control = {
           required: schema.inputSchema.required?.includes(name), disabled: busy,
           value: values[name] === undefined ? "" : String(values[name]),
           onChange: (event: { target: { value: string } }) => {
             if (name === "image_url") return;
-            const raw = event.target.value;
-            setValues((previous) => {
-              const next = { ...previous };
-              if (raw === "") delete next[name];
-              else next[name] = field.type === "boolean" ? (raw === "true" ? true : raw === "false" ? false : raw)
-                : field.type === "integer" ? (/^-?\d+(?:\.0+)?$/.test(raw) ? Number(raw) : raw)
-                : field.type === "number" ? Number(raw) : raw;
-              return next;
-            });
+            setValues((previous) => ({ ...previous, [name]: event.target.value }));
           },
         };
-        return <label key={name}>
-          {field.description || name}{control.required ? " *" : ""}
-          {options && name !== "image_url" ? <select {...control}>
-            <option value="">{t("chatReact.workflowChoose")}</option>
-            {options.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
-          </select> : <input {...control} readOnly={name === "image_url"}
-            type={field.type === "integer" || field.type === "number" ? "number" : "text"}
-            step={field.type === "integer" ? 1 : "any"} min={field.minimum} max={field.maximum} />}
-        </label>;
+        return <ParameterField key={name} field={field} name={name} t={t} {...control} readOnly={name === "image_url"} />;
       })}
       {(error || missingImage) && <p role="alert" className="mc-hint">{t(`chatReact.${error || "workflowUnavailable"}`)}</p>}
       <button className="mc-pill" type="submit" disabled={!schema || busy || disabled || missingImage}>{t("chatReact.workflowRun")}</button>
