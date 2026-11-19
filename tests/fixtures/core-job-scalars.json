@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "integer",
+      "enum": [
+        5,
+        10
+      ]
+    },
+    "length": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 15
+    },
+    "cfg": {
+      "type": "number"
+    },
+    "watermark": {
+      "type": "boolean"
+    },
+    "seed": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "aspect_ratio": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "1:1"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}
