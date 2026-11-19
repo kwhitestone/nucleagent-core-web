@@ -23,6 +23,8 @@ export interface ToolCatalogItem {
   reason?: string;
   /** The media model an imported Toolgate job tool generates with (direct model selection). */
   mediaModel?: string;
+  nativeCapability?: string;
+  nativeModel?: string;
 }
 
 /** Listed but not pickable; the server refuses it on save (tool_not_selectable). */

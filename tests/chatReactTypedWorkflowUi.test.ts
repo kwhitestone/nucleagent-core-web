@@ -13,6 +13,7 @@ let WorkflowForm: typeof import("../src/chat-react/WorkflowForm.tsx").WorkflowFo
 let dispose: () => void;
 let definition: WorkflowSchema;
 let dom: JSDOM;
+let nativeAudio = false;
 before(async () => {
   dom = new JSDOM("", { url: "https://test.example/" });
   Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
@@ -25,9 +26,23 @@ before(async () => {
   ({ WorkflowForm } = await vite.ssrLoadModule("/src/chat-react/WorkflowForm.tsx"));
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   dispose = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
-    get: async (url: string) => ({ data: url.endsWith("/schema") ? { data: definition } : { data: [{ id: definition.invocation!.toolId, name: "fixture", imported: true, status: "ready" }], hasMore: false } }),
+    get: async (url: string) => ({ data: url.endsWith("/schema") ? { data: definition } : { data: [{ id: definition.invocation!.toolId, name: "fixture", imported: !nativeAudio, status: "ready", ...(nativeAudio ? { nativeCapability: "nucleagent.audio.tts.v1", nativeModel: "qwen3-tts-flash" } : {}) }], hasMore: false } }),
     post: async () => { throw new Error("network writes forbidden"); },
   } });
+});
+
+test("normal picker renders native audio and submits one bound input and voice intent", async () => {
+  nativeAudio = true;
+  const view = await fixture({ nativeCapability: "nucleagent.audio.tts.v1", model: "qwen3-tts-flash", output: "audio/wav", invocation: { toolId: 71, revision: "9" }, inputSchema: {
+    type: "object", additionalProperties: false, required: ["input", "voice"], properties: { input: { type: "string", maxLength: 256 }, voice: { type: "string", maxLength: 64 } },
+  } });
+  try {
+    await view.change("input", "你好");
+    await view.change("voice", "fixture");
+    await view.submit();
+    await view.submit();
+    assert.deepEqual(view.requests, [{ toolId: 71, revision: "9", arguments: { input: "你好", voice: "fixture" } }]);
+  } finally { await view.close(); nativeAudio = false; }
 });
 after(async () => { dispose?.(); await vite?.close(); dom?.window.close(); });
 

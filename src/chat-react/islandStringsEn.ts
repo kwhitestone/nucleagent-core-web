@@ -2,6 +2,7 @@ import type { IslandStrings } from "./islandStringsZh";
 
 /** en-US island strings; both locales share one lazy compressed chunk. */
 export const EN_STRINGS: IslandStrings = {
+    audioPreview: "Play audio",
     modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usagePending: "Settlement pending", usageSettled: "Turn settled",
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "not supported by this model",
     effortBackend: "Codex executor only", effortUnverified: "not measured for this model", effortIneffective: "measured: no effect on this model", effortEffective: "measured: takes effect on this model", effortServer: "accepted upstream (platform-verified), effect not measured",

@@ -7,10 +7,37 @@ type Field = {
 };
 type StringField = Omit<Field, "enum"> & { enum?: string[] };
 export interface WorkflowSchema {
+  nativeCapability?: string;
+  output?: string;
   model?: string;
   declaredModel?: string;
   invocation?: { toolId: number; revision: string };
   inputSchema: { type: string; additionalProperties: boolean; required?: string[]; properties: Record<string, Field> };
+}
+
+type WorkflowTool = { id: number; imported?: boolean; status?: string; nativeCapability?: string; nativeModel?: string; mediaModel?: string };
+const audioCapability = "nucleagent.audio.tts.v1";
+
+export function workflowToolEligible(row: WorkflowTool): boolean {
+  if (row.status !== "ready") return false;
+  if (!row.nativeCapability) return row.imported === true;
+  return row.imported === false && row.nativeCapability === audioCapability && row.nativeModel === "qwen3-tts-flash" && !row.mediaModel;
+}
+
+export function validateWorkflowTool(row: WorkflowTool, definition: WorkflowSchema): void {
+  if (!workflowToolEligible(row) || row.id !== definition.invocation?.toolId) throw new Error("Invalid workflow");
+  workflowFields(definition, true);
+  if (!row.nativeCapability) {
+    if (definition.nativeCapability) throw new Error("Invalid workflow");
+    return;
+  }
+  const schema = definition.inputSchema;
+  if (definition.nativeCapability !== audioCapability || definition.model !== row.nativeModel || definition.output !== "audio/wav" || definition.declaredModel ||
+    Object.keys(schema).sort().join() !== "additionalProperties,properties,required,type" || schema.required?.slice().sort().join() !== "input,voice" || Object.keys(schema.properties).sort().join() !== "input,voice") throw new Error("Invalid workflow");
+  for (const [name, limit] of [["input", 256], ["voice", 64]] as const) {
+    const field = schema.properties[name];
+    if (field.type !== "string" || field.maxLength !== limit || Object.keys(field).sort().join() !== "maxLength,type") throw new Error("Invalid workflow");
+  }
 }
 
 export function workflowFields(definition: WorkflowSchema): [string, StringField][];

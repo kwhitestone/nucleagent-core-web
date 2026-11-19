@@ -1,5 +1,6 @@
 /** zh-CN island strings; both locales share one lazy compressed chunk. */
 export const ZH_STRINGS = {
+    audioPreview: "播放音频",
     modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "Toolgate额度未知", usagePending: "待结算", usageSettled: "Toolgate额度",
     effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "该模型不支持",
     effortBackend: "仅 Codex 执行器支持", effortUnverified: "未实测该模型是否生效", effortIneffective: "已实测：对该模型不生效", effortEffective: "已实测：对该模型生效", effortServer: "平台已验证上游接受，效果未实测",

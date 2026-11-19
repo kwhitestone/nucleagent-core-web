@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
 import { listToolCatalogPages, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
 import type { ToolInvocation } from "../addons/conversation/api/types";
-import { workflowFields, workflowInvocation, type WorkflowSchema, type WorkflowValue } from "./workflowParams";
+import { workflowFields, workflowInvocation, workflowToolEligible, validateWorkflowTool, type WorkflowSchema, type WorkflowValue } from "./workflowParams";
 import type { Translate } from "./ChatApp";
 
 export const toolSchema = (id: number) => getPlatformRuntime().http.get<{ data: WorkflowSchema & { model?: string } }>(`/api/v1/addons/tool/${id}/schema`).then((response) => response.data.data);
@@ -25,24 +25,31 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
   }, []);
   useEffect(() => {
     let live = true;
-    if (open) void listToolCatalogPages().then((rows) => { if (live) setTools(rows.filter((row) => row.imported && row.status === "ready")); }).catch(() => { if (live) setError("workflowUnavailable"); });
+    if (open) void listToolCatalogPages().then((rows) => { if (live) setTools(rows.filter(workflowToolEligible)); }).catch(() => { if (live) setError("workflowUnavailable"); });
     return () => { live = false; };
   }, [open]);
   useEffect(() => {
     let live = true;
     setSchema(undefined); setValues({});
     if (selected && open) void toolSchema(selected).then((found) => {
-      workflowFields(found, true);
+      const tool = tools.find((row) => row.id === selected);
+      if (!tool) throw new Error("Invalid workflow");
+      validateWorkflowTool(tool, found);
       if (live) { setSchema(found); setError(""); }
     }).catch(() => { if (live) setError("workflowUnavailable"); });
     return () => { live = false; };
-  }, [selected, open]);
+  }, [selected, open, tools]);
   const missingImage = !!schema?.inputSchema.required?.includes("image_url");
   const run = async (event: React.FormEvent) => {
     event.preventDefault();
     if (submitted.current || !schema || disabled || missingImage) return;
     let request: ToolInvocation;
-    try { request = workflowInvocation(selected, schema, values); } catch { setError("workflowUnavailable"); return; }
+    try {
+      const tool = tools.find((row) => row.id === selected);
+      if (!tool) throw new Error("Invalid workflow");
+      validateWorkflowTool(tool, schema);
+      request = workflowInvocation(selected, schema, values);
+    } catch { setError("workflowUnavailable"); return; }
     submitted.current = true; setBusy(true); setError("");
     try { await submit(request, tools.find((tool) => tool.id === selected)?.name ?? ""); }
     catch { setError("workflowUnknown"); }

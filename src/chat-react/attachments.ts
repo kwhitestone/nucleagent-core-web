@@ -67,11 +67,12 @@ export const toConversationAttachments = (attachments: readonly { id: string; na
   (attachments ?? []).map((a) => ({ id: a.id, name: a.name, ...(a.contentType ? { mimeType: a.contentType } : {}) }));
 
 /** Chip data for a stored file (sent attachment or produced file); `verified` = Storage confirmed it (download allowed). */
-export interface FileChip { id: string; name: string; mimeType?: string; size?: number; verified: boolean }
+export interface FileChip { id: string; name: string; mimeType?: string; size?: number; sha256?: string; verified: boolean }
 
 export const toFileChip = (a: ConversationAttachment): FileChip => ({
   id: a.id, name: a.name, ...(a.mimeType ? { mimeType: a.mimeType } : {}), ...(a.size ? { size: a.size } : {}),
   verified: a.metadata?.verification === "verified",
+  ...(typeof a.metadata?.sha256 === "string" ? { sha256: a.metadata.sha256 } : {}),
 });
 
 // shortcut: 3 icon kinds (image / sheet / page) to fit the island budget (§21); add kinds back if size allows.

@@ -399,7 +399,7 @@ function mapAttachments(m: Message): ConversationAttachment[] | undefined {
     name: a.name,
     mimeType: a.mimeType,
     size: a.size,
-    metadata: { ...(a.kind ? { kind: a.kind } : {}), verification: a.verification === "verified" ? "verified" : "unavailable" },
+    metadata: { ...(a.kind ? { kind: a.kind } : {}), ...(a.sha256 ? { sha256: a.sha256 } : {}), verification: a.verification === "verified" ? "verified" : "unavailable" },
   }));
 }
 
