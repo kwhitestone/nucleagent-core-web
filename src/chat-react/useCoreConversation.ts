@@ -14,13 +14,13 @@ const noop = () => () => {};
  * subscribed with useSyncExternalStore; no Vue reactivity in the island. One adapter per id
  * (plan §3 risk: the adapter keeps per-conversation module state).
  */
-export function useCoreConversation(id: string | undefined, onError: (error: Error) => void, turn: () => EffortChoice | Parameters<typeof followUp>[5] = () => "") {
+export function useCoreConversation(id: string | undefined, onError: (error: Error) => void, turn: () => EffortChoice | Parameters<typeof followUp>[5] = () => "", defaultModel: () => Parameters<typeof followUp>[3] = () => undefined) {
   const [controller, setController] = useState<Controller | null>(null);
   useEffect(() => {
     if (!id) { setController(null); return; }
     // Same follow-up as the adapter's default, plus this turn's effort (gap2) or profile (MUYU-408), never both.
     const adapter = createConversationAdapter(() => id, {
-      send: async (input, attachments) => { await followUp(id, input, attachments, undefined, undefined, turn() || undefined); return { accepted: true }; },
+      send: async (input, attachments) => { await followUp(id, input, attachments, defaultModel(), undefined, turn() || undefined); return { accepted: true }; },
     });
     const { box, subscribe } = observableBoxes();
     const c = { ...createConversationController({

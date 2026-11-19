@@ -13,6 +13,7 @@ let disposeRuntime: () => void;
 let disposeCatalog: () => void;
 let adapter: { onNew(message: unknown): Promise<void> };
 let change: (value: string) => void;
+let profileControl: { disabled: boolean; onChange(value: { scope: string; profileId: string }): void };
 let settings: ReturnType<typeof app.useSettings>;
 let creates = 0;
 let sends = 0;
@@ -20,6 +21,8 @@ let writes = 0;
 let preference = { profileId: "", effort: "" };
 let putGate: Promise<void> | undefined;
 let getGate: Promise<void> | undefined;
+let defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
+let preferenceQuery: unknown;
 
 before(async () => {
   dom = new JSDOM("<div id='root'></div>", { url: "https://test.example/" });
@@ -53,9 +56,11 @@ before(async () => {
   ({ createRoot } = await import("react-dom/client"));
   const runtime = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   disposeRuntime = runtime.registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
-    get: async (url: string) => {
-      if (url.endsWith("model-preferences")) { await getGate; return { data: { data: { ...preference } } }; }
-      return { data: { data: url.endsWith("model-profiles") ? [{ id: "quick", enabled: true, efforts: ["low", "medium", "high"] }]
+    get: async (url: string, config?: { params?: unknown }) => {
+      if (url.endsWith("model-selection")) return { data: { data: defaultSelection } };
+      if (url.endsWith("model-preferences")) { preferenceQuery = config?.params; await getGate; return { data: { data: { ...preference } } }; }
+      const measured = (config?.params as { model?: string })?.model === "gpt-6-astra";
+      return { data: { data: url.endsWith("model-profiles") ? [{ id: "quick", enabled: measured, efforts: measured ? ["low", "medium", "high"] : [] }]
         : url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
         : /\/conversation\/9$/.test(url) ? { id: "9", providerId: 7, model: "gpt-6-astra", executionBackend: "codex" }
         : [] } };
@@ -75,8 +80,9 @@ after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close();
 function findControl(node: unknown): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) { node.forEach(findControl); return; }
-  const props = (node as { props?: { effort?: { set: typeof change }; settings: typeof settings; children?: unknown } }).props;
+  const props = (node as { props?: { effort?: { set: typeof change }; settings: typeof settings; children?: unknown; controls?: { props: { children: { props: typeof profileControl }[] } } } }).props;
   if (props?.effort) { change = props.effort.set; settings = props.settings; }
+  if (props?.controls) profileControl = props.controls.props.children[0]!.props;
   findControl(props?.children);
 }
 
@@ -118,6 +124,34 @@ for (const conversationId of [undefined, "9"]) test(`ChatApp ${conversationId ? 
   } finally {
     await React.act(async () => { releasePut?.(); releaseGet?.(); });
     putGate = getGate = undefined;
+    await React.act(async () => root.unmount());
+  }
+});
+
+for (const resolved of [true, false]) test(`normal fresh chat resolves the authoritative default and keeps its default profile operable (${resolved})`, async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  preference = { profileId: "", effort: "" };
+  creates = sends = writes = 0;
+  defaultSelection = { executionBackend: "codex", providerId: resolved ? 7 : 0, model: resolved ? "gpt-6-astra" : "", resolved };
+  function Harness() {
+    const tree = app.ChatApp({ t: (key) => key, strings: {} as never, navigate: () => {},
+      create: async () => { creates++; return { id: "9" } as never; } });
+    findControl(tree);
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(settings.backend, "codex");
+    assert.equal(settings.model?.model ?? "", defaultSelection.model);
+    assert.deepEqual(preferenceQuery, { executionBackend: "codex", providerId: resolved ? 7 : undefined, model: defaultSelection.model });
+    assert.equal(creates + sends + writes, 0);
+    assert.equal(profileControl.disabled, false, "normal server-default selection must not permanently disable every profile");
+    await React.act(async () => profileControl.onChange({ scope: "new", profileId: "" }));
+    assert.equal(writes, 1, "default profile remains saveable even without a measured model/effort");
+    assert.equal(preference.profileId, "");
+    assert.equal(preference.effort, "");
+  } finally {
     await React.act(async () => root.unmount());
   }
 });

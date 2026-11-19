@@ -22,6 +22,8 @@ let writeGate: Promise<void> | undefined;
 let writeSignal: AbortSignal | undefined;
 let loseAcknowledgement = false;
 let commitAfterAbort = false;
+let selectionGate: Promise<void> | undefined;
+let selectionValue: unknown = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
 const saved = new Map<string, { profileId: string; effort: string }>();
 
 before(async () => {
@@ -35,6 +37,11 @@ before(async () => {
   unregister = runtime.registerPlatformRuntime({ getSessionVersion: () => version, http: {
     get: async (url: string, config: { params: unknown }) => {
       reads++;
+      if (url.endsWith("model-selection")) {
+        const value = selectionValue;
+        await selectionGate;
+        return { data: { data: value } };
+      }
       const result = { data: { data: url.endsWith("model-profiles")
         ? [{ id: "quick", enabled: true, efforts: ["low", "medium", "high"] }]
         : saved.get(`${version}:${JSON.stringify(config.params)}`) ?? { profileId: "", effort: "" } } };
@@ -60,6 +67,39 @@ before(async () => {
   ({ createRoot } = await import("react-dom/client"));
 });
 after(async () => { unregister?.(); await vite?.close(); dom?.window.close(); });
+
+test("default resolution is session fenced and malformed defaults never unlock preferences", async () => {
+  const originalVersion = version;
+  function Harness() { current = hooks.useModelPreference("new:codex", "codex", undefined, ""); return null; }
+  const root = createRoot(document.getElementById("root")!);
+  let release!: () => void;
+  selectionGate = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(current.ready, false);
+    const retiredSave = current.save;
+    const initialWrites = writes;
+    version++;
+    selectionValue = { executionBackend: "codex", providerId: 0, model: "", resolved: false };
+    selectionGate = undefined;
+    await React.act(async () => window.dispatchEvent(new dom.window.Event("nucleagent:session-change")));
+    assert.equal(current.ready, true);
+    assert.equal(current.selection?.model, "");
+    await React.act(async () => { release(); await retiredSave("quick", "high"); });
+    assert.equal(current.selection?.model, "", "old default cannot replace the new account's scope");
+    assert.equal(writes, initialWrites);
+    for (const malformed of [null, {}, { executionBackend: "codex", providerId: 0, model: "fake", resolved: true }, { executionBackend: "hermes", providerId: 7, model: "gpt-6-astra", resolved: true }]) {
+      selectionValue = malformed;
+      await React.act(async () => window.dispatchEvent(new dom.window.Event("nucleagent:session-change")));
+      assert.equal(current.ready, false);
+      assert.equal(current.error, true);
+    }
+  } finally {
+    release(); selectionGate = undefined;
+    await React.act(async () => root.unmount());
+    version = originalVersion;
+  }
+});
 
 test("server-backed choices survive remount, isolate accounts and reconcile saves without retrying unknown writes", async () => {
   function Harness({ scope = "9:codex:7:gpt-6-astra" }: { scope?: string }) {

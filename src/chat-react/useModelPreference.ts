@@ -5,6 +5,7 @@ import { EFFORT_LEVELS, type EffortChoice } from "./requestEffort";
 
 type Preference = { profileId: string; effort: EffortChoice };
 type Catalog = { id: string; enabled: boolean; efforts?: string[] }[];
+type Selection = { executionBackend: string; providerId?: number; model: string };
 const endpoint = "/api/v1/addons/conversation/model-preferences";
 
 export function useModelPreference(scope: string, backend: string, providerId: number | undefined, model: string) {
@@ -15,7 +16,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
   const key = JSON.stringify([scope, backend, providerId, model]);
   const renderedKey = useRef(key);
   renderedKey.current = key;
-  const [state, setState] = useState<{ key: string; session: number; turn: number; signal: AbortSignal; preference: Preference; catalog: Catalog; ready: boolean; error: boolean }>();
+  const [state, setState] = useState<{ key: string; session: number; turn: number; signal: AbortSignal; selection: Selection; preference: Preference; catalog: Catalog; ready: boolean; error: boolean }>();
   useEffect(() => {
     const load = () => {
       transport.current?.abort();
@@ -25,23 +26,30 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       writing.current = false;
       confirmed.current = false;
       setState(undefined);
-      if (!backend || !model) return;
+      if (!backend) return;
       const runtime = getPlatformRuntime(), session = runtime.getSessionVersion();
       const identity = { key, session, turn, signal: controller.signal };
       const live = () => key === renderedKey.current && turn === generation.current && session === runtime.getSessionVersion() && !controller.signal.aborted;
-      const params = { executionBackend: backend, providerId, model };
-      Promise.all([
-        runtime.http.get<{ data: Preference }>(endpoint, { params, signal: controller.signal }),
-        runtime.http.get<{ data: Catalog }>("/api/v1/addons/conversation/model-profiles", { params, signal: controller.signal }),
-      ]).then(([preference, catalog]) => {
+      const initial = { executionBackend: backend, providerId, model };
+      const selection = model ? Promise.resolve(initial) : runtime.http.get<{ data: Selection & { resolved: boolean } }>("/api/v1/addons/conversation/model-selection", { params: { executionBackend: backend }, signal: controller.signal }).then((response) => {
+        const value = response.data.data;
+        if (value?.executionBackend !== backend || typeof value.model !== "string" || typeof value.resolved !== "boolean" || (value.resolved && (!value.model.trim() || !Number.isSafeInteger(value.providerId) || value.providerId! <= 0)) || (!value.resolved && (value.model || value.providerId))) throw new Error("Invalid default selection");
+        return { executionBackend: value.executionBackend, providerId: value.providerId || undefined, model: value.model };
+      });
+      selection.then(async (params) => {
+        if (!live()) return;
+        const [preference, catalog] = await Promise.all([
+          runtime.http.get<{ data: Preference }>(endpoint, { params, signal: controller.signal }),
+          runtime.http.get<{ data: Catalog }>("/api/v1/addons/conversation/model-profiles", { params, signal: controller.signal }),
+        ]);
         const value = preference.data.data;
         if (!value || typeof value.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || !Array.isArray(catalog.data.data)) throw new Error("Invalid preference response");
         if (live()) {
           confirmed.current = true;
-          setState({ ...identity, preference: value, catalog: catalog.data.data, ready: true, error: false });
+          setState({ ...identity, selection: params, preference: value, catalog: catalog.data.data, ready: true, error: false });
         }
       }).catch(() => {
-        if (live()) setState({ ...identity, preference: { profileId: "", effort: "" }, catalog: [], ready: false, error: true });
+        if (live()) setState({ ...identity, selection: initial, preference: { profileId: "", effort: "" }, catalog: [], ready: false, error: true });
       });
     };
     load();
@@ -57,7 +65,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
   async function save(profileId: string, effort: EffortChoice) {
     if (!current || !ready()) return;
     const runtime = getPlatformRuntime();
-    const params = { executionBackend: backend, providerId, model };
+    const params = current.selection;
     const signal = current.signal;
     writing.current = true;
     confirmed.current = false;
@@ -76,5 +84,5 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       if (live()) writing.current = false;
     }
   }
-  return { profile, choice, save, get ready() { return ready(); }, error: !!current?.error };
+  return { profile, choice, save, selection: current?.selection, get ready() { return ready(); }, error: !!current?.error };
 }

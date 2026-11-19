@@ -42,6 +42,37 @@ before(async () => {
 });
 after(async () => { unregister?.(); await vite?.close(); dom?.window.close(); });
 
+test("an unmeasured model keeps the default profile usable while effort stays disabled", async () => {
+  const container = document.getElementById("root")!;
+  const root = createRoot(container);
+  const original = catalog;
+  const originalFetched = fetched;
+  catalog = async () => [
+    { id: "quick", displayName: "快速", enabled: false, efforts: [], reason: "当前模型/原生后端尚无已验证参数支持" },
+    { id: "thinking", displayName: "思考", enabled: false, efforts: [], reason: "当前模型/原生后端尚无已验证参数支持" },
+    { id: "long-context", displayName: "长上下文", enabled: false, efforts: [], reason: "原生链尚无可验证的每轮上下文窗口参数" },
+  ];
+  let selected: ProfileSelection | undefined;
+  try {
+    await React.act(async () => root.render(React.createElement(app.ModelControls, {
+      t: (key) => key, value: "", view: effortView("codex", undefined), onChange: () => {}, defaultOpen: true,
+    }, React.createElement(app.ProfileSlot, {
+      t: (key) => key, backend: "codex", model: "", scope: "default", value: null, disabled: false,
+      onChange: (value) => { selected = value; },
+    }))));
+    for (let attempt = 0; attempt < 20 && container.querySelectorAll("[role=menuitemradio]").length < 8; attempt++) {
+      await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    }
+    const radios = [...container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]")];
+    assert.equal(radios.length, 8);
+    assert.ok(radios.slice(0, 4).every((radio) => radio.disabled));
+    assert.equal(radios[4]!.disabled, false);
+    assert.ok(radios.slice(5).every((radio) => radio.disabled));
+    await React.act(async () => radios[4]!.click());
+    assert.equal(selected?.profileId, "");
+  } finally { catalog = original; await React.act(async () => root.unmount()); fetched = originalFetched; }
+});
+
 test("profiles are radio items of the single Controls menu and are fetched on its first open", async () => {
   const container = document.getElementById("root")!;
   const root = createRoot(container);

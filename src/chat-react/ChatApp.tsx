@@ -83,9 +83,11 @@ export function ChatApp(props: ChatProps) {
   const locale = props.locale ?? "zh-CN";
   const t = useMemo(() => withIslandStrings(props.t, props.strings), [props.t, props.strings]);
   const report = useMemo(() => (error: Error) => toast.error(error.name === "ZodError" ? t("chatReact.badUpdate") : modelErrorMessage(error, t)), [t]);
-  const settings = useSettings(conversationId, t);
-  const profileScope = `${conversationId ?? "new"}:${settings.backend}:${settings.model?.providerId}:${settings.model?.model}`;
-  const preference = useModelPreference(profileScope, settings.backend ?? "", settings.model?.providerId, settings.model?.model ?? "");
+  const selectedSettings = useSettings(conversationId, t);
+  const profileScope = `${conversationId ?? "new"}:${selectedSettings.backend}:${selectedSettings.model?.providerId}:${selectedSettings.model?.model}`;
+  const preference = useModelPreference(profileScope, selectedSettings.backend ?? "", selectedSettings.model?.providerId, selectedSettings.model?.model ?? "");
+  const resolved = preference.selection;
+  const settings = { ...selectedSettings, model: selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null) };
   const profile = preference.profile;
   const setProfile = (value: ProfileSelection) => { void preference.save(value.profileId, preference.choice); };
   const measured = useEffort(settings);
@@ -96,7 +98,9 @@ export function ChatApp(props: ChatProps) {
   const turn = profileRequest(profile, profileScope, effort.sent);
   const turnNow = useRef(turn);
   turnNow.current = turn;
-  const core = useCoreConversation(conversationId, report, () => turnNow.current);
+  const defaultModelNow = useRef<ModelChoice | undefined>(undefined);
+  defaultModelNow.current = !selectedSettings.model && preference.ready ? settings.model ?? undefined : undefined;
+  const core = useCoreConversation(conversationId, report, () => turnNow.current, () => defaultModelNow.current);
   const messageActions = useMessageActions(conversationId, !!core && isRunning(core.state), props.navigate, (fork) => props.onFork?.(fork), report);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
@@ -170,7 +174,7 @@ export function ChatApp(props: ChatProps) {
           <ThreadPrimitive.ViewportFooter className="mc-footer">
             <ThreadPrimitive.ScrollToBottom className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ThreadPrimitive.ScrollToBottom>
             <Composer t={t} settings={settings} effort={effort}
-              controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
+              controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
             {!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
               await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
