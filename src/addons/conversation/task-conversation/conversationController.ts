@@ -194,10 +194,12 @@ export const createConversationController = (
       // 可能残留服务端已删除的条目（重复思考气泡）。快照全量替换是最可靠
       // 的收敛手段——一轮结束时刻做，代价可控。
       if (
-        event.type === "item.upsert" &&
-        event.item.lane === "answer" &&
-        event.item.status === "complete" &&
-        event.item.kind !== "tool_call"
+        (event.type === "conversation.status" &&
+          (event.status === "completed" || event.status === "failed")) ||
+        (event.type === "item.upsert" &&
+          event.item.lane === "answer" &&
+          event.item.status === "complete" &&
+          event.item.kind !== "tool_call")
       ) {
         answerSettled = true;
       }

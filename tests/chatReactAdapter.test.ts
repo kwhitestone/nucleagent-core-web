@@ -60,6 +60,50 @@ const stateOf = (items: ConversationItem[], status: "idle" | "running" | "comple
       snapshot: { items, status, hasOlder: false, cursor: "c" } },
   });
 
+for (const terminalStatus of ["failed", "cancelled"] as const) test(`controller reconciles ${terminalStatus} after a terminal SSE event missed the streaming-row deletion`, async () => {
+  const observable = observableBoxes();
+  let snapshots = 0;
+  let resolveSettled!: () => void;
+  const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
+  const adapter = {
+    async loadSnapshot() {
+      snapshots++;
+      return { status: snapshots === 1 ? "running" : terminalStatus, hasOlder: false, cursor: "2", items: snapshots === 1
+        ? [item("msg-1", { status: "streaming", content: "stale partial" })]
+        : [item("msg-2", { status: "failed", kind: "error", content: "terminal outcome" })] };
+    },
+    async *subscribe({ signal }: { signal: AbortSignal }) {
+      if (snapshots === 1) yield {
+        protocolVersion: 2, type: "conversation.status", conversationKey: "7", eventId: "terminal",
+        cursor: "2", turnId: "main", streamId: "conversation-status", lane: "system", revision: 1, seq: 1,
+        timestamp: "2026-11-19T00:00:00Z", status: "failed",
+      } as ConversationEvent;
+      if (!signal.aborted) await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
+    },
+  } as ConversationAdapter;
+  const controller = createConversationController({ conversationKey: () => "7", adapter: () => adapter,
+    onConnectionChange() {}, onError(error) { throw error; },
+    onStatusChange() {},
+  }, observable.box);
+  const unsubscribe = observable.subscribe(() => {
+    const state = controller.state.value;
+    if (snapshots > 1 && state.status === terminalStatus && !state.items["msg-1"]) resolveSettled();
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await controller.initialize();
+    await Promise.race([settled, new Promise<void>((_, reject) => { timeout = setTimeout(() => reject(new Error("terminal event did not reconcile the authoritative snapshot")), 700); })]);
+    assert.equal(snapshots, 2);
+    assert.equal(controller.state.value.status, terminalStatus);
+    assert.equal(controller.state.value.items["msg-1"], undefined);
+    assert.equal(isRunning(controller.state.value), false);
+  } finally {
+    clearTimeout(timeout);
+    unsubscribe();
+    controller.dispose();
+  }
+});
+
 test("switch: default vue; query beats storage; junk values ignored", () => {
   const store = (v: string | null) => ({ getItem: () => v, setItem: (_k: string, next: string) => { v = next; } });
   assert.equal(chatUi("", store(null)), "vue");
