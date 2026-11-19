@@ -588,7 +588,13 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "tool-call":
             return <ToolStep part={part} t={t} />;
           case "data":
-            if (part.name === "thinking") return null;
+            if (part.name === "thinking") {
+              const thought = part.data as { text: string; active: boolean };
+              return <details className="mc-process mc-reasoning">
+                <summary className="mc-process-head"><span className="mc-process-chevron"><ChevronMark size={16} /></span>{t("chatReact.reasoning")}{thought.active && <span role="status"> · {t("chatReact.thinking")}</span>}</summary>
+                <pre className="mc-step-detail">{thought.text}</pre>
+              </details>;
+            }
             if (part.name === "process-step") {
               const step = part.data as { name: string; content: string; status: string };
               return <Step state={stepState(step.status, part.status)} name={step.name} t={t}>

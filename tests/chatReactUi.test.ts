@@ -93,7 +93,7 @@ test("every assistant response has an UNKNOWN usage area; user messages and raw 
   assert.doesNotMatch(html, /untrusted|9000/);
 });
 
-test("actual thinking stays out of ordinary DOM for live and restored messages", (context) => {
+test("authorized thinking renders escaped inside a collapsed fold for live and restored messages", (context) => {
   const started = performance.now();
   for (const status of ["streaming", "complete"] as const) {
     const state = stateOf([
@@ -103,7 +103,13 @@ test("actual thinking stays out of ordinary DOM for live and restored messages",
     ], status === "streaming" ? "running" : "completed");
     const html = render(state, () => React.createElement(aui.ThreadPrimitive.Messages, null,
       ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
-    assert.doesNotMatch(html, /mc-reasoning|Model &lt;script&gt;|chatReact.reasoning/);
+    const document = new JSDOM(html).window.document;
+    const fold = document.querySelector("details.mc-reasoning");
+    assert.ok(fold);
+    assert.equal(fold.hasAttribute("open"), false);
+    assert.equal(fold.querySelector("pre")?.textContent, "Model <script>thinking</script>");
+    assert.equal(fold.querySelector("script"), null);
+    assert.equal(!!fold.querySelector('[role="status"]'), status === "streaming");
     assert.match(html, /Answer/);
   }
   const html = render(stateOf([item("heartbeat", { lane: "process", userReadable: true, title: "Waiting", data: { thinking: true, thinkingStatus: true } })]),

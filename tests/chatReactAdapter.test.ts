@@ -183,7 +183,7 @@ test("switch: shell query arriving after boot locks or reloads, once per page lo
   assert.equal(loadedChatUi(), "react");
 });
 
-test("thinking provenance is excluded from ordinary projection including refreshed snapshots", () => {
+test("authorized thinking survives live and refreshed snapshot projection", () => {
   const projected = (content: string, metadata: Record<string, unknown>, status: ConversationItem["status"]) => item("thought", {
     lane: "process", userReadable: true, content, status,
     data: messageTimingData({ id: 1, conversationId: 7, senderType: "agent", senderName: "agent.thinking",
@@ -198,8 +198,9 @@ test("thinking provenance is excluded from ordinary projection including refresh
       ], status === "streaming" ? "running" : "completed");
       const content = toThreadMessages(history)[1]?.content;
       assert.ok(Array.isArray(content));
-      assert.deepEqual(content.filter((part) => part.type === "data-thinking"), []);
-      assert.doesNotMatch(JSON.stringify(content), /真实思考正文/);
+      assert.deepEqual(content.filter((part) => part.type === "data-thinking"), [
+        { type: "data-thinking", id: "thought", data: { text: "真实思考正文", active: status === "streaming" } },
+      ]);
     }
   }
   for (const thought of [

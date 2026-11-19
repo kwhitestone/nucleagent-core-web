@@ -59,12 +59,12 @@ function htmlFor(messages: ReturnType<typeof projection.toThreadMessages>) {
   return renderToString(React.createElement(App));
 }
 
-test("same-image live and restored projection excludes raw thought without deleting any of 18 calls", () => {
+test("same-image live and restored projection preserves authorized thought and all 18 calls", () => {
   for (const status of ["streaming", "complete"] as const) {
     const items = fixture();
     items[0].status = status;
     const messages = projection.toThreadMessages(stateOf(items));
-    assert.doesNotMatch(JSON.stringify(messages), /RAW_REASONING_SENTINEL/);
+    assert.match(JSON.stringify(messages), /RAW_REASONING_SENTINEL/);
     const content = messages[0].content as { type: string; isError?: boolean; toolCallId?: string }[];
     const calls = content.filter(part => part.type === "tool-call");
     assert.equal(calls.length, 18);
@@ -73,13 +73,17 @@ test("same-image live and restored projection excludes raw thought without delet
   }
 });
 
-test("native reasoning and legacy thinking parts never enter ordinary DOM", () => {
+test("native reasoning stays hidden while projected thinking has its own collapsed fold", () => {
   const html = htmlFor([{ id: "legacy", role: "assistant", metadata: { custom: {} }, status: { type: "complete", reason: "stop" }, content: [
     { type: "reasoning", text: "NATIVE_REASONING_SENTINEL" },
     { type: "data-thinking", data: { text: "LEGACY_THINKING_SENTINEL", active: true } },
     { type: "text", text: "普通答复" },
   ] }]);
-  assert.doesNotMatch(html, /REASONING_SENTINEL|THINKING_SENTINEL/);
+  assert.doesNotMatch(html, /NATIVE_REASONING_SENTINEL/);
+  const fold = new JSDOM(html).window.document.querySelector('details.mc-reasoning');
+  assert.ok(fold);
+  assert.equal(fold.hasAttribute('open'), false);
+  assert.equal(fold.querySelector('pre')?.textContent, 'LEGACY_THINKING_SENTINEL');
   assert.match(html, /普通答复/);
 });
 
