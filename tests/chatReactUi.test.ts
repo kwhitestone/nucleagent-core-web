@@ -62,7 +62,7 @@ test("effort capability states disable radio choices and suppress a remembered u
     }));
     assert.equal((html.match(/disabled=""/g) ?? []).length, 4);
     assert.match(html, /aria-checked="true"/);
-    assert.match(html, new RegExp(`chatReact.effort${evidence ? "Ineffective" : "Unverified"}`));
+    assert.match(html, /chatReact.optionUnavailable/);
   }
 });
 
@@ -367,7 +367,7 @@ test("process timing is not repeated in the header; independent TTFT diagnostic 
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
 });
 
-test("effort radios: unsupported levels disabled and labelled, honest effect note; non-codex disabled", () => {
+test("effort radios preserve gates while showing short product language", () => {
   const html = (value: string, view: object) => renderToString(React.createElement(app.ModelControls, { t, value, view, onChange: () => {}, defaultOpen: true }));
   const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
   const document = new JSDOM(partial).window.document;
@@ -376,20 +376,21 @@ test("effort radios: unsupported levels disabled and labelled, honest effect not
   assert.equal(choices[1].getAttribute("aria-checked"), "true");
   assert.equal(choices[2].disabled, false);
   assert.equal(choices[3].disabled, true);
-  assert.equal(choices[3].title, "chatReact.effortOff");
-  assert.match(partial, /chatReact.effortIneffective/);
+  assert.equal(choices[3].title, "chatReact.optionUnavailable");
+  assert.doesNotMatch(partial, /chatReact.effortIneffective/);
   const other = html("", { disabled: true, off: ["low", "medium", "high"], note: "backend" });
   assert.equal((other.match(/disabled=""/g) ?? []).length, 4);
-  assert.match(other, /chatReact.effortBackend/);
-  assert.match(html("", { disabled: false, off: [], note: "unverified" }), /chatReact.effortUnverified/);
-  assert.match(html("", { disabled: false, off: [], note: "effective" }), /chatReact.effortEffective/);
+  assert.match(other, /chatReact.optionUnavailable/);
+  assert.doesNotMatch(html("", { disabled: false, off: [], note: "unverified" }), /chatReact.effortUnverified/);
+  assert.doesNotMatch(html("", { disabled: false, off: [], note: "effective" }), /chatReact.effortEffective/);
 });
 
-test("composer: effect note is visible text (not only a tooltip) once a level is being sent", () => {
+test("composer: selected effort stays by its control without engineering footnotes", () => {
   const base = { choice: "high" as const, set: () => {} };
   const on = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
     effort: { ...base, sent: "high", view: { disabled: false, off: [], note: "unverified" } } }));
-  assert.match(on, /data-testid="mc-effort-note">chatReact.effort · chatReact.effortUnverified</);
+  assert.doesNotMatch(on, /mc-effort-note|chatReact.effortUnverified/);
+  assert.match(on, /data-testid="mc-effort-value">chatReact.effortHigh</);
   const off = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
     effort: { ...base, sent: "", view: { disabled: true, off: ["low", "medium", "high"], note: "backend" } } }));
   assert.doesNotMatch(off, /mc-effort-note/);

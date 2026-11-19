@@ -358,7 +358,16 @@
   background: transparent;
 }
 .mc-input::placeholder { color: var(--fg-tertiary); }
-.mc-toolbar { display: flex; align-items: center; gap: 6px; margin-top: 6px; min-width: 0; }
+.mc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; min-width: 0; }
+.mc-add { flex: none; }
+.mc-add .mc-menu { width: min(240px, calc(100vw - 48px)); }
+.mc-tools-panel { max-height: min(45dvh, 360px); overflow: auto; overscroll-behavior: contain; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.mc-tools-panel[hidden], .mc-workflow summary[hidden] { display: none; }
+.mc-tools-heading { display: flex; align-items: center; justify-content: space-between; }
+.mc-tools-panel .mc-workflow { margin: 0; }
+.mc-tools-panel .mc-hint { display: block; text-align: left; }
+.mc-controls > .mc-icon-btn { width: auto; gap: 4px; padding-inline: 6px; }
+.mc-controls [data-testid="mc-effort-value"] { font-size: 12px; }
 .mc-spacer { flex: 1; }
 /* --fg-secondary on --bg-page ≈ 5.9:1 (tertiary was ≈ 3.3:1). */
 .mc-hint { margin: 6px auto 0; max-width: 760px; text-align: center; font-size: 12px; color: var(--fg-secondary); }
@@ -524,6 +533,11 @@
   .mc-welcome-title { font-size: 19px; }
   .mc-suggestions { grid-template-columns: 1fr; }
   .mc-composer { border-radius: 16px; }
+  .mc-toolbar { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr) auto; }
+  .mc-toolbar > .mc-model-picker { grid-row: 2; grid-column: 1 / 5; justify-self: start; max-width: 100%; }
+  .mc-toolbar > .mc-controls { grid-row: 2; grid-column: 5; }
+  .mc-toolbar > .mc-send, .mc-toolbar > .mc-round { grid-row: 1; grid-column: 5; }
+  .mc-toolbar > .mc-spacer { display: none; }
   .mc-hint { display: none; }
   .mc-pill-text, .mc-model-exec { display: none; }
   .mc-model-trigger { max-width: min(140px, 100%); }

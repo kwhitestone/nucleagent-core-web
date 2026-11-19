@@ -11,8 +11,8 @@ export const toolSchema = (id: number) => getPlatformRuntime().http.get<{ data: 
 export const EnumSelect = ({ t, options, ...rest }: { t: Translate; options: string[] } & React.SelectHTMLAttributes<HTMLSelectElement>) =>
   <select {...rest}><option value="">{t("chatReact.workflowChoose")}</option>{options.map((value) => <option key={value}>{value}</option>)}</select>;
 
-export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (request: ToolInvocation, name: string) => Promise<void>; disabled?: boolean }) {
-  const [open, setOpen] = useState(false);
+export function WorkflowForm({ t, submit, disabled, embedded = false }: { t: Translate; submit: (request: ToolInvocation, name: string) => Promise<void>; disabled?: boolean; embedded?: boolean }) {
+  const [open, setOpen] = useState(embedded);
   const [tools, setTools] = useState<ToolCatalogItem[]>([]);
   const [selected, setSelected] = useState(0);
   const [schema, setSchema] = useState<WorkflowSchema>();
@@ -61,7 +61,7 @@ export function WorkflowForm({ t, submit, disabled }: { t: Translate; submit: (r
     catch { setError("workflowUnknown"); }
   };
   return <details className="mc-workflow" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="mc-pill">{t("chatReact.workflow")}</summary>
+    <summary className="mc-pill" hidden={embedded}>{t("chatReact.workflow")}</summary>
     <form onSubmit={run}>
       <p className="mc-hint">{t("chatReact.workflowHint")}</p>
       <select aria-label={t("chatReact.workflow")} value={selected} disabled={busy} onChange={(event) => setSelected(Number(event.target.value))}>

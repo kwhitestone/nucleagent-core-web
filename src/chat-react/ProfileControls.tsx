@@ -33,9 +33,9 @@ export default function ProfileControls({ t, backend, providerId, model, scope, 
     {error && <p className="mc-menu-label" role="alert">{t("chatReact.profileError")}</p>}
     {[{ id: "", displayName: t("chatReact.effortDefault"), enabled: true } as Profile, ...profiles].map((profile) =>
       <button key={profile.id} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
-        aria-checked={selected === profile.id} disabled={disabled || !profile.enabled} title={profile.enabled ? undefined : profile.reason}
+        aria-checked={selected === profile.id} disabled={disabled || !profile.enabled} title={profile.enabled ? undefined : t("chatReact.optionUnavailable")}
         onClick={() => onChange({ scope, profileId: profile.id, efforts: profile.efforts })}>
-        <span className="mc-menu-text">{profile.displayName}{profile.enabled || !profile.reason ? "" : `（${profile.reason}）`}</span>
+        <span className="mc-menu-text">{profile.displayName}{profile.enabled ? "" : `（${t("chatReact.optionUnavailable")}）`}</span>
         {selected === profile.id && <CheckMark size={14} />}
       </button>)}
     <p className="mc-menu-label">{t("chatReact.profileNote")}</p>

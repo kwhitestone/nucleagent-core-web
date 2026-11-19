@@ -68,6 +68,8 @@ test("an unmeasured model keeps the default profile usable while effort stays di
     assert.ok(radios.slice(0, 4).every((radio) => radio.disabled));
     assert.equal(radios[4]!.disabled, false);
     assert.ok(radios.slice(5).every((radio) => radio.disabled));
+    assert.doesNotMatch(container.innerHTML, /未验证|已验证参数|原生链|原生后端/);
+    assert.match(container.textContent!, /chatReact.optionUnavailable/);
     await React.act(async () => radios[4]!.click());
     assert.equal(selected?.profileId, "");
   } finally { catalog = original; await React.act(async () => root.unmount()); fetched = originalFetched; }
@@ -102,7 +104,7 @@ test("profiles are radio items of the single Controls menu and are fetched on it
       ["chatReact.effortDefault", "false", false, "mc-menu-item", -1],
       ["快速", "true", false, "mc-menu-item", -1],
       ["思考", "false", false, "mc-menu-item", -1],
-      ["长上下文（unsupported）", "false", true, "mc-menu-item", -1],
+      ["长上下文（chatReact.optionUnavailable）", "false", true, "mc-menu-item", -1],
     ]);
     assert.match(container.textContent!, /chatReact\.profileNote/);
     const group = radios[4]!.closest("[role=group]")!;

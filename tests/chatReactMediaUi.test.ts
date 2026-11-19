@@ -120,6 +120,61 @@ async function fixture() {
   };
 }
 
+test("composer tools keep draft and workflow parameters across menu, keyboard and close; session change clears the form", async () => {
+  const view = await fixture();
+  const aui = await import("@assistant-ui/react");
+  const { externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts");
+  const { createConversationState } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
+  const { SESSION_CHANGE_EVENT } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const Viewport = (await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts")).ThreadPrimitive.Viewport;
+  response = url => ({ data: url.includes("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
+    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["style"], properties: { style: { type: "string", enum: ["水彩"] } } },
+  } });
+  const submitted: unknown[] = [];
+  function Harness({ existing = false }: { existing?: boolean }) {
+    const runtime = aui.useExternalStoreRuntime(externalStore(createConversationState("7"), { send: async () => {}, stop: async () => {} }));
+    return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null,
+      React.createElement(app.Composer, { t, placeholder: "p", settings: { groups: [], model: null, backend: null, busy: false, pick: async () => {} } as never,
+        workflow: !existing && React.createElement(WorkflowForm, { embedded: true, t, submit: async request => { submitted.push(request); } }),
+      })));
+  }
+  const more = () => view.container.querySelector<HTMLButtonElement>('[aria-label="chatReact.addTools"]')!;
+  try {
+    await view.render(React.createElement(Harness));
+    await type(view, "草稿保持");
+    assert.equal(view.container.querySelector(".mc-workflow"), null);
+    await React.act(async () => more().dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    assert.equal(document.activeElement?.getAttribute("data-testid"), "mc-attach");
+    await React.act(async () => document.activeElement!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    assert.equal(document.activeElement?.textContent, "chatReact.workflow");
+    await React.act(async () => (document.activeElement as HTMLButtonElement).click());
+    assert.ok(view.container.querySelector(".mc-composer .mc-workflow"));
+    assert.equal(view.container.querySelector("form form"), null);
+    assert.equal(document.activeElement?.tagName, "SELECT");
+    const selects = () => view.container.querySelectorAll<HTMLSelectElement>(".mc-workflow select");
+    await React.act(async () => { selects()[0]!.value = "37"; selects()[0]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await React.act(async () => { selects()[1]!.value = "水彩"; selects()[1]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await React.act(async () => selects()[1]!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    assert.equal(document.activeElement, more());
+    assert.ok(view.container.querySelector<HTMLDivElement>(".mc-tools-panel")!.hidden);
+    await React.act(async () => more().click());
+    await view.click("chatReact.workflow");
+    assert.equal(selects()[1]!.value, "水彩");
+    assert.equal(view.container.querySelector<HTMLTextAreaElement>("textarea")!.value, "草稿保持");
+    await React.act(async () => view.container.querySelector(".mc-workflow form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { style: "水彩" } }]);
+    await React.act(async () => window.dispatchEvent(new window.Event(SESSION_CHANGE_EVENT)));
+    assert.equal(view.container.querySelector(".mc-workflow"), null);
+    await React.act(async () => more().click());
+    await view.click("chatReact.workflow");
+    assert.equal(selects()[0]!.value, "0");
+    await view.render(React.createElement(Harness, { existing: true }));
+    assert.equal(view.container.querySelector(".mc-tools-panel"), null);
+    assert.equal(view.container.querySelector('[data-testid="mc-attach"]')?.getAttribute("role"), "menuitem");
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
+});
+
 test("workflow selector finds later-page tools without admitting held or unimported tools", async () => {
   const view = await fixture();
   response = (url) => {

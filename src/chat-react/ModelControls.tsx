@@ -13,7 +13,7 @@ export function useMenu(defaultOpen = false, refocus?: unknown) {
   const [open, setOpen] = useState(defaultOpen);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]:not(:disabled):not([aria-disabled=true])") ?? [])];
+  const items = () => [...(root.current?.querySelectorAll<HTMLButtonElement>("[role^=menuitem]:not(:disabled):not([aria-disabled=true])") ?? [])];
   useEffect(() => {
     if (!open) return;
     (items().find((item) => item.getAttribute("aria-checked") === "true") ?? items()[0])?.focus();
@@ -53,15 +53,15 @@ export function ModelControls({ t, value, view, onChange, children, disabled, de
   }}>
     <button ref={trigger} type="button" className="mc-icon-btn" aria-label={t("chatReact.modelControls")}
       title={t("chatReact.modelControls")} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
-      disabled={disabled} onClick={() => open ? close() : setOpen(true)}><ControlsMark /></button>
+      disabled={disabled} onClick={() => open ? close() : setOpen(true)}><ControlsMark />{value && <span data-testid="mc-effort-value">{label(value)}</span>}</button>
     <div id={id} className="mc-menu" role="menu" aria-label={t("chatReact.modelControls")} hidden={!open}>
       <div className="mc-menu-label">{t("chatReact.effort")}</div>
-      <p className="mc-menu-label" id={`${id}-note`}>{label(view.note)}</p>
+      {view.disabled && <p className="mc-menu-label">{t("chatReact.optionUnavailable")}</p>}
       {(["", ...EFFORT_LEVELS] as const).map((level) => {
         const off = disabled || view.disabled || (level !== "" && view.off.includes(level));
         return <button key={level} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
-          aria-checked={value === level} aria-describedby={`${id}-note`} disabled={off}
-          title={off ? label(view.disabled ? view.note : "off") : undefined} onClick={() => onChange(level)}>
+          aria-checked={value === level} disabled={off}
+          title={off ? t("chatReact.optionUnavailable") : undefined} onClick={() => onChange(level)}>
           <span className="mc-menu-text">{label(level || "default")}</span>{value === level && <CheckMark size={14} />}
         </button>;
       })}

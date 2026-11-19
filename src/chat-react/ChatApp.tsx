@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import ProfileControls from "./ProfileControls";
 import ToolIO from "./ToolIO";
 import {
@@ -53,7 +53,7 @@ import { useModelPreference } from "./useModelPreference";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
-import { getPlatformRuntime } from "@/contracts/platform-runtime";
+import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { ScrollViewport, ScrollToLatest } from './ScrollViewport';
 import { ThinkingFold } from './ThinkingFold';
 
@@ -179,11 +179,11 @@ export function ChatApp(props: ChatProps) {
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
             <Composer t={t} settings={settings} effort={effort}
+              workflow={!conversationId && <WorkflowForm embedded t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
+                await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
+              }} />}
               controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
-            {!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
-              await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
-            }} />}
           </div>
       </ThreadPrimitive.Root>
       </ThreadPrimitive.ViewportProvider>
@@ -257,15 +257,14 @@ function CopyAction({ t }: { t: Translate }) {
   );
 }
 
-/** Round "+" attach button; the cap matches Core's MAX_ATTACHMENTS like AttachmentPicker.vue's `max`. */
-function AttachButton({ t }: { t: Translate }) {
+function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
   const count = useAuiState((s) => s.composer.attachments.length);
   const uploading = useAuiState((s) => s.composer.attachments.some((a) => a.status.type === "running"));
   const label = uploading ? t("common.attachmentUploading") : t("chatReact.attach");
   return (
-    <ComposerPrimitive.AddAttachment className="mc-round" data-testid="mc-attach" title={label} aria-label={label}
+    <ComposerPrimitive.AddAttachment className="mc-menu-item" role="menuitem" tabIndex={-1} onClick={onClick} data-testid="mc-attach" title={label} aria-label={label}
       data-busy={uploading || undefined} disabled={count >= MAX_ATTACHMENTS}>
-      <PlusMark />
+      <FileMark kind="file" />{label}
     </ComposerPrimitive.AddAttachment>
   );
 }
@@ -307,7 +306,18 @@ export function ProfileSlot(props: ComponentProps<typeof ProfileControls>) {
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, effort, controls }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode }) {
+export function Composer({ t, settings, placeholder, effort, controls, workflow }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode; workflow?: ReactNode }) {
+  const menu = useMenu();
+  const menuId = useId();
+  const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
+  const tools = useRef<HTMLDivElement>(null);
+  const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
+  useEffect(() => { if (toolsOpen) tools.current?.querySelector("select")?.focus(); }, [toolsOpen]);
+  useEffect(() => {
+    const reset = () => { setToolsOpen(null); menu.setOpen(false); };
+    window.addEventListener(SESSION_CHANGE_EVENT, reset);
+    return () => window.removeEventListener(SESSION_CHANGE_EVENT, reset);
+  }, []);
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
@@ -322,7 +332,14 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
     || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
-      <ComposerPrimitive.Root className="mc-composer">
+      <div className="mc-composer">
+      {workflow && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
+      }}>
+        <div className="mc-tools-heading"><strong>{t("chatReact.workflow")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
+        {workflow}
+      </div>}
+      <ComposerPrimitive.Root>
         <ComposerAttachmentChips t={t} />
         {imageText && <p className="mc-hint" role="status" data-testid="mc-image-hint" data-vision={settings.imageGate!.state}>{imageText}</p>}
         <ComposerPrimitive.Queue>
@@ -341,7 +358,22 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
         </div>}
         <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         <div className="mc-toolbar">
-          <AttachButton t={t} />
+          <div className="mc-model mc-add" ref={menu.root} onBlur={event => {
+            if (!event.currentTarget.contains(event.relatedTarget)) menu.setOpen(false);
+          }} onKeyDown={event => {
+            if (event.key === "Escape" && menu.open) { event.preventDefault(); event.stopPropagation(); menu.close(); }
+            else if (event.key === "Tab") menu.setOpen(false);
+            else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+              event.preventDefault();
+              if (!menu.open) menu.setOpen(true); else menu.rove(event.key);
+            }
+          }}>
+            <button ref={menu.trigger} type="button" className="mc-round" aria-label={t("chatReact.addTools")} title={t("chatReact.addTools")} aria-haspopup="menu" aria-expanded={menu.open} aria-controls={menuId} onClick={() => menu.open ? menu.close() : menu.setOpen(true)}><PlusMark /></button>
+            <div id={menuId} role="menu" className="mc-menu" hidden={!menu.open} aria-label={t("chatReact.addTools")}>
+              <AttachButton t={t} onClick={menu.close} />
+              {workflow && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); setToolsOpen(true); }}><ToolMark />{t("chatReact.workflow")}</button>}
+            </div>
+          </div>
           <MediaPill kind="image" t={t} settings={settings} running={running} />
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
@@ -356,9 +388,9 @@ export function Composer({ t, settings, placeholder, effort, controls }: { t: Tr
           )}
         </div>
       </ComposerPrimitive.Root>
+      </div>
       <p className="mc-hint">{t("chatReact.hint")}</p>
       {!settings.media && settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
-      {!settings.media && effort?.sent && <p className="mc-hint" data-testid="mc-effort-note">{effortNote(t, effort.view)}</p>}
     </ComposerPrimitive.AttachmentDropzone>
   );
 }
@@ -383,7 +415,6 @@ export function useEffort(settings: { model: ModelChoice | null; backend: string
   return { choice, view, sent: sentEffort(choice, view), set: (level: EffortChoice) => { storeEffort(key, level); bump((n) => n + 1); } };
 }
 
-const effortNote = (t: Translate, view: ReturnType<typeof effortView>) => `${t("chatReact.effort")} · ${t(`chatReact.effort${cap(view.note)}`)}`;
 
 function ComposerAttachmentChips({ t }: { t: Translate }) {
   return (
