@@ -52,6 +52,11 @@ export function ScrollViewport({ conversationId, ready, children, className }: {
         sentAnchor = latest;
         position.following = true;
       }
+      if (sentAnchor && !sentAnchor.isConnected) {
+        sentAnchor = rows.length === userCount ? latest : undefined;
+        if (position.anchor === latestUser) position.anchor = latest?.dataset.scrollMessage;
+        if (!sentAnchor) spacer.style.height = '0px';
+      }
       latestUser = latest?.dataset.scrollMessage;
       userCount = rows.length;
       if (sentAnchor?.isConnected) {

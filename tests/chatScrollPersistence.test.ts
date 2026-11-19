@@ -10,7 +10,7 @@ let vite: any, React: any, createRoot: any, aui: any, Viewport: any;
 const resizeCallbacks = new Set<() => void>();
 before(async () => {
   for (const [name, value] of Object.entries({ window: browser.window, document: browser.window.document, navigator: browser.window.navigator,
-    HTMLElement: browser.window.HTMLElement, Element: browser.window.Element, MutationObserver: browser.window.MutationObserver,
+    HTMLElement: browser.window.HTMLElement, Element: browser.window.Element, Node: browser.window.Node, MutationObserver: browser.window.MutationObserver,
     ResizeObserver: class { callback: () => void; constructor(callback: () => void) { this.callback = callback; } observe() { resizeCallbacks.add(this.callback); } unobserve() {} disconnect() { resizeCallbacks.delete(this.callback); } },
     requestAnimationFrame: (callback: any) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
     IS_REACT_ACT_ENVIRONMENT: true })) Object.defineProperty(globalThis, name, { configurable: true, value });
@@ -21,6 +21,38 @@ before(async () => {
   ({ ScrollViewport: Viewport } = await vite.ssrLoadModule('/src/chat-react/ScrollViewport.tsx'));
 });
 after(async () => { await vite?.close(); browser.window.close(); });
+
+test('server confirmation replaces the optimistic DOM anchor without leaving stale bottom space', async () => {
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  let contentHeight = 200;
+  Object.defineProperty(browser.window.HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 });
+  Object.defineProperty(browser.window.HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 1000 });
+  const originalRect = browser.window.HTMLElement.prototype.getBoundingClientRect;
+  browser.window.HTMLElement.prototype.getBoundingClientRect = function() {
+    const top = this.hasAttribute('data-scroll-spacer') ? 100 + contentHeight : this.dataset.messageRole === 'user' ? 100 : 0;
+    return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON() {} };
+  };
+  function View({ latest }: { latest?: string }) {
+    const runtime = aui.useExternalStoreRuntime({ messages: [], isRunning: false, convertMessage: (value: any) => value, onNew: async () => {} });
+    return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, { conversationId: 'confirmed-anchor', ready: true, className: 'viewport' },
+      React.createElement('div', { key: 'old', 'data-scroll-message': 'old', 'data-message-role': 'user' }),
+      latest && React.createElement('div', { key: latest, 'data-scroll-message': latest, 'data-message-role': 'user' })));
+  }
+  const show = async (latest?: string) => { await React.act(async () => root.render(React.createElement(View, { latest }))); };
+  const resize = async () => { await React.act(async () => { for (const callback of resizeCallbacks) callback(); await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); }); };
+  try {
+    await show(); await show('optimistic'); await resize();
+    assert.equal((container.querySelector('[data-scroll-spacer]') as HTMLElement).style.height, '400px');
+    await show('server-message'); contentHeight = 350; await resize();
+    assert.equal((container.querySelector('[data-scroll-spacer]') as HTMLElement).style.height, '250px');
+    await show(); await resize();
+    assert.equal((container.querySelector('[data-scroll-spacer]') as HTMLElement).style.height, '0px');
+  } finally {
+    await React.act(async () => root.unmount()); container.remove();
+    browser.window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+  }
+});
 
 for (const environment of ['dev', 'test', 'pre', 'prod']) {
   test(`${environment}: saved real scroll failure survives A → B → A remount`, async () => {
