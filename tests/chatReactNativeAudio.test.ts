@@ -12,7 +12,7 @@ test("native audio eligibility and binding use the explicit server contract", as
   validateWorkflowTool(row, schema);
   assert.deepEqual(workflowInvocation(71, schema, { input: "你好", voice: "fixture" }), { toolId: 71, revision: "9", arguments: { input: "你好", voice: "fixture" } });
   assert.equal(await directMediaTool(row.nativeModel, [row], async () => schema), null);
-  assert.equal(workflowToolEligible({ id: 1, imported: true, status: "ready" }), true);
+  assert.equal(workflowToolEligible({ id: 1, imported: true, status: "ready" }), false, "generic tools are agent grants, not user forms");
   for (const change of [{ nativeCapability: undefined }, { nativeCapability: "fake" }, { nativeModel: "other" }, { status: "held" }, { status: undefined }, { imported: true }, { mediaModel: row.nativeModel }]) {
     assert.equal(workflowToolEligible({ ...row, ...change }), false);
     assert.throws(() => validateWorkflowTool({ ...row, ...change }, schema));

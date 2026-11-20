@@ -47,7 +47,7 @@ export async function syncSessionBindings(id: string, signal?: AbortSignal): Pro
     `/api/v1/addons/conversation/${encodeURIComponent(id)}/bindings/sync`, {}, { signal, sessionBoundary: "business" }), signal);
   return bindings(r.data.data);
 }
-export async function updateSessionBindings(id: string, selection: Pick<SessionBindings, "skillIds" | "toolIds" | "revision">, signal?: AbortSignal): Promise<SessionBindings> {
+export async function updateSessionBindings(id: string, selection: Partial<Pick<SessionBindings, "skillIds">> & Pick<SessionBindings, "toolIds" | "revision">, signal?: AbortSignal): Promise<SessionBindings> {
   const r = await bounded((signal) => getPlatformRuntime().http.put<{ data: SessionBindings }>(
     `/api/v1/addons/conversation/${encodeURIComponent(id)}/bindings`, selection, { signal, sessionBoundary: "business" }), signal);
   return bindings(r.data.data);

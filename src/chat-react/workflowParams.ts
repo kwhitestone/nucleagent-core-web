@@ -20,20 +20,15 @@ type WorkflowTool = { id: number; imported?: boolean; status?: string; nativeCap
 const audioCapability = "nucleagent.audio.tts.v1";
 const sttCapability = "nucleagent.audio.stt.v1";
 
+/** MUYU-365 exp85: only native audio keeps a user form; every other tool is an agent grant (ToolGrants). */
 export function workflowToolEligible(row: WorkflowTool): boolean {
-  if (row.status !== "ready") return false;
-  if (!row.nativeCapability) return row.imported === true;
-  return row.imported === false && !row.mediaModel && ((row.nativeCapability === audioCapability && row.nativeModel === "qwen3-tts-flash")
+  return row.status === "ready" && row.imported === false && !row.mediaModel && ((row.nativeCapability === audioCapability && row.nativeModel === "qwen3-tts-flash")
     || (row.nativeCapability === sttCapability && row.nativeModel === "whisper-1"));
 }
 
 export function validateWorkflowTool(row: WorkflowTool, definition: WorkflowSchema): void {
   if (!workflowToolEligible(row) || row.id !== definition.invocation?.toolId) throw new Error("Invalid workflow");
   workflowFields(definition, true);
-  if (!row.nativeCapability) {
-    if (definition.nativeCapability) throw new Error("Invalid workflow");
-    return;
-  }
   const schema = definition.inputSchema;
   if (row.nativeCapability === sttCapability) {
     const field = schema.properties.fileId;

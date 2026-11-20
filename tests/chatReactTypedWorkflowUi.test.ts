@@ -10,6 +10,8 @@ let vite: ViteDevServer;
 let React: typeof import("react");
 let createRoot: typeof import("react-dom/client").createRoot;
 let WorkflowForm: typeof import("../src/chat-react/WorkflowForm.tsx").WorkflowForm;
+let DirectMediaFields: typeof import("../src/chat-react/DirectMediaFields.tsx").DirectMediaFields;
+let directMediaRequest: typeof import("../src/chat-react/workflowParams.ts").directMediaRequest;
 let dispose: () => void;
 let definition: WorkflowSchema;
 let dom: JSDOM;
@@ -24,6 +26,8 @@ before(async () => {
   React = await import("react");
   ({ createRoot } = await import("react-dom/client"));
   ({ WorkflowForm } = await vite.ssrLoadModule("/src/chat-react/WorkflowForm.tsx"));
+  ({ DirectMediaFields } = await vite.ssrLoadModule("/src/chat-react/DirectMediaFields.tsx"));
+  ({ directMediaRequest } = await vite.ssrLoadModule("/src/chat-react/workflowParams.ts"));
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   dispose = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
     get: async (url: string) => ({ data: url.endsWith("/schema") ? { data: definition } : { data: [{ id: definition.invocation!.toolId, name: "fixture", imported: !nativeAudio, status: "ready", ...(nativeAudio ? { nativeCapability: definition.nativeCapability, nativeModel: definition.model } : {}) }], hasMore: false } }),
@@ -60,17 +64,33 @@ test("native STT cannot bypass an unavailable owner picker through a manual file
   } finally { await view.close(); nativeAudio = false; globalThis.fetch = previousFetch; }
 });
 
+// MUYU-365 exp85: native audio keeps its user form (WorkflowForm); every other typed job form is the direct
+// media composer (DirectMediaFields), where the composer text is the prompt and the send is directMediaRequest.
 async function fixture(schema: WorkflowSchema) {
   definition = schema;
   const requests: unknown[] = [];
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await React.act(async () => root.render(React.createElement(WorkflowForm, {
-    t: (key: string) => key, submit: async (request) => { requests.push(request); },
-  })));
-  await React.act(async () => { const details = container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
-  await React.act(async () => { const select = container.querySelector("select")!; select.value = String(schema.invocation!.toolId); select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+  const direct = { toolId: schema.invocation!.toolId, schema, prompt: "prompt" };
+  let params: Record<string, string> = {};
+  let prompt = "";
+  let sent = false;
+  function Harness() {
+    const [state, setState] = React.useState<Record<string, string>>({});
+    params = state;
+    const blocked = (() => { try { directMediaRequest(direct, state, prompt || "x"); return false; } catch { return true; } })();
+    return React.createElement("div", null,
+      React.createElement(DirectMediaFields, { direct, params: state, t: (key: string) => key, setParam: (name: string, value: string) => setState((previous) => ({ ...previous, [name]: value })) }),
+      React.createElement("button", { type: "button", disabled: blocked }, "send"));
+  }
+  await React.act(async () => root.render(nativeAudio
+    ? React.createElement(WorkflowForm, { t: (key: string) => key, submit: async (request) => { requests.push(request); } })
+    : React.createElement(Harness)));
+  if (nativeAudio) {
+    await React.act(async () => { const details = container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
+    await React.act(async () => { const select = container.querySelector("select")!; select.value = String(schema.invocation!.toolId); select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+  }
   const control = (name: string) => {
     const label = [...container.querySelectorAll("label")].find((label) => label.textContent?.startsWith(name));
     assert.ok(label, `field ${name} rendered`);
@@ -81,6 +101,7 @@ async function fixture(schema: WorkflowSchema) {
   return {
     container, requests, control,
     change: async (name: string, value: string) => {
+      if (!nativeAudio && name === "prompt") { prompt = value; await React.act(async () => root.render(React.createElement(Harness))); return; }
       const input = control(name);
       await React.act(async () => {
         const prototype = input.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
@@ -88,7 +109,11 @@ async function fixture(schema: WorkflowSchema) {
         input.dispatchEvent(new window.Event(input.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
       });
     },
-    submit: async () => React.act(async () => { container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); }),
+    submit: async () => {
+      if (nativeAudio) return React.act(async () => { container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); });
+      if (sent) return;
+      try { requests.push(directMediaRequest(direct, params, prompt || "x").toolInvocation); sent = true; } catch { /* closed */ }
+    },
     close: async () => { await React.act(async () => root.unmount()); container.remove(); },
   };
 }
@@ -108,17 +133,16 @@ test("typed form renders saved integer enum and boolean, preserving false and ze
     await view.change("length", "0");
     await view.change("cfg", "0.5");
     await view.submit();
-    assert.deepEqual(view.requests, [{ toolId: 38, revision: "7", arguments: { duration: 5, watermark: false, length: 0, cfg: 0.5 } }]);
+    assert.deepEqual(view.requests, [{ toolId: 38, revision: "7", arguments: { prompt: "x", duration: 5, watermark: false, length: 0, cfg: 0.5 } }]);
   } finally { await view.close(); }
 });
 
 test("required image stays visible and unsatisfied without a controlled source", async () => {
   const view = await fixture(videoSchema);
   try {
-    assert.equal(view.control("image_url").required, true);
-    assert.equal(view.control("image_url").value, "");
-    assert.equal((view.control("image_url") as HTMLInputElement).readOnly, true);
-    assert.equal(view.control("prompt").required, true);
+    // An uncontrolled required image has no input at all: only the unavailable notice.
+    assert.equal(view.container.querySelector("input[type=text], input:not([type])"), null);
+    assert.match(view.container.textContent!, /image_url \*: chatReact.mediaUnavailable/);
     assert.deepEqual([...((view.control("duration") as HTMLSelectElement).options)].map((option) => option.value), ["", "5", "10"]);
     await view.change("prompt", "slow movement");
     await view.change("duration", "5");
@@ -135,10 +159,8 @@ test("actual start/end-frame source cannot bypass the controlled image gate thro
   } };
   const view = await fixture(schema);
   try {
-    for (const name of ["first_frame_url", "last_frame_url"]) {
-      assert.equal((view.control(name) as HTMLInputElement).readOnly, true);
-      await view.change(name, "https://example.test/uncontrolled.png");
-    }
+    for (const name of ["first_frame_url", "last_frame_url"]) assert.match(view.container.textContent!, new RegExp(`${name} \\*: chatReact.mediaUnavailable`));
+    assert.equal(view.container.querySelector("input[type=text], input:not([type])"), null, "no typed image URL input");
     await view.change("prompt", "move");
     await view.change("duration", "5");
     await view.change("resolution", "1080p");
@@ -157,7 +179,7 @@ test("clearing optional numbers omits them and required false is not a default",
     assert.equal(view.requests.length, 0);
     await view.change("watermark", "false");
     await view.submit();
-    assert.deepEqual(view.requests, [{ toolId: 38, revision: "7", arguments: { watermark: false } }]);
+    assert.deepEqual(view.requests, [{ toolId: 38, revision: "7", arguments: { prompt: "x", watermark: false } }]);
   } finally { await view.close(); }
 });
 

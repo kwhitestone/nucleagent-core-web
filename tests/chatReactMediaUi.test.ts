@@ -78,24 +78,27 @@ test("generation tools picker exposes the localized visible and accessible name 
   }
 });
 
-test("workflow form uses schema parameters and holds an unknown submission without replay", async () => {
+// MUYU-365 exp85: the user-filled form remains only for native audio (the text/file is the user's material).
+test("native audio form uses its schema and holds an unknown submission without replay", async () => {
   const view = await fixture();
-  response = (url) => ({ data: url.includes("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
-    model: "doubao-seedream-5-0-260128", declaredModel: "doubao-seedream-5-5-261028",
-    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["style"], properties: { style: { type: "string", enum: ["水彩"], maxLength: 8 } } },
+  response = (url) => ({ data: url.includes("/catalog") ? [{ id: 37, name: "语音合成", imported: false, status: "ready", nativeCapability: "nucleagent.audio.tts.v1", nativeModel: "qwen3-tts-flash" }] : {
+    nativeCapability: "nucleagent.audio.tts.v1", model: "qwen3-tts-flash", output: "audio/wav",
+    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "voice"], properties: { input: { type: "string", maxLength: 256 }, voice: { type: "string", maxLength: 64 } } },
   } });
   const submitted: unknown[] = [];
   try {
     await view.render(React.createElement(WorkflowForm, { t, submit: async (request) => { submitted.push(request); throw new Error("connection lost"); } }));
     await React.act(async () => { const details = view.container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
-    const selects = () => view.container.querySelectorAll("select");
-    await React.act(async () => { selects()[0]!.value = "37"; selects()[0]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    assert.match(view.container.textContent!, /doubao-seedream-5-0-260128/);
-    assert.match(view.container.textContent!, /doubao-seedream-5-5-261028/);
-    await React.act(async () => { selects()[1]!.value = "水彩"; selects()[1]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    const select = view.container.querySelector("select")!;
+    await React.act(async () => { select.value = "37"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    assert.doesNotMatch(view.container.textContent!, /workflowHint|workflowExecutionModel/);
+    for (const [index, value] of [[0, "你好"], [1, "Cherry"]] as const) {
+      const input = view.container.querySelectorAll("input")[index]!;
+      await React.act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new window.Event("input", { bubbles: true })); });
+    }
     await React.act(async () => view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
-    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { style: "水彩" } }]);
-    assert.equal(view.container.querySelector("button")!.disabled, true);
+    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { input: "你好", voice: "Cherry" } }]);
+    assert.equal(view.container.querySelector<HTMLButtonElement>("button[type=submit]")!.disabled, true);
     assert.match(view.container.textContent!, /workflowUnknown/);
     await React.act(async () => view.container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
     assert.equal(submitted.length, 1);
@@ -120,25 +123,32 @@ async function fixture() {
   };
 }
 
-test("composer tools keep draft and workflow parameters across menu, keyboard and close; session change clears the form", async () => {
+test("composer tools keep draft and audio parameters across menu, keyboard and close; session change clears the form", async () => {
   const view = await fixture();
   const aui = await import("@assistant-ui/react");
   const { externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts");
   const { createConversationState } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
   const { SESSION_CHANGE_EVENT } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   const Viewport = (await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts")).ThreadPrimitive.Viewport;
-  response = url => ({ data: url.includes("/catalog") ? [{ id: 37, name: "工作流", imported: true, status: "ready" }] : {
-    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["style"], properties: { style: { type: "string", enum: ["水彩"] } } },
+  response = url => ({ data: url.includes("/catalog") ? [{ id: 37, name: "语音合成", imported: false, status: "ready", nativeCapability: "nucleagent.audio.tts.v1", nativeModel: "qwen3-tts-flash" }] : {
+    nativeCapability: "nucleagent.audio.tts.v1", model: "qwen3-tts-flash", output: "audio/wav",
+    invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "voice"], properties: { input: { type: "string", maxLength: 256 }, voice: { type: "string", maxLength: 64 } } },
   } });
   const submitted: unknown[] = [];
   function Harness({ existing = false }: { existing?: boolean }) {
     const runtime = aui.useExternalStoreRuntime(externalStore(createConversationState("7"), { send: async () => {}, stop: async () => {} }));
     return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null,
       React.createElement(app.Composer, { t, placeholder: "p", settings: { groups: [], model: null, backend: null, busy: false, pick: async () => {} } as never,
-        workflow: !existing && React.createElement(WorkflowForm, { embedded: true, t, submit: async request => { submitted.push(request); } }),
+        grants: !existing && { tools: [], ids: [], enabled: [], editable: true, loaded: true, load: () => {}, toggle: () => {} },
+        workflow: !existing && React.createElement(WorkflowForm, { t, submit: async request => { submitted.push(request); } }),
       })));
   }
   const more = () => view.container.querySelector<HTMLButtonElement>('[aria-label="chatReact.addTools"]')!;
+  const inputs = () => view.container.querySelectorAll<HTMLInputElement>(".mc-workflow input");
+  const fill = async (index: number, value: string) => {
+    const input = inputs()[index]!;
+    await React.act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new window.Event("input", { bubbles: true })); });
+  };
   try {
     await view.render(React.createElement(Harness));
     await type(view, "草稿保持");
@@ -146,28 +156,30 @@ test("composer tools keep draft and workflow parameters across menu, keyboard an
     await React.act(async () => more().dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     assert.equal(document.activeElement?.getAttribute("data-testid"), "mc-attach");
     await React.act(async () => document.activeElement!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    assert.equal(document.activeElement?.textContent, "chatReact.workflow");
+    assert.equal(document.activeElement?.textContent, "chatReact.toolGrant");
     await React.act(async () => (document.activeElement as HTMLButtonElement).click());
     assert.ok(view.container.querySelector(".mc-composer .mc-workflow"));
     assert.equal(view.container.querySelector("form form"), null);
-    assert.equal(document.activeElement?.tagName, "SELECT");
-    const selects = () => view.container.querySelectorAll<HTMLSelectElement>(".mc-workflow select");
-    await React.act(async () => { selects()[0]!.value = "37"; selects()[0]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    await React.act(async () => { selects()[1]!.value = "水彩"; selects()[1]!.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    await React.act(async () => selects()[1]!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    const details = view.container.querySelector<HTMLDetailsElement>(".mc-workflow")!;
+    assert.equal(details.open, false, "the audio form stays folded until asked for");
+    await React.act(async () => { details.open = true; details.dispatchEvent(new window.Event("toggle")); });
+    const select = () => view.container.querySelector<HTMLSelectElement>(".mc-workflow select")!;
+    await React.act(async () => { select().value = "37"; select().dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await fill(0, "你好"); await fill(1, "Cherry");
+    await React.act(async () => inputs()[1]!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     assert.equal(document.activeElement, more());
     assert.ok(view.container.querySelector<HTMLDivElement>(".mc-tools-panel")!.hidden);
     await React.act(async () => more().click());
-    await view.click("chatReact.workflow");
-    assert.equal(selects()[1]!.value, "水彩");
+    await view.click("chatReact.toolGrant");
+    assert.equal(inputs()[1]!.value, "Cherry");
     assert.equal(view.container.querySelector<HTMLTextAreaElement>("textarea")!.value, "草稿保持");
     await React.act(async () => view.container.querySelector(".mc-workflow form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
-    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { style: "水彩" } }]);
+    assert.deepEqual(submitted, [{ toolId: 37, revision: "7", arguments: { input: "你好", voice: "Cherry" } }]);
     await React.act(async () => window.dispatchEvent(new window.Event(SESSION_CHANGE_EVENT)));
     assert.equal(view.container.querySelector(".mc-workflow"), null);
     await React.act(async () => more().click());
-    await view.click("chatReact.workflow");
-    assert.equal(selects()[0]!.value, "0");
+    await view.click("chatReact.toolGrant");
+    assert.equal(view.container.querySelector<HTMLDetailsElement>(".mc-workflow")!.open, false);
     await view.render(React.createElement(Harness, { existing: true }));
     assert.equal(view.container.querySelector(".mc-tools-panel"), null);
     assert.equal(view.container.querySelector('[data-testid="mc-attach"]')?.getAttribute("role"), "menuitem");
@@ -175,15 +187,15 @@ test("composer tools keep draft and workflow parameters across menu, keyboard an
   } finally { await view.close(); }
 });
 
-test("workflow selector finds later-page tools without admitting held or unimported tools", async () => {
+test("audio selector finds later-page native tools without admitting held or generic (grant-only) tools", async () => {
   const view = await fixture();
   response = (url) => {
     const page = new URL(url, "https://test.example").searchParams.get("page") ?? "1";
-    return page === "1" ? { hasMore: true, data: [{ id: 1, name: "first", imported: true, status: "ready" }] }
+    return page === "1" ? { hasMore: true, data: [{ id: 1, name: "first", imported: false, status: "ready", nativeCapability: "nucleagent.audio.tts.v1", nativeModel: "qwen3-tts-flash" }] }
       : { hasMore: false, data: [
-        { id: 290, name: "image", imported: true, status: "ready" },
-        { id: 291, name: "held", imported: true, status: "held" },
-        { id: 294, name: "unimported", imported: false, status: "ready" },
+        { id: 290, name: "stt", imported: false, status: "ready", nativeCapability: "nucleagent.audio.stt.v1", nativeModel: "whisper-1" },
+        { id: 291, name: "held", imported: false, status: "held", nativeCapability: "nucleagent.audio.stt.v1", nativeModel: "whisper-1" },
+        { id: 294, name: "generic", imported: true, status: "ready" },
       ] };
   };
   try {

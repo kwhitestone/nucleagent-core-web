@@ -16,6 +16,7 @@ import { getConversation, listExecutionBackends, updateConversationSettings } fr
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
 import { MediaCard } from "./MediaCard";
 import { toolSchema, WorkflowForm } from "./WorkflowForm";
+import { ToolGrantChips, ToolGrantList, useToolGrants, type ToolGrants } from "./ToolGrants";
 import { DirectMediaFields } from "./DirectMediaFields";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
@@ -103,6 +104,7 @@ export function ChatApp(props: ChatProps) {
   const defaultModelNow = useRef<ModelChoice | undefined>(undefined);
   defaultModelNow.current = !selectedSettings.model && preference.ready ? settings.model ?? undefined : undefined;
   const core = useCoreConversation(conversationId, report, () => turnNow.current, () => defaultModelNow.current);
+  const grants = useToolGrants(conversationId, t, locale);
   const messageActions = useMessageActions(conversationId, !!core && isRunning(core.state), props.navigate, (fork) => props.onFork?.(fork), report);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
@@ -149,6 +151,7 @@ export function ChatApp(props: ChatProps) {
         try {
           await start({
             input,
+            ...(grants.ids.length ? { toolIds: grants.ids } : {}),
             ...(settings.direct ? directMediaRequest(settings.direct, settings.params, input) : {}),
             ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
           }, !settings.media);
@@ -178,8 +181,8 @@ export function ChatApp(props: ChatProps) {
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
-            <Composer t={t} settings={settings} effort={effort}
-              workflow={!conversationId && <WorkflowForm embedded t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
+            <Composer t={t} settings={settings} effort={effort} grants={grants}
+              workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
               controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
@@ -306,13 +309,13 @@ export function ProfileSlot(props: ComponentProps<typeof ProfileControls>) {
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, effort, controls, workflow }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode; workflow?: ReactNode }) {
+export function Composer({ t, settings, placeholder, effort, controls, workflow, grants }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants }) {
   const menu = useMenu();
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
   const tools = useRef<HTMLDivElement>(null);
   const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
-  useEffect(() => { if (toolsOpen) tools.current?.querySelector("select")?.focus(); }, [toolsOpen]);
+  useEffect(() => { if (toolsOpen) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
   useEffect(() => {
     const reset = () => { setToolsOpen(null); menu.setOpen(false); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
@@ -333,14 +336,16 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow 
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
       <div className="mc-composer">
-      {workflow && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
+      {grants && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
       }}>
-        <div className="mc-tools-heading"><strong>{t("chatReact.workflow")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
+        <div className="mc-tools-heading"><strong>{t("chatReact.toolGrant")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
+        <ToolGrantList grants={grants} t={t} />
         {workflow}
       </div>}
       <ComposerPrimitive.Root>
         <ComposerAttachmentChips t={t} />
+        {grants && <ToolGrantChips grants={grants} t={t} />}
         {imageText && <p className="mc-hint" role="status" data-testid="mc-image-hint" data-vision={settings.imageGate!.state}>{imageText}</p>}
         <ComposerPrimitive.Queue>
           {() => (
@@ -371,7 +376,7 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow 
             <button ref={menu.trigger} type="button" className="mc-round" aria-label={t("chatReact.addTools")} title={t("chatReact.addTools")} aria-haspopup="menu" aria-expanded={menu.open} aria-controls={menuId} onClick={() => menu.open ? menu.close() : menu.setOpen(true)}><PlusMark /></button>
             <div id={menuId} role="menu" className="mc-menu" hidden={!menu.open} aria-label={t("chatReact.addTools")}>
               <AttachButton t={t} onClick={menu.close} />
-              {workflow && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); setToolsOpen(true); }}><ToolMark />{t("chatReact.workflow")}</button>}
+              {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); grants.load(); setToolsOpen(true); }}><ToolMark />{t("chatReact.toolGrant")}</button>}
             </div>
           </div>
           <MediaPill kind="image" t={t} settings={settings} running={running} />

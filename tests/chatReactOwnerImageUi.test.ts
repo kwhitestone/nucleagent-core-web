@@ -7,7 +7,8 @@ import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 let vite: ViteDevServer;
 let React: typeof import("react");
 let createRoot: typeof import("react-dom/client").createRoot;
-let Form: typeof import("../src/chat-react/WorkflowForm.tsx").WorkflowForm;
+let Fields: typeof import("../src/chat-react/DirectMediaFields.tsx").DirectMediaFields;
+let directMediaRequest: typeof import("../src/chat-react/workflowParams.ts").directMediaRequest;
 let dom: JSDOM, dispose: () => void;
 let version = 1;
 let items: unknown[];
@@ -24,7 +25,8 @@ before(async () => {
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
   await initializeRuntimeFixture(vite);
   React = await import("react"); ({ createRoot } = await import("react-dom/client"));
-  ({ WorkflowForm: Form } = await vite.ssrLoadModule("/src/chat-react/WorkflowForm.tsx"));
+  ({ DirectMediaFields: Fields } = await vite.ssrLoadModule("/src/chat-react/DirectMediaFields.tsx"));
+  ({ directMediaRequest } = await vite.ssrLoadModule("/src/chat-react/workflowParams.ts"));
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   dispose = registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => version, handleUnauthorizedResponse: () => {}, http: {
     get: async (url: string) => {
@@ -34,28 +36,37 @@ before(async () => {
   } });
 });
 after(async () => { dispose?.(); await vite?.close(); dom?.window.close(); });
+// MUYU-365 exp85: controlled images now live only in the direct media composer (DirectMediaFields);
+// the composer text is the prompt, and a submit is directMediaRequest on the chosen owner references.
 async function fixture(files: unknown[] = [file]) {
   items = files;
   const requests: unknown[] = [], container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);
-  await React.act(async () => root.render(React.createElement(Form, { t: (key: string) => key, submit: async (request: unknown) => { requests.push(request); } })));
-  await React.act(async () => { const details = container.querySelector("details")!; details.open = true; details.dispatchEvent(new window.Event("toggle")); });
-  await React.act(async () => { const select = container.querySelector("select")!; select.value = "789"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+  const direct = { toolId: 789, schema, prompt: "prompt" };
+  let params: Record<string, string> = {};
+  function Harness() {
+    const [state, setState] = React.useState<Record<string, string>>({});
+    params = state;
+    return React.createElement("div", null, React.createElement(Fields, { direct, params: state, t: (key: string) => key, setParam: (name: string, value: string) => setState((previous) => ({ ...previous, [name]: value })) }));
+  }
+  await React.act(async () => root.render(React.createElement(Harness)));
+  await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   const change = async (label: string, value: string) => React.act(async () => {
-    const input = label === "prompt" ? container.querySelector("input")! : container.querySelector(`[aria-label="${label}"]`)!;
+    const input = container.querySelector(`[aria-label="${label}"]`)!;
     Object.getOwnPropertyDescriptor(input.tagName === "SELECT" ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype, "value")!.set!.call(input, value);
     input.dispatchEvent(new window.Event(input.tagName === "SELECT" ? "change" : "input", { bubbles: true }));
   });
+  let sent = false;
   return { container, requests, change,
-    submit: () => React.act(async () => { container.querySelector("form")!.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })); }),
+    submit: async () => { if (sent) return; try { requests.push(directMediaRequest(direct, params, "animate").toolInvocation); sent = true; } catch { /* closed */ } },
     close: async () => { await React.act(async () => root.unmount()); container.remove(); pending = undefined; },
   };
 }
 test("two-frame workflow submits selected owner references once and never accepts typed image URLs", async () => {
   const view = await fixture();
   try {
-    assert.equal(view.container.querySelectorAll("input").length, 1);
-    await view.change("prompt", "animate"); await view.change("首帧图片", file.fileId); await view.submit();
+    assert.equal(view.container.querySelectorAll("input").length, 0, "no typed image URL input");
+    await view.change("首帧图片", file.fileId); await view.submit();
     assert.equal(view.requests.length, 0);
     await view.change("尾帧图片", file.fileId); await view.submit(); await view.submit();
     assert.deepEqual(view.requests, [{ toolId: 789, revision: "5", arguments: { prompt: "animate", first_frame_url: "storage-image:owned-image", last_frame_url: "storage-image:owned-image" } }]);
@@ -76,6 +87,7 @@ test("account changes discard pending owner lists and release both frame selecti
   pending = new Promise(done => { resolve = done; });
   const view = await fixture();
   try {
+    pending = new Promise(() => {}); // the new account's own list is still loading
     await React.act(async () => { version++; window.dispatchEvent(new window.Event("nucleagent:session-change")); });
     await React.act(async () => resolve({ code: 0, data: { owner: "user:11", items: [file], hasMore: false } }));
     assert.equal(view.container.textContent!.includes(file.origName), false);

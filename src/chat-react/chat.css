@@ -562,3 +562,9 @@
   .mc-root *, .mc-root *::before, .mc-root *::after, .mc-msg { animation: none !important; transition: none !important; }
   .mc-shimmer { color: var(--fg-secondary); background: none; }
 }
+/* MUYU-365 exp85: tool grants — enable-only list in the tools panel, removable chips above the input. */
+.mc-grants { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
+.mc-grants .mc-menu-item { width: 100%; justify-content: space-between; }
+.mc-grants .mc-menu-item[aria-pressed="true"] { color: var(--fg-primary); font-weight: 500; }
+.mc-grants .mc-menu-item[aria-pressed="true"]::after { content: "✓"; }
+.mc-grants-label { align-self: center; color: var(--fg-tertiary); font-size: 12px; }
