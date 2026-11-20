@@ -532,13 +532,12 @@ export const stepState = (core: unknown, aui: { type: string }, isError?: boolea
 };
 const coreStatus = (part: object) => ((part as { providerMetadata?: unknown }).providerMetadata as { core?: { status?: string } } | undefined)?.core?.status;
 
-function Step({ state, name, tool, t, children }: { state: StepState; name: string; tool?: boolean; t: Translate; children?: ReactNode }) {
+function Step({ state, name, children }: { state: StepState; name: string; children?: ReactNode }) {
   return (
     <div className="mc-step" data-state={state} tabIndex={-1}>
       <div className="mc-step-head">
-        <span className="mc-step-icon" aria-hidden="true"><ToolMark /></span>
+        <span className="mc-step-icon" aria-hidden="true" />
         <span className="mc-step-name">{name}</span>
-        {tool && <span className="mc-step-tag"><ToolMark />{t("chatReact.tool")}</span>}
       </div>
       {children}
     </div>
@@ -549,7 +548,7 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
   const r = part.result as ToolResult | undefined;
   const sources = (r?.sources ?? []).filter((s) => s.url && /^https?:\/\//i.test(s.url));
   return (
-    <Step state={stepState(coreStatus(part), part.status, part.isError)} name={part.toolName} tool t={t}>
+    <Step state={stepState(coreStatus(part), part.status, part.isError)} name={part.toolName}>
       {r?.query && <p className="mc-step-detail"><b>{t("chatReact.query")}</b> {r.query}</p>}
       {sources.length > 0 && (
         <ul className="mc-tool-sources" aria-label={t("chatReact.sources")}>
@@ -615,7 +614,7 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "data":
             if (part.name === "thinking") {
               const thought = part.data as { text: string; active: boolean };
-              return <ThinkingFold text={thought.text} label={t("chatReact.reasoning")} latest={t("chatReact.toBottom")} />;
+              return <ThinkingFold text={thought.text} label={t("chatReact.reasoning")} latest={t("chatReact.toBottom")} mark={<span className="mc-process-chevron"><ChevronMark size={16} /></span>} />;
             }
             if (part.name === "process-step") {
               return null;
@@ -662,25 +661,26 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
   const isUser = role === "user";
   const time = formatMessageTime(createdAt?.toISOString());
   const author = isUser ? t("conversation.you") : t("home.greeting");
+  const stamp = time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>;
+  const toggle = source && <button type="button" className="mc-source-toggle" aria-pressed={raw}
+    onClick={() => setRawKey(raw ? null : sourceKey)}>{t(raw ? "chatReact.renderedView" : "chatReact.rawView")}</button>;
   return (
     <MessagePrimitive.Root className="mc-msg" data-scroll-message={messageId} data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
-      <div className="mc-header">
-        {/* The user side shows only the avatar ("你"), labelled for screen readers instead of a duplicate name. */}
-        <span className="mc-avatar" aria-hidden={isUser ? undefined : "true"} role={isUser ? "img" : undefined} aria-label={isUser ? author : undefined}
-          title={isUser ? time || undefined : undefined}>{isUser ? t("conversation.you") : <AssistantMark />}</span>
-        {!isUser && <span className="mc-author" title={time || undefined}>{author}</span>}
-        {time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>}
-        {source && <button type="button" className="mc-source-toggle" aria-pressed={raw}
-          onClick={() => setRawKey(raw ? null : sourceKey)}>{t(raw ? "chatReact.renderedView" : "chatReact.rawView")}</button>}
-      </div>
-      <div className="mc-bubble">
-        {!isUser && activity !== null && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" />{activity || t('chatReact.processing')}</p>}
+      {/* exp84 (OWUI UserMessage): the user side is the bubble alone; 原文 and the exact time move into its hover bar. */}
+      {!isUser && <div className="mc-header">
+        <span className="mc-avatar" aria-hidden="true"><AssistantMark /></span>
+        <span className="mc-author" title={time || undefined}>{author}</span>
+        {stamp}{toggle}
+      </div>}
+      <div className="mc-bubble" aria-label={isUser ? author : undefined}>
+        {!isUser && activity !== null && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" /><span className="mc-shimmer">{activity || t('chatReact.processing')}</span></p>}
         {raw && <pre className="mc-raw-body" role="region" aria-label={t("chatReact.rawView")} tabIndex={0}>{source}</pre>}
         <Parts t={t} raw={raw} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
       <ActionBarPrimitive.Root className="mc-actions" aria-busy={actions?.busy} hideWhenRunning autohide="never">
         <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
+        {isUser && <>{toggle}{stamp}</>}
       </ActionBarPrimitive.Root>
       {!isUser && <TurnUsage t={t} usage={turnUsage({ conversationId, turnId }, evidence)} />}
     </MessagePrimitive.Root>

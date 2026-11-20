@@ -1,7 +1,7 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
-export function ThinkingFold({ text, label, latest }: {
-  text: string; label: string; latest: string;
+export function ThinkingFold({ text, label, latest, mark }: {
+  text: string; label: string; latest: string; mark?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [following, setFollowing] = useState(true);
@@ -12,7 +12,7 @@ export function ThinkingFold({ text, label, latest }: {
   };
   useLayoutEffect(() => { if (open && following) bottom(); }, [text, open, following]);
   return <details className="mc-process mc-reasoning" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary className="mc-process-head">{label}</summary>
+    <summary className="mc-process-head" aria-expanded={open}>{mark}<span className="mc-process-label">{label}</span></summary>
     <pre ref={region} className="mc-step-detail" tabIndex={0} onScroll={(event) => {
       const view = event.currentTarget;
       const near = view.scrollHeight - view.clientHeight - view.scrollTop <= 8;

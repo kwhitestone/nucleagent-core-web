@@ -512,8 +512,9 @@ test("ChatApp message rows: avatar, author, time, aui action bar, merged 执行�
         h(ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => h(MessageRow, { role: message.role, t }))));
   }
   const html = renderToString(h(App));
-  // User side: avatar only (labelled, time in its title), no duplicate 你 name; time still revealed on hover.
-  assert.match(html, /data-message-role="user"[^>]*><div class="mc-header"><span class="mc-avatar" role="img" aria-label="你" title="2026-11-13 \d\d:00:00">你<\/span><time class="mc-time"[^>]*>2026-11-13 \d\d:00:00</);
+  // exp84 (OWUI UserMessage): user side is the labelled bubble alone; 原文 and the exact time sit in its hover bar.
+  assert.match(html, /data-message-role="user"[^>]*><div class="mc-bubble" aria-label="你">/);
+  assert.match(html, /data-message-role="user".*?class="mc-actions".*?class="mc-source-toggle".*?<time class="mc-time"[^>]*>2026-11-13 \d\d:00:00</s);
   assert.match(html, /data-message-role="assistant".*class="mc-author"[^>]*>NucleAgent</s);
   assert.equal(html.match(/<button[^>]*class="mc-icon-btn"[^>]*aria-label="复制"/g)?.length, 2, "aui ActionBar copy on both rows");
   assert.equal(html.match(/aria-label="chatReact.reload"/g)?.length, 1, "重新生成 only on the assistant row");
