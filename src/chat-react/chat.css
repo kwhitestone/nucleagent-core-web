@@ -189,6 +189,7 @@
 .mc-process[open] .mc-process-chevron { transform: none; }
 .mc-process-label { font-weight: 500; color: var(--fg-secondary); flex: none; }
 .mc-process-summary::before { content: "· "; }
+.mc-process-summary:empty { display: none; }
 .mc-process-timing { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); white-space: nowrap; }
 .mc-process-ttft { margin: 0 0 2px 25px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-tertiary); }
 .mc-process[open] > .mc-step:last-child { margin-bottom: 8px; }
@@ -197,7 +198,7 @@
 .mc-step-more:hover { background: var(--bg-hover); }
 .mc-step-more:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 1px; }
 .mc-step { position: relative; padding: 3px 0 3px 14px; display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
-.mc-step > :not(.mc-step-head):not(.mc-call-record), .mc-call-record[open] { flex-basis: 100%; }
+.mc-step > :not(.mc-step-head):not(.mc-call-record):not(.mc-tool-io), .mc-call-record[open], .mc-tool-io:has(> div) { flex-basis: 100%; }
 .mc-step-head { min-height: 24px; }
 .mc-step-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mc-step-icon { position: absolute; left: 0; top: 12px; width: 6px; height: 6px; border-radius: 50%; background: var(--fg-tertiary); opacity: .6; }
@@ -543,8 +544,10 @@
   .mc-model-trigger { max-width: min(140px, 100%); }
   .mc-menu { width: min(300px, calc(100vw - 32px)); }
 }
-.mc-tool-io { margin: 8px 0; font-size: 12px; }
-.mc-tool-io button { color: inherit; background: transparent; border: 0; cursor: pointer; padding: 6px 0; }
+.mc-tool-io { margin: 0; font-size: 12px; color: var(--fg-tertiary); }
+.mc-tool-io button { color: inherit; font: inherit; background: transparent; border: 0; border-radius: 6px; cursor: pointer; padding: 0 4px; }
+.mc-tool-io button:hover { background: var(--bg-hover); color: var(--fg-primary); }
+.mc-tool-io > div { margin: 4px 0 6px; }
 .mc-tool-io pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; }
 .mc-tool-io dl > div { display: flex; gap: 12px; padding: 3px 0; }
 .mc-tool-io dt { flex: 0 0 110px; }
