@@ -63,10 +63,17 @@ test("an aborted or retired adapter cannot map a late snapshot into the current 
   get = async path => ({ data: { code: 0, data: path.endsWith("/messages") ? rows : conversation } });
   const controller = new AbortController(); controller.abort();
   await assert.rejects(adapter.loadSnapshot({ signal: controller.signal }), { name: "AbortError" });
-  token = "next-account";
-  await assert.rejects(adapter.loadSnapshot({ signal: new AbortController().signal }), { name: "AbortError" });
+  await adapter.loadSnapshot({ signal: new AbortController().signal });
+  // MUYU-365 exp98 W1: the session is resolved per request. A change while a request is in flight is rejected
+  // (late snapshot), and a snapshot read under the old account never reaches the new account's cache.
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  get = async path => { await gate; return { data: { code: 0, data: path.endsWith("/messages") ? rows : conversation } }; };
+  const late = adapter.loadSnapshot({ signal: new AbortController().signal });
+  token = "next-account"; release();
+  await assert.rejects(late, { name: "AbortError" });
   adapter.cacheSnapshot({ items: [], status: "completed", hasOlder: false });
   assert.equal(adapterFor(() => "41").readCachedSnapshot(), undefined);
+  token = "test-account";
 });
 
 test("a permission failure evicts the cached preview before the next visit", async () => {

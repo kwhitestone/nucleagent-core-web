@@ -42,6 +42,10 @@ export interface ConversationControllerOptions {
 const toError = (value: unknown): Error =>
   value instanceof Error ? value : new Error(String(value));
 
+const SESSION_CHANGED = "Conversation session changed";
+const isSessionChanged = (error: unknown) =>
+  (error as Error | undefined)?.name === "AbortError" && (error as Error).message === SESSION_CHANGED;
+
 /**
  * Snapshot → SSE → reducer controller (retry, optimistic send, stop). No UI framework:
  * Vue wraps it in useConversation; the React island observes it via useSyncExternalStore.
@@ -68,7 +72,22 @@ export const createConversationController = (
       }
     | undefined;
 
+  // A request that outlived its session scope (useConversationAdapter loadSnapshot)
+  // is not a user-facing failure: re-run initialize once on the current scope
+  // instead of toasting and retrying the same request (MUYU-365 exp98 W1).
+  let sessionRecovery = false;
+  const recoverSession = () => {
+    if (sessionRecovery) {
+      snapshotStatus.value = "error";
+      dispatch({ type: "connection.changed", status: "error", error: SESSION_CHANGED });
+      return;
+    }
+    sessionRecovery = true;
+    void start();
+  };
+
   const reportError = (error: Error) => {
+    if (isSessionChanged(error)) return recoverSession();
     const key = `${error.name}:${error.message}`;
     if (key === lastReportedError) return;
     lastReportedError = key;
@@ -168,6 +187,7 @@ export const createConversationController = (
       if (signal.aborted || generation !== subscriptionGeneration) return;
       applySnapshot(snapshot, signal, generation);
       authoritativeReady.value = true;
+      sessionRecovery = false;
       clearReportedError();
     } catch (error) {
       if (!signal.aborted && generation === subscriptionGeneration) {
@@ -233,7 +253,7 @@ export const createConversationController = (
             error: normalized.message,
           });
           reportError(normalized);
-          if (isAuthenticationFailure(error)) return;
+          if (isAuthenticationFailure(error) || isSessionChanged(error)) return;
           await waitForRetry(signal, retryAttempt++);
         }
       }
@@ -285,7 +305,7 @@ export const createConversationController = (
             error: normalized.message,
           });
           reportError(normalized);
-          if (isAuthenticationFailure(error)) return;
+          if (isAuthenticationFailure(error) || isSessionChanged(error)) return;
         }
       }
     }
@@ -326,7 +346,10 @@ export const createConversationController = (
     ensureSubscription(refreshSnapshot);
   }
 
-  const initialize = async () => {
+  // External initialize (mount, renewal, manual retry) grants a fresh recovery budget.
+  const initialize = () => { sessionRecovery = false; return start(); };
+
+  const start = async () => {
     // props may already point at another conversation. The captured adapter
     // remains the only owner allowed to save the state we are leaving.
     saveSnapshot();
@@ -465,7 +488,7 @@ export const createConversationController = (
       if (!isCurrent()) return;
       // Other members already accepted: reconciliation must not restore the draft.
       reportError(toError(error));
-      if (!isAuthenticationFailure(error)) ensureSubscription(true);
+      if (!isAuthenticationFailure(error) && !isSessionChanged(error)) ensureSubscription(true);
       return;
     }
     if (isCurrent()) ensureSubscription();

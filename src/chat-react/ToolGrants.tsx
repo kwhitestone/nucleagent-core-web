@@ -13,6 +13,10 @@ import type { Translate } from "./ChatApp";
  * turn). Core re-checks every id (Selectable) and every call still passes the gateway checks.
  * Media job tools (direct image/video) and native audio (user-chosen material) are not grants.
  */
+/** Both writers of this conversation's revisioned bindings (grants, media job tools) share each saved set. */
+export const BINDINGS_EVENT = "mc-bindings";
+const share = (saved: SessionBindings) => { window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: saved })); return saved; };
+
 export function useToolGrants(conversationId: string | undefined, t: Translate, locale: string) {
   const [rows, setRows] = useState<ToolCatalogItem[]>();
   const [bound, setBound] = useState<Partial<SessionBindings> & { busy?: boolean }>({ toolIds: [] });
@@ -24,8 +28,10 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     const reset = () => { generation.current++; setBound({ toolIds: [] }); setRows(undefined); };
     reset();
     if (conversationId) getSessionBindings(conversationId).then(later(setBound), () => {});
+    const saved = (event: Event) => setBound((event as CustomEvent<SessionBindings>).detail);
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
-    return () => window.removeEventListener(SESSION_CHANGE_EVENT, reset);
+    window.addEventListener(BINDINGS_EVENT, saved);
+    return () => { window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
   }, [conversationId]);
   const ids = bound.toolIds!, editable = !conversationId || !!bound.editable;
   useEffect(() => { if (ids.length) load(); }, [ids.length > 0]);
@@ -39,7 +45,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
       if (!conversationId) return setBound({ toolIds });
       setBound({ ...bound, busy: true });
       updateSessionBindings(conversationId, { toolIds, revision: bound.revision! })
-        .then(later(setBound), later(() => { setBound(bound); toast.error(t("common.bindingsSaveFailed")); }));
+        .then(later((saved: SessionBindings) => setBound(share(saved))), later(() => { setBound(bound); toast.error(t("common.bindingsSaveFailed")); }));
     },
   };
 }

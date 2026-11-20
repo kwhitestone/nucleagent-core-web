@@ -83,14 +83,25 @@ const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is
   && Number.isSafeInteger((t as ToolCatalogItem).id) && (t as ToolCatalogItem).id > 0 && typeof (t as ToolCatalogItem).name === "string")
   .map((t) => ({ ...t, skillIds: Array.isArray(t.skillIds) ? t.skillIds.filter((id) => Number.isSafeInteger(id)) : [] }));
 
-/** Every catalog page (Core caps pageSize at 100) until hasMore is false, at most `maxPages`; [] on 404/405 like listToolCatalog. */
+/** Every catalog page (Core caps pageSize at 100) until hasMore is false, at most `maxPages`; [] on 404/405 like listToolCatalog.
+ * MUYU-365 exp98: page 1 tells the total, so the remaining pages are requested together instead of one by one. */
 export async function listToolCatalogPages(maxPages = 50): Promise<ToolCatalogItem[]> {
-  const out: ToolCatalogItem[] = [];
+  const read = (page: number) => getPlatformRuntime().http.get<{ data?: unknown; hasMore?: boolean; total?: number }>(`${TOOL_CATALOG_PATH}?page=${page}&pageSize=100`)
+    .then((r) => r.data);
+  const rows = (body?: { data?: unknown }) => wellFormed(Array.isArray(body?.data) ? body.data : []);
   try {
-    for (let page = 1; page <= maxPages; page++) {
-      const r = await getPlatformRuntime().http.get<{ data?: unknown; hasMore?: boolean }>(`${TOOL_CATALOG_PATH}?page=${page}&pageSize=100`);
-      out.push(...wellFormed(Array.isArray(r.data?.data) ? r.data.data : []));
-      if (r.data?.hasMore !== true) break;
+    const first = await read(1);
+    const out = rows(first);
+    const total = Number(first?.total);
+    if (first?.hasMore === true && Number.isSafeInteger(total) && total > 0) {
+      const pages = Math.min(maxPages, Math.ceil(total / 100));
+      for (const body of await Promise.all(Array.from({ length: pages - 1 }, (_, i) => read(i + 2)))) out.push(...rows(body));
+      return out;
+    }
+    for (let page = 2, more = first?.hasMore === true; more && page <= maxPages; page++) {
+      const body = await read(page);
+      out.push(...rows(body));
+      more = body?.hasMore === true;
     }
     return out;
   } catch (e) {

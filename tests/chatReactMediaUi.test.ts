@@ -358,7 +358,8 @@ test("direct media send key: enabled only with real text, a loaded job schema an
     await settle();
     assert.doesNotMatch(view.container.textContent!, /chatReact.mediaUnavailable/);
     const select = view.container.querySelector<HTMLSelectElement>('[data-testid="mc-media-mode"] select')!;
-    assert.equal(sendKey(view).disabled, true, "required parameter not chosen");
+    assert.equal(select.value, "1:1", "MUYU-365 exp98: a required choice starts at the schema's first value");
+    assert.equal(sendKey(view).disabled, false, "nothing has to be picked to send");
     await React.act(async () => { select.value = "16:9"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
     assert.equal(sendKey(view).disabled, false, "text + schema + required choice");
     await type(view, "");

@@ -412,6 +412,18 @@
   cursor: pointer;
 }
 .mc-pill:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg-primary); }
+.mc-pill[aria-pressed="true"] { background: var(--bg-fill); color: var(--fg-primary); }
+.mc-pill[aria-busy="true"] { cursor: progress; }
+/* MUYU-365 exp98: media mode panel — model line, required choices only, a closed 高级 fold. */
+.mc-media-panel { display: grid; gap: 8px; margin: 0 0 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-fill); font-size: 13px; color: var(--fg-secondary); }
+.mc-media-panel > strong { color: var(--fg-primary); font-weight: 600; }
+.mc-media-panel[aria-busy="true"] > strong { opacity: .6; }
+.mc-media-panel p { margin: 0; }
+.mc-media-fields { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.mc-media-fields label { display: inline-flex; align-items: center; gap: 6px; }
+.mc-media-fields select, .mc-media-fields input { font: inherit; height: 28px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--border-input); border-radius: 8px; background: var(--bg-card); color: var(--fg-primary); }
+.mc-media-advanced summary { cursor: pointer; width: fit-content; }
+.mc-media-advanced[open] summary { margin-bottom: 8px; }
 .mc-pill:disabled { opacity: 0.5; cursor: default; }
 /* Not yet available: same solid border as the other controls, lower contrast, aria-disabled + "即将开放" tooltip. */
 .mc-pill--off { color: var(--fg-tertiary); background: var(--bg-dialog-muted); cursor: not-allowed; }

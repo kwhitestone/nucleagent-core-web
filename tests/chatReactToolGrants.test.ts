@@ -122,9 +122,11 @@ test("picking a tool only enables it: no schema read, no parameter field, no run
     assert.equal(view.grant("暂停中"), undefined);
     assert.equal(view.grant("图片"), undefined);
     assert.equal(document.activeElement, view.grant("飞书读取文档"), "focus moves to the first tool");
+    // MUYU-365 exp98: media job schemas are prefetched when the conversation mounts; enabling a grant adds none.
+    const before = reads.length;
     await view.click(view.grant("飞书读取文档"));
     assert.equal(view.grant("飞书读取文档")!.getAttribute("aria-pressed"), "true");
-    assert.equal(reads.filter((url) => url.includes("/schema")).length, 0, "enabling never loads a parameter schema");
+    assert.equal(reads.slice(before).filter((url) => url.includes("/schema")).length, 0, "enabling never loads a parameter schema");
     assert.equal(panel.querySelectorAll("input:not([type=checkbox]), textarea").length, 0, "no parameter inputs");
     assert.doesNotMatch(view.container.textContent!, /document_id|workflowHint|workflowExecutionModel/);
     assert.equal(panel.querySelector(".mc-grants form, .mc-grants input, .mc-grants select"), null, "the grant list has no form");

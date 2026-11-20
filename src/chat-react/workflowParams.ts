@@ -5,7 +5,7 @@ type Field = {
   "x-owned-image"?: boolean;
   anyOf?: Field[];
   type?: string; description?: string; minLength?: number; maxLength?: number; enum?: WorkflowValue[];
-  minimum?: number; maximum?: number; exclusiveMinimum?: number; exclusiveMaximum?: number;
+  minimum?: number; maximum?: number; exclusiveMinimum?: number; exclusiveMaximum?: number; default?: WorkflowValue;
 };
 export interface WorkflowSchema {
   nativeCapability?: string;
@@ -100,6 +100,8 @@ export function workflowInvocation<Values extends Record<string, WorkflowValue>>
 type MediaRow = { id: number; imported?: boolean; status?: string; mediaModel?: string };
 /** `prompt` names the schema field that carries the composer text ("input", or the source's own free-text prompt). */
 export type DirectMedia = { toolId: number; schema: WorkflowSchema; prompt: string };
+/** Per media model: sendable (`bind` = cataloged, to be bound to this conversation first), null = no prompt field, false = not enabled here. */
+export type Wired = Record<string, (DirectMedia & { bind?: true }) | null | false>;
 const freeText = (field?: Field) => field?.type === "string" && !field.enum;
 export const mediaImageField = (name: string) => ["image_url", "first_frame_url", "last_frame_url"].includes(name);
 /** The composer text goes to `input`; else to the source's own `prompt` when it is the only free-text required field. */
@@ -142,9 +144,35 @@ export function workflowFormInvocation(toolId: number, schema: WorkflowSchema, p
   return workflowInvocation(toolId, schema, values);
 }
 
+/** Required owned-image fields (first/last frame): filled from the composer's image attachments, never typed. */
+const ownedFields = (direct: DirectMedia) => (direct.schema.inputSchema.required ?? []).filter((name) => direct.schema.inputSchema.properties[name]?.["x-owned-image"]);
+const pendingFrame = "storage-image:pending";
+
+/** MUYU-365 exp98: the composer's images in order become the frames; `missing` names the first frame still needed. */
+export function mediaFrames(direct: DirectMedia, files: readonly { id: string; mimeType?: string }[]) {
+  const images = files.filter((file) => /^image\//.test(file.mimeType ?? "") && /^[a-zA-Z0-9_-]{1,128}$/.test(file.id));
+  const params: Record<string, string> = {}, used: string[] = [];
+  let missing: string | undefined;
+  for (const name of ownedFields(direct)) {
+    const file = images[used.length];
+    if (file) { params[name] = `storage-image:${file.id}`; used.push(file.id); } else missing ??= name;
+  }
+  return missing ? { params, used, missing } : { params, used };
+}
+
+/** Required choices start at the schema's default or first allowed value, so nothing has to be picked to send. */
+export function mediaDefaults(direct: DirectMedia): Record<string, string> {
+  const required = direct.schema.inputSchema.required ?? [];
+  return Object.fromEntries(workflowFields(direct.schema, true).flatMap(([name, field]) => {
+    const value = field.default ?? field.enum?.[0];
+    return required.includes(name) && name !== direct.prompt && !field["x-owned-image"] && value !== undefined ? [[name, String(value)]] : [];
+  }));
+}
+
+/** Ready to send once the text and every choice are valid; a missing frame is reported on send, not by a closed key. */
 export function directMediaReady(direct: DirectMedia, params: Record<string, string>, input: string): boolean {
   try {
-    directMediaRequest(direct, params, input);
+    directMediaRequest(direct, { ...Object.fromEntries(ownedFields(direct).map((name) => [name, pendingFrame])), ...params }, input);
     return true;
   } catch { return false; }
 }

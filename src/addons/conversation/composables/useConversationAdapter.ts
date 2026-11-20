@@ -418,7 +418,12 @@ export function createConversationAdapter(
   const conversationKey = conversationId();
   const key = () => conversationKey;
   const { send, stop } = commands;
-  const navigation = conversationNavigation.forConversation(conversationKey);
+  // The session owner is resolved per call, not once per adapter: a same-account
+  // token renewal must not retire this adapter forever (MUYU-365 exp98 W1). Each
+  // request still rejects a session change that happens while it is in flight,
+  // and only the scope that produced the last snapshot may cache it.
+  const navigation = () => conversationNavigation.forConversation(conversationKey);
+  let loadedScope: ReturnType<typeof navigation> | undefined;
 
   const versionTracker = createConversationStreamVersionTracker();
   const settledPhaseSteps = new Map<number, unknown>();
@@ -473,17 +478,19 @@ export function createConversationAdapter(
   }
 
   return {
-    readCachedSnapshot: navigation.read,
-    cacheSnapshot: navigation.write,
+    readCachedSnapshot: () => navigation().read(),
+    cacheSnapshot: (snapshot) => loadedScope?.write(snapshot),
     async loadSnapshot(request: SnapshotRequest): Promise<ConversationSnapshot> {
+      const scope = navigation();
       const [list, conversation] = await Promise.all([
         getMessages(key(), request.signal), getConversation(key()),
       ]).catch((error: unknown) => {
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) navigation.forget();
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) scope.forget();
         throw error;
       });
       request.signal?.throwIfAborted();
-      if (!navigation.isCurrent()) throw new DOMException("Conversation session changed", "AbortError");
+      if (!scope.isCurrent()) throw new DOMException("Conversation session changed", "AbortError");
+      loadedScope = scope;
       const timing = snapshotTiming(conversation);
       // 模块级缓存必须按 conversation 隔离；快照是该会话的权威全量状态，
       // 每次重拉先清空旧桶，避免切换会话或重连后补发幽灵 thinking/clarify。

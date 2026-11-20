@@ -1,15 +1,24 @@
 import { workflowFields, mediaImageField, type DirectMedia } from "./workflowParams";
 import type { Translate } from "./ChatApp";
 import { ParameterField } from "./ParameterField";
-import { AudioFilePicker } from "./AudioFilePicker";
 
-export function DirectMediaFields({ direct, params = {}, setParam, t }: {
-  direct: DirectMedia; params?: Record<string, string>; setParam?(name: string, value: string): void; t: Translate;
+/**
+ * MUYU-365 exp98: only required choices show (prefilled from the schema); optional parameters stay in a closed
+ * 高级 fold and are left to the model's defaults. Owned frames come from the composer's "+" images, never a picker.
+ */
+export function DirectMediaFields({ direct, params = {}, setParam, t, frame }: {
+  direct: DirectMedia; params?: Record<string, string>; setParam?(name: string, value: string): void; t: Translate; frame?: boolean;
 }) {
-  return workflowFields(direct.schema, true).filter(([name]) => name !== direct.prompt).map(([name, field]) => {
-    const required = direct.schema.inputSchema.required?.includes(name);
-    if (field["x-owned-image"]) return <AudioFilePicker key={`${direct.toolId}:${direct.schema.invocation?.revision}:${name}`} image label={name} disabled={!setParam} value={params[name] ?? ""} onChange={value => setParam?.(name, value)} />;
-    if (mediaImageField(name)) return <p key={name}>{field.description || name}{required ? " *" : ""}: {t("chatReact.mediaUnavailable")}</p>;
-    return <ParameterField key={name} field={field} name={name} t={t} value={params[name] ?? ""} required={required} onChange={event => setParam?.(name, event.target.value)} />;
-  });
+  const required = direct.schema.inputSchema.required ?? [];
+  const field = ([name, field]: ReturnType<typeof workflowFields>[number]) => mediaImageField(name) && !field["x-owned-image"]
+    ? <p key={name}>{field.description || name}{required.includes(name) ? " *" : ""}: {t("chatReact.mediaUnavailable")}</p>
+    : <ParameterField key={name} field={field} name={name} t={t} value={params[name] ?? ""} required={required.includes(name)} onChange={event => setParam?.(name, event.target.value)} />;
+  const fields = workflowFields(direct.schema, true).filter(([name, field]) => name !== direct.prompt && !field["x-owned-image"]);
+  const shown = fields.filter(([name]) => required.includes(name)), advanced = fields.filter(([name]) => !required.includes(name));
+  const frames = frame && required.some(name => direct.schema.inputSchema.properties[name]?.["x-owned-image"]);
+  return <>
+    {frames && <p className="mc-media-note">{t("chatReact.mediaFrameHint")}</p>}
+    {shown.length > 0 && <div className="mc-media-fields">{shown.map(field)}</div>}
+    {advanced.length > 0 && <details className="mc-media-advanced"><summary>{t("chatReact.mediaAdvanced")}</summary><div className="mc-media-fields">{advanced.map(field)}</div></details>}
+  </>;
 }

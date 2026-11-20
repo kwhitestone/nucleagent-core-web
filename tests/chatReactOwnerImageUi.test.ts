@@ -47,7 +47,7 @@ async function fixture(files: unknown[] = [file]) {
   function Harness() {
     const [state, setState] = React.useState<Record<string, string>>({});
     params = state;
-    return React.createElement("div", null, React.createElement(Fields, { direct, params: state, t: (key: string) => key, setParam: (name: string, value: string) => setState((previous) => ({ ...previous, [name]: value })) }));
+    return React.createElement("div", null, React.createElement(Fields, { direct, params: state, frame: true, t: (key: string) => key, setParam: (name: string, value: string) => setState((previous) => ({ ...previous, [name]: value })) }));
   }
   await React.act(async () => root.render(React.createElement(Harness)));
   await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
@@ -62,25 +62,29 @@ async function fixture(files: unknown[] = [file]) {
     close: async () => { await React.act(async () => root.unmount()); container.remove(); pending = undefined; },
   };
 }
-test("two-frame workflow submits selected owner references once and never accepts typed image URLs", async () => {
+// MUYU-365 exp98 W2e: frames come from the composer's "+" images (mediaFrames), not a picker in the panel.
+test("two-frame workflow takes the composer images in order, once, and never accepts typed image URLs", async () => {
   const view = await fixture();
+  const { mediaFrames } = await vite.ssrLoadModule("/src/chat-react/workflowParams.ts");
   try {
-    assert.equal(view.container.querySelectorAll("input").length, 0, "no typed image URL input");
-    await view.change("首帧图片", file.fileId); await view.submit();
-    assert.equal(view.requests.length, 0);
-    await view.change("尾帧图片", file.fileId); await view.submit(); await view.submit();
-    assert.deepEqual(view.requests, [{ toolId: 789, revision: "5", arguments: { prompt: "animate", first_frame_url: "storage-image:owned-image", last_frame_url: "storage-image:owned-image" } }]);
+    assert.equal(view.container.querySelectorAll("input,select").length, 0, "no typed image URL input and no picker");
+    const direct = { toolId: 789, schema, prompt: "prompt" };
+    const one = mediaFrames(direct, [{ id: "owned-image", mimeType: "image/png" }]);
+    assert.equal(one.missing, "last_frame_url", "the end frame is still needed");
+    const both = mediaFrames(direct, [{ id: "notes", mimeType: "application/pdf" }, { id: "first", mimeType: "image/png" }, { id: "last", mimeType: "image/jpeg" }]);
+    assert.deepEqual(both, { params: { first_frame_url: "storage-image:first", last_frame_url: "storage-image:last" }, used: ["first", "last"] });
+    assert.deepEqual(directMediaRequest(direct, both.params, "animate").toolInvocation,
+      { toolId: 789, revision: "5", arguments: { prompt: "animate", first_frame_url: "storage-image:first", last_frame_url: "storage-image:last" } });
+    assert.throws(() => directMediaRequest(direct, { first_frame_url: "https://example.com/a.png", last_frame_url: "storage-image:last" }, "animate"));
   } finally { await view.close(); }
 });
-test("invalid MIME, inactive and oversized files are unavailable; foreign owner pages fail closed", async () => {
-  for (const files of [[{ ...file, mimeType: "image/svg+xml" }, { ...file, fileId: "large", size: 4700001 }, { ...file, fileId: "inactive", status: "retained" }], [{ ...file, createdBy: "user:12" }]]) {
-    const view = await fixture(files);
-    try {
-      assert.ok([...view.container.querySelectorAll<HTMLOptionElement>('[aria-label="首帧图片"] option')].filter(option => option.value).every(option => option.disabled));
-      await view.submit(); assert.equal(view.requests.length, 0);
-      if (files[0].createdBy === "user:12") assert.ok(view.container.querySelector('[role="alert"]'));
-    } finally { await view.close(); }
-  }
+test("only well-formed image attachments can become frames; others are left as attachments", async () => {
+  const { mediaFrames } = await vite.ssrLoadModule("/src/chat-react/workflowParams.ts");
+  const direct = { toolId: 789, schema, prompt: "prompt" };
+  const frames = mediaFrames(direct, [{ id: "../x", mimeType: "image/png" }, { id: "svg", mimeType: "text/plain" }, { id: "ok", mimeType: "image/png" }]);
+  assert.deepEqual(frames, { params: { first_frame_url: "storage-image:ok" }, used: ["ok"], missing: "last_frame_url" });
+  const view = await fixture();
+  try { assert.match(view.container.textContent!, /chatReact.mediaFrameHint/, "the panel says how to add the frame"); } finally { await view.close(); }
 });
 test("account changes discard pending owner lists and release both frame selections", async () => {
   let resolve!: (value: unknown) => void;

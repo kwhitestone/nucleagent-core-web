@@ -14,15 +14,16 @@ import {
 import { listProviders, listAllTypedModels, type Provider, type TypedModel } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
 import type { Conversation, CreateConversationRequest, ExecutionBackendOption, ModelChoice } from "@/addons/conversation/api/types";
+import type { ConversationAttachment } from "@/addons/conversation/task-conversation/core";
 import { MediaCard } from "./MediaCard";
 import { toolSchema, WorkflowForm } from "./WorkflowForm";
-import { ToolGrantChips, ToolGrantList, useToolGrants, type ToolGrants } from "./ToolGrants";
+import { BINDINGS_EVENT, ToolGrantChips, ToolGrantList, useToolGrants, type ToolGrants } from "./ToolGrants";
 import { DirectMediaFields } from "./DirectMediaFields";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
-import { directMediaRequest, directMediaTool, directMediaReady, type DirectMedia } from "./workflowParams";
+import { directMediaRequest, directMediaTool, directMediaReady, mediaDefaults, mediaFrames, type DirectMedia, type Wired } from "./workflowParams";
 import { listToolCatalogPages } from "@/addons/conversation/api/toolCatalog";
-import { getSessionBindings } from "@/addons/conversation/api/sessionBindings";
+import { getSessionBindings, updateSessionBindings, type SessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
 import { executionBackendCompatibility } from "@/addons/conversation/composables/executionBackendCompatibility";
 import { modelErrorMessage } from "@/addons/conversation/composables/modelErrorMessage";
@@ -113,6 +114,12 @@ export function ChatApp(props: ChatProps) {
   const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status, settlementSteps);
 
   const guard = <A extends unknown[], R>(send: (...args: A) => Promise<R>) => guardMediaSend(settings.direct ? null : settings.media, send, t("chatReact.mediaUnavailable"));
+  // MUYU-365 exp98: the first composer images are the job's owned frames; a missing frame is said on send.
+  const media = (direct: DirectMedia, input: string, files: readonly ConversationAttachment[] = []) => {
+    const frames = mediaFrames(direct, files);
+    if (frames.missing) { toast.warning(t("chatReact.mediaFrameHint")); throw new Error(t("chatReact.mediaFrameHint")); }
+    return { ...directMediaRequest(direct, { ...settings.params, ...frames.params }, input), files: files.filter((file) => !frames.used.includes(file.id)) };
+  };
   // New conversation with the current model and executor, then open it.
   // withTurn: this turn's effort or profile; never on a media/workflow job, which carries its own parameters.
   const start = async (request: Partial<CreateConversationRequest> & { input: string }, withTurn = false) => {
@@ -132,8 +139,8 @@ export function ChatApp(props: ChatProps) {
       // A paid submission is never parked or replayed: not while a run is active, and an unconfirmed
       // result (no HTTP answer) is reported as unknown instead of reaching the 409 queue.
       if (isRunning(core.state)) throw new Error(t("chatReact.loading"));
-      const { toolInvocation } = directMediaRequest(settings.direct, settings.params, text);
-      await core.controller.send(text, files, toolInvocation).catch((error) => {
+      const { toolInvocation, files: rest } = media(settings.direct, text, files);
+      await core.controller.send(text, rest, toolInvocation).catch((error) => {
         throw new Error((error as { status?: number }).status ? (error as Error).message : t("chatReact.workflowUnknown"));
       });
     }),
@@ -148,12 +155,13 @@ export function ChatApp(props: ChatProps) {
       send: guard(async (input, files) => {
         if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
+        const { files: rest = files, ...direct } = settings.direct ? media(settings.direct, input, files) : {};
         try {
           await start({
             input,
             ...(grants.ids.length ? { toolIds: grants.ids } : {}),
-            ...(settings.direct ? directMediaRequest(settings.direct, settings.params, input) : {}),
-            ...(files?.length ? { attachments: files.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
+            ...direct,
+            ...(rest?.length ? { attachments: rest.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
           }, !settings.media);
         } catch (error) {
           toast.error(modelErrorMessage(error, t, t("home.createFailed")));
@@ -272,26 +280,24 @@ function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
   );
 }
 
-/** MUYU-365 exp86c: preselects the first model that can really send (wired ones sort first); none = says why, never picks. */
+/**
+ * MUYU-365 exp86c/exp98: switches at once to the first model that can send (read when the conversation mounted);
+ * a second click leaves media mode; none = says why (not enabled here / upstream / none connected), never picks.
+ */
 function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean }) {
   const options = settings.groups.find((group) => group.kind === kind)?.options ?? [];
-  const first = (list: Option[]) => list.find((option) => !option.unavailable)?.choice;
-  const none = settings.mediaReady && !first(options) && t("chatReact.mediaNone");
-  const open = async () => {
-    const found = await settings.loadWired?.(true);
-    const choice = first(options.filter((option) => found?.[option.label]));
-    if (choice) void settings.pick(choice); else toast.info(t("chatReact.mediaNone"));
-  };
+  const none = settings.mediaNone?.(kind);
+  const on = settings.media?.kind === kind;
   return (
-    <button type="button" className="mc-pill" aria-disabled={!options.length || !!none || settings.busy || running} aria-pressed={settings.media?.kind === kind}
-      disabled={!options.length || settings.busy || running} data-testid={`mc-gen-${kind}`}
-      aria-label={none ? `${t(`chatGen.kinds.${kind}`)} · ${none}` : undefined} title={none || undefined} onClick={() => void open()}>
+    <button type="button" className="mc-pill" aria-disabled={!options.length || !!none || settings.busy || running} aria-pressed={on}
+      aria-busy={on && settings.mediaPending || undefined} disabled={!options.length || settings.busy || running} data-testid={`mc-gen-${kind}`}
+      aria-label={none ? `${t(`chatGen.kinds.${kind}`)} · ${none}` : undefined} title={none || undefined} onClick={() => settings.enter?.(kind)}>
       {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(`chatGen.kinds.${kind}`)}</span>
     </button>
   );
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; loadWired?(fresh?: boolean): Promise<Record<string, DirectMedia | null>>; params?: Record<string, string>; setParam?(name: string, value: string): void };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * MUYU-408 profile choices for the Controls slot. The panel keeps its slot mounted while hidden, so the chunk and
@@ -364,10 +370,9 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
             </div>
           )}
         </ComposerPrimitive.Queue>
-        {settings.media && <div className="mc-hint" role="status" data-testid="mc-media-mode">
+        {settings.media && <div className="mc-media-panel" role="status" data-testid="mc-media-mode" aria-busy={settings.mediaPending || undefined}>
           <strong>{t(`model.types.${settings.media.kind}`)} · {settings.media.model.model}</strong>
-          {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} /> : <p>{t("chatReact.mediaUnavailable")}</p>}
-          <button type="button" className="mc-pill" onClick={() => settings.pick(settings.model ? { kind: "chat", model: settings.model } : null)}>{t("chatReact.returnToChat")}</button>
+          {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} frame={!hasImage} /> : !settings.mediaPending && <p>{t("chatReact.mediaUnavailable")}</p>}
         </div>}
         <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         <div className="mc-toolbar">
@@ -390,7 +395,7 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
           <MediaPill kind="image" t={t} settings={settings} running={running} />
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} onOpen={() => settings.loadWired?.()} />
+            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
           {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
@@ -851,27 +856,93 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   }, [conversationId]);
 
   // Direct media models: each one's Toolgate job tool and real parameters (null = a ready row whose schema cannot
-  // carry the prompt). An existing conversation needs the tool already bound to it (Core validates against the
-  // conversation's tools); anything else stays closed. The menu reuses this conversation's read, a pill re-reads
-  // (grants can change); only the newest read is shown. A failed read closes all.
-  const [wired, setWired] = useState<{ key?: string; found: Record<string, DirectMedia | null> }>();
+  // carry the prompt). An existing conversation sends only with the tool bound to it (Core validates against the
+  // conversation's tools): a cataloged job tool is bound on selection when the owner may edit (`bind`), else it is
+  // `false` (not enabled here). MUYU-365 exp98: read once when the conversation mounts (and after a session change),
+  // so a pill switches at once; only the newest read is shown. A failed read closes all.
+  const [wired, setWired] = useState<{ key?: string; found: Wired }>();
   const [params, setParams] = useState<Record<string, string>>({});
-  const wiring = useRef<{ key?: string; read: Promise<Record<string, DirectMedia | null>> }>(undefined);
+  const [mediaPending, setPending] = useState(false);
+  const mediaRun = useRef(0);
+  const wiring = useRef<{ key?: string; read: Promise<Wired>; bound?: SessionBindings | null }>(undefined);
   const loadWired = (fresh?: unknown) => {
     if (fresh || !wiring.current || wiring.current.key !== conversationId) {
       const key = conversationId;
-      const read = Promise.all([listToolCatalogPages(), key ? getSessionBindings(key) : null]).then(([rows, bound]) => {
-        const usable = bound ? rows.filter((row) => bound.toolIds.includes(row.id)) : rows;
-        const names = [...new Set(usable.flatMap((row) => row.imported && row.status === "ready" && row.mediaModel ? [row.mediaModel] : []))];
-        return Promise.all(names.map(async (name) => [name, await directMediaTool(name, usable, toolSchema)] as const));
-      }).then(Object.fromEntries, () => ({}));
-      wiring.current = { key, read };
-      void read.then((found) => { if (wiring.current?.read === read) setWired({ key, found }); });
+      const current: NonNullable<typeof wiring.current> = { key, read: Promise.all([listToolCatalogPages(), key ? getSessionBindings(key) : null]).then(([rows, bound]) => {
+        current.bound = bound;
+        const names = [...new Set(rows.flatMap((row) => row.imported && row.status === "ready" && row.mediaModel ? [row.mediaModel] : []))];
+        const mine = bound ? rows.filter((row) => bound.toolIds.includes(row.id)) : rows;
+        return Promise.all(names.map(async (name) => {
+          const own = await directMediaTool(name, mine, toolSchema);
+          const other = !own && bound && await directMediaTool(name, rows.filter((row) => !bound.toolIds.includes(row.id)), toolSchema);
+          return [name, other ? bound.editable && { ...other, bind: true as const } : own] as const;
+        }));
+      }).then(Object.fromEntries, () => ({})) };
+      wiring.current = current;
+      void current.read.then((found) => { if (wiring.current === current) setWired({ key, found }); });
     }
     return wiring.current!.read;
   };
+  useEffect(() => {
+    const refresh = () => { if (wiring.current) void loadWired(true); };
+    // The grants panel and this hook replace the same revisioned set.
+    const bound = (event: Event) => { if (wiring.current?.bound) wiring.current.bound = (event as CustomEvent<SessionBindings>).detail; };
+    void loadWired(true);
+    window.addEventListener(SESSION_CHANGE_EVENT, refresh);
+    window.addEventListener(BINDINGS_EVENT, bound);
+    return () => { window.removeEventListener(SESSION_CHANGE_EVENT, refresh); window.removeEventListener(BINDINGS_EVENT, bound); };
+  }, [conversationId]);
   const found = wired && wired.key === conversationId ? wired.found : undefined;
-  const direct = media && found?.[media.model.model] || null;
+  // A job tool still to be bound to this conversation cannot send yet (Core checks the bound set).
+  const entry = media && found?.[media.model.model];
+  const direct = entry && !entry.bind ? entry : null;
+  useEffect(() => { setParams(direct ? mediaDefaults(direct) : {}); }, [direct && direct.toolId, media?.model.model]);
+
+  // Settles a media selection against the read: the preferred model if it can send (else, unless strict, the first
+  // of its kind that can), binding its job tool to this conversation first when needed. Nothing = leave and say why.
+  const settle = async (kind: "image" | "video", preferred: string, strict: boolean, run: number) => {
+    const read = await loadWired();
+    const live = () => run === mediaRun.current;
+    if (!live()) return;
+    const name = read[preferred] ? preferred : strict ? undefined : groups.find((group) => group.kind === kind)?.options.find((option) => read[option.label])?.label;
+    let entry = name ? read[name] : undefined;
+    if (entry && entry.bind) {
+      const current = wiring.current!;
+      try {
+        const bound = await updateSessionBindings(conversationId!, { toolIds: [...current.bound!.toolIds, entry.toolId], revision: current.bound!.revision });
+        window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: bound }));
+        current.bound = bound;
+        const { bind: _, ...ready } = entry;
+        const next = { ...await current.read, [name!]: ready };
+        current.read = Promise.resolve(next);
+        if (wiring.current === current) setWired({ key: current.key, found: next });
+        entry = ready;
+      } catch {
+        if (live()) { setPending(false); setMedia(null); toast.error(t("common.bindingsSaveFailed")); }
+        return;
+      }
+    }
+    if (!live()) return;
+    setPending(false);
+    if (entry) setMedia({ kind, model: (groups.find((group) => group.kind === kind)!.options.find((option) => option.label === name)!.choice as { model: ModelChoice }).model });
+    else if (!strict) { setMedia(null); toast.info(noneReason(kind, read) ?? t("chatReact.mediaNone")); }
+  };
+  const enter = (kind: "image" | "video") => {
+    const run = ++mediaRun.current;
+    if (media?.kind === kind) { setPending(false); setMedia(null); return; }
+    const guess = labeledGroups.find((group) => group.kind === kind)?.options.find((option) => !option.unavailable);
+    if (!guess) return void toast.info(noneReason(kind) ?? t("chatReact.mediaNone"));
+    setMedia({ kind, model: (guess.choice as { model: ModelChoice }).model });
+    setPending(true);
+    void settle(kind, guess.label, false, run);
+  };
+  // Why a kind has nothing to send: this conversation has it off, an upstream outage, or no connected model.
+  const noneReason = (kind: string, read = found) => {
+    const options = groups.find((group) => group.kind === kind)?.options.map((option) => read ? wiredOnly(option, read) : option) ?? [];
+    if (!read || options.some((option) => !option.unavailable)) return;
+    const why = options.map((option) => option.unavailable);
+    return t(why.includes("not_enabled") ? "chatReact.mediaNotEnabled" : why.some((reason) => !["unwired", "no_prompt"].includes(reason!)) ? "chatReact.mediaUpstream" : "chatReact.mediaNone");
+  };
 
   const allowedFor = (m: ModelChoice | null, id: string | null) => {
     const option = backends.find((b) => b.id === id);
@@ -881,9 +952,11 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   async function pick(choice: Choice | null) {
     if (choice?.kind === "image" || choice?.kind === "video") {
       const listed = groups.find((group) => group.kind === choice.kind)?.options.some((option) => option.value === choiceValue(choice));
-      if (listed && !busy && (await loadWired())[choice.model.model]) { setMedia({ kind: choice.kind, model: choice.model }); setParams({}); }
+      if (listed && !busy) await settle(choice.kind, choice.model.model, true, ++mediaRun.current);
       return;
     }
+    mediaRun.current++;
+    setPending(false);
     if (media && choice?.kind === "chat" && model && choice.model.model === model.model && String(choice.model.providerId) === String(model.providerId)) {
       setMedia(null);
       return;
@@ -910,12 +983,12 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   }
 
   // Image/video: models that can send come first; the rest are greyed with why (no job tool / no prompt field).
-  const wiredOnly = (option: Option): Option => option.unavailable || !found || found[option.label] ? option
-    : { ...option, unavailable: found[option.label] === null ? "no_prompt" : "unwired" };
+  const wiredOnly = (option: Option, read = found): Option => option.unavailable || !read || read[option.label] ? option
+    : { ...option, unavailable: read[option.label] === null ? "no_prompt" : read[option.label] === false ? "not_enabled" : "unwired" };
   const labeledGroups = groups.map((group) => group.kind === "chat" ? !strategy ? group : {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
-  } : group.kind === "executor" ? group : { ...group, options: group.options.map(wiredOnly).sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
-  return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, loadWired, params,
+  } : group.kind === "executor" ? group : { ...group, options: group.options.map((option) => wiredOnly(option)).sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
+  return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

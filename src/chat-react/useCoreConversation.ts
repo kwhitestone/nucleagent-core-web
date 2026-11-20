@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
+import { isBusinessBoundaryChange, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import { createConversationAdapter } from "@/addons/conversation/composables/useConversationAdapter";
 import { followUp } from "@/addons/conversation/api/conversation";
 import type { EffortChoice } from "./requestEffort";
@@ -30,9 +30,11 @@ export function useCoreConversation(id: string | undefined, onError: (error: Err
     setController(c);
     void c.initialize();
     // Same policy as TaskConversation: renewal keeps a ready history, sign-out drops it.
+    // A renewal that finds the stream/snapshot broken (e.g. idle background tab) re-initializes once.
     const onSession = (event: Event) => {
       if ((event as CustomEvent<{ authenticated?: unknown }>).detail?.authenticated !== true) c.dispose();
-      else if (!c.authoritativeReady.value) void c.initialize();
+      else if (!c.authoritativeReady.value || isBusinessBoundaryChange(event) || c.snapshotStatus.value === "error" ||
+        ["error", "reconnecting"].includes(c.state.value.connection.status)) void c.initialize();
     };
     window.addEventListener(SESSION_CHANGE_EVENT, onSession);
     return () => { window.removeEventListener(SESSION_CHANGE_EVENT, onSession); c.dispose(); };
