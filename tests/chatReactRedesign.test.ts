@@ -178,3 +178,11 @@ test('capture fixture HTML for real browser screenshots (CAPTURE_DIR)', () => {
     writeFileSync(`${dir}/${name}.html`, render(items as ConversationItem[], status, zh).html);
   }
 });
+
+test('deliverables: an HTML result renders as a verified download card (same Storage path as every file)', () => {
+  const { dom } = render(scene(1), 'completed', zh);
+  const card = dom.querySelector('[data-message-role="assistant"] button.mc-chip--link');
+  assert.ok(card, 'download card');
+  assert.match(card!.textContent!, /moonroof\.html.*63\.4 KB/);
+  assert.match(card!.getAttribute('title')!, /moonroof\.html/);
+});
