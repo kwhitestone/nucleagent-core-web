@@ -69,5 +69,5 @@ test("paged catalog read is bounded and keeps the older-core 404 = [] contract",
 test("the composer's direct media lookup uses the paged catalog read", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../src/chat-react/ChatApp.tsx", import.meta.url), "utf8");
-  assert.match(app, /Promise\.all\(\[listToolCatalogPages\(\), conversationId \? getSessionBindings\(conversationId\) : null\]\)/);
+  assert.match(app, /Promise\.all\(\[listToolCatalogPages\(\), key \? getSessionBindings\(key\) : null\]\)/);
 });

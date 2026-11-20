@@ -9,7 +9,7 @@ export const ZH_STRINGS = {
     ioToggle: "完整工具输入输出", ioInput: "输入", ioOutput: "输出", ioMore: "加载更多", ioEmpty: "（空）", ioMissing: "未采集", ioError: "无法读取，请重新展开。",
     upstream: "上游",
     visionSupported: "图片", visionUnsupported: "不支持图片", visionUnverified: "图片未验证", availabilityUnprobed: "未探测",
-    unavailable_auth_401: "上游鉴权失败(401)", unavailable_capacity: "上游容量不足", unavailable_route_disabled: "路由已停用", unavailable_upstream_offline: "上游已下线", unavailable_unknown: "上游异常",
+    unavailable_auth_401: "上游鉴权失败(401)", unavailable_capacity: "上游容量不足", unavailable_route_disabled: "路由已停用", unavailable_upstream_offline: "上游已下线", unavailable_unknown: "上游异常", unavailable_unwired: "尚未接通", unavailable_no_prompt: "不支持文本提示", mediaNone: "暂无已接通的模型",
     visionBlocked: "该模型不支持图片输入，请换支持图片的模型", visionBlockedHint: "不支持图片输入，无法发送图片。", visionUnverifiedHint: "的图片输入未经验证，可能无法识图。",
     visionSwitchTo: "请在模型菜单换成支持图片的模型：{models}。", visionNoAlternative: "暂无已验证支持图片的可用模型。",
     workflow: "音频工具", workflowChoose: "请选择", workflowRun: "执行",
@@ -28,9 +28,8 @@ export const ZH_STRINGS = {
     queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", edit: "编辑", fork: "分叉对话", good: "好评", bad: "差评", feedbackDetails: "反馈详情", not_helpful: "没有帮助", other: "其他", save: "保存", send: "发送",
     dont_like_the_style: "不喜欢这种风格", too_verbose: "过于冗长", not_factually_correct: "事实不正确", didnt_fully_follow_instructions: "未完全遵循指令", refused_when_it_shouldnt_have: "不该拒绝却拒绝了", being_lazy: "敷衍了事",
-    toBottom: "回到底部", earlier: "加载更早消息", running: "进行中", done: "完成", failed: "失败",
-    rawView: "原文", renderedView: "返回排版",
-    query: "查询", sources: "来源", doneSteps: "步成功", cancelled: "已停止", tool: "工具", mediaPending: "生成中…", mediaFailed: "生成失败", thinking: "正在思考…", greeting: "今天想完成什么？",
+    toBottom: "回到底部", earlier: "加载更早消息",     rawView: "原文", renderedView: "返回排版",
+    query: "查询", sources: "来源", mediaFailed: "生成失败", greeting: "今天想完成什么？",
     firstToken: "首字", queue: "排队", upload: "上传附件", agentReady: "Agent 就绪", upstreamFirst: "上游首字", sec: " 秒", approx: "约 ", serverMeasured: "服务端计",
 };
 export type IslandStrings = Record<keyof typeof ZH_STRINGS, string>;

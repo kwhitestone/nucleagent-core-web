@@ -16,7 +16,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     // React only for the MUYU-365 chat island; every .vue file stays on plugin-vue.
-    plugins: [vue(), react({ include: /src\/chat-react\/.*\.tsx$/ })],
+    plugins: [vue(), react({ include: /src\/chat-react\/.*\.tsx$/ }), {
+      // MUYU-365 exp86c: aui's message conversion is the island's one user of assistant-stream/utils; every island
+      // tool-call part carries `args`, so it never repairs partial JSON (tests/auiSessionStubs.test.ts pins this).
+      name: "aui-partial-json-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "assistant-stream/utils" && importer?.endsWith("/@assistant-ui/core/dist/runtime/utils/thread-message-like.js")
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/assistant-stream-utils.ts") : null,
+    }],
     resolve: {
       dedupe: ["vue", "vue-router"],
       preserveSymlinks: true,

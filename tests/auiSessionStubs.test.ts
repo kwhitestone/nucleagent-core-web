@@ -98,3 +98,30 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   assert.ok(!graph.some((id) => /@assistant-ui\/core\/dist\/runtime\/base\/(voice|dictation)-session\.js/.test(id)));
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
 });
+
+test("assistant-stream/utils stand-in: aui parses argsText only for a tool-call without args, which the island never sends", async () => {
+  assert.equal(JSON.parse(read("node_modules/assistant-stream/package.json")).version, "0.3.57");
+  assert.match(read("vite.config.ts"), /id === "assistant-stream\/utils" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/runtime\/utils\/thread-message-like\.js"\)\n[^\n]*src\/vendor\/assistant-ui-core\/assistant-stream-utils\.ts/);
+  const convert = read("node_modules/@assistant-ui/core/dist/runtime/utils/thread-message-like.js");
+  assert.equal(convert.match(/parsePartialJsonObject\(/g)?.length, 1, "one call site");
+  assert.match(convert, /if \(part\.args\) return \{[^}]*args: part\.args,[^}]*\};\n\t+return \{\n\t+\.\.\.commonProps,\n\t+args: parsePartialJsonObject\(part\.argsText \?\? ""\) \?\? \{\}/, "only without args");
+  // Every runtime value import of assistant-stream/utils by a module the island can bundle is that one call site.
+  const island = read("src/chat-react/threadMessages.ts");
+  assert.equal(island.match(/type: "tool-call"/g)?.length, 1);
+  assert.match(island, /type: "tool-call", [^\n]*args: \{\},/);
+  for (const file of ["src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts"]) {
+    assert.doesNotMatch(read(file), /argsText|type: "tool-call"/, file);
+  }
+  const { parsePartialJsonObject } = await import("../src/vendor/assistant-ui-core/assistant-stream-utils.ts");
+  const original = await import("assistant-stream/utils");
+  for (const text of ['{"a":1,"b":[true,null]}', "{}", '{"q":"猫"}']) {
+    const [mine, theirs] = [parsePartialJsonObject(text)!, original.parsePartialJsonObject(text)!];
+    assert.deepEqual(JSON.parse(JSON.stringify(mine)), JSON.parse(JSON.stringify(theirs)), text);
+    assert.deepEqual(Object.getOwnPropertySymbols(mine).map((key) => mine[key]), [original.getPartialJsonObjectMeta(theirs)], text);
+  }
+  assert.deepEqual(Object.getOwnPropertySymbols(parsePartialJsonObject("")!).map((key) => parsePartialJsonObject("")![key]), [original.getPartialJsonObjectMeta(original.parsePartialJsonObject("")!)]);
+  assert.deepEqual(JSON.stringify(parsePartialJsonObject("[1]")), JSON.stringify(original.parsePartialJsonObject("[1]")));
+  for (const text of ["1", "null", '"x"']) assert.equal(parsePartialJsonObject(text), original.parsePartialJsonObject(text), text);
+  assert.equal(parsePartialJsonObject('{"__proto__":{"x":1}}'), undefined);
+  assert.equal(parsePartialJsonObject('{"a":'), undefined, "partial args are not repaired (the caller falls back to {})");
+});

@@ -19,6 +19,7 @@ let writes: string[];
 let reads: string[];
 let downloads: string[];
 let posted: unknown[] | null = null;
+let typed: Record<string, unknown[]> | null = null;
 let app: typeof import("../src/chat-react/ChatApp.tsx");
 let disposeRuntime: () => void;
 let disposeCatalog: () => void;
@@ -49,7 +50,7 @@ before(async () => {
   const { registerModelCatalog } = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = registerModelCatalog({
     listProviders: async () => [{ id: 1, name: "provider", isActive: true, config: { models: ["chat-model"] } }],
-    listTypedModels: async (type: string) => ["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: [] }] : [],
+    listTypedModels: async (type: string) => typed?.[type] ?? (["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: [] }] : []),
     fetchVisibleModels: async () => [],
   });
   dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.href); };
@@ -347,11 +348,11 @@ test("direct media send key: enabled only with real text, a loaded job schema an
     await type(view, "画一只猫");
     assert.equal(sendKey(view).disabled, false, "chat mode with text");
 
-    // No job tool for this model: closed, with the notice.
+    // No job tool for any video model (exp86c): the pill preselects nothing and chat mode stays as it was.
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
     await settle();
-    assert.equal(sendKey(view).disabled, true, "no schema");
-    assert.match(view.container.textContent!, /chatReact.mediaUnavailable/);
+    assert.equal(view.container.querySelector('[data-testid="mc-media-mode"]'), null, "no unwired preselect");
+    assert.equal(view.container.querySelector('[data-testid="mc-gen-video"]')!.getAttribute("aria-disabled"), "true");
 
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
     await settle();
@@ -432,10 +433,13 @@ test("a new conversation resolves the selected media model to its job tool; an e
     await React.act(async () => settings.setParam("aspect_ratio", "1:1"));
     assert.deepEqual(settings.params, { aspect_ratio: "1:1" });
 
-    // Another model without a job tool: closed again.
-    await React.act(async () => settings.pick(settings.groups.find((group) => group.kind === "video")!.options[0].choice));
+    // Another model without a job tool (exp86c): greyed with the reason and refused, the wired selection stays.
+    const video = settings.groups.find((group) => group.kind === "video")!.options[0];
+    assert.equal(video.unavailable, "unwired");
+    await React.act(async () => settings.pick(video.choice));
     await React.act(async () => undefined);
-    assert.equal(settings.direct, null);
+    assert.equal(settings.media?.kind, "image");
+    assert.equal(settings.direct?.toolId, 9);
     // Existing conversation: closed until the job tool is one of its bound tools (Core checks the same set).
     for (const [id, bound, toolId] of [["7", [], undefined], ["8", [9], 9]] as const) {
       const base = response;
@@ -454,13 +458,19 @@ test("a new conversation resolves the selected media model to its job tool; an e
 test("typed media selection stays local, switches kind, preserves chat model and resets across conversations", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   const view = await fixture();
-  response = (url) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }] : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
+  const media = (id: number, model: string) => ({ model, invocation: { toolId: id, revision: "1" }, inputSchema: { type: "object", additionalProperties: false, properties: { input: { type: "string" } } } });
+  response = (url) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
+    : /\/catalog(\?|$)/.test(url) ? [{ id: 9, name: "i", imported: true, status: "ready", mediaModel: "image-model" }, { id: 10, name: "v", imported: true, status: "ready", mediaModel: "video-model" }]
+    : url.endsWith("/9/schema") ? media(9, "image-model") : url.endsWith("/10/schema") ? media(10, "video-model")
+    : url.endsWith("/bindings") ? { skillIds: [], toolIds: [9, 10], editable: true, revision: "1", principal: "1" }
+    : { id: "7", providerId: 1, model: "chat-model", executionBackend: "codex" } });
   function Harness({ id }: { id?: string }) {
     settings = useSettings(id, t);
     return null;
   }
   try {
     await view.render(React.createElement(Harness, { id: "7" }));
+    await settle();
     const chat = settings.model;
     assert.deepEqual(chat, { providerId: 1, model: "chat-model" });
     for (const kind of ["image", "video"] as const) {
@@ -484,4 +494,80 @@ test("typed media selection stays local, switches kind, preserves chat model and
     await view.render(React.createElement(Harness, { id: "8" }));
     assert.equal(settings.media, null);
   } finally { await view.close(); }
+});
+
+// MUYU-365 exp86c: the media pills preselect a model that can really send; unwired models are greyed with a reason.
+const wiredResponse = (rows: unknown[]) => (url: string) => /\/catalog(\?|$)/.test(url) ? { data: rows }
+  : url.endsWith("/807/schema") ? { data: { ...imageSchema, model: "doubao-seedream-5-0-260128", invocation: { toolId: 807, revision: "1" } } }
+  : url.endsWith("/788/schema") ? { data: { model: "jimeng_v30_1080p", invocation: { toolId: 788, revision: "5" }, inputSchema: { type: "object", additionalProperties: false, required: ["prompt"], properties: { prompt: { type: "string" } } } } }
+  : url.endsWith("/901/schema") ? { data: { model: "viduq3-pro", invocation: { toolId: 901, revision: "2" }, inputSchema: { type: "object", additionalProperties: false, required: ["image_url"], properties: { image_url: { type: "string" } } } } }
+  : directResponse([])(url);
+const mediaTyped = {
+  image: ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"].map(model => ({ providerId: 1, model, type: "image", capabilities: [], available: true })),
+  video: ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"].map(model => ({ providerId: 1, model, type: "video", capabilities: [], available: true })),
+};
+
+test("media pills preselect the first model with a ready job tool; unwired models are greyed with a reason and cannot be picked", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  typed = { chat: [{ providerId: 1, model: "chat-model", type: "chat", capabilities: [] }], ...mediaTyped };
+  const view = await fixture();
+  response = wiredResponse([
+    { id: 807, name: "图片", imported: true, status: "ready", mediaModel: "doubao-seedream-5-0-260128" },
+    { id: 788, name: "即梦视频", imported: true, status: "ready", mediaModel: "jimeng_v30_1080p" },
+    { id: 901, name: "vidu", imported: true, status: "ready", mediaModel: "viduq3-pro" },
+  ]);
+  const created: unknown[] = [];
+  try {
+    await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {}, create: async payload => { created.push(payload); return { id: "55" } as never; } }));
+    await settle();
+    await type(view, "画一只猫");
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
+    await settle();
+    let mode = view.container.querySelector('[data-testid="mc-media-mode"]')!;
+    assert.match(mode.textContent!, /doubao-seedream-5-0-260128/);
+    assert.doesNotMatch(mode.textContent!, /mediaUnavailable/);
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
+    await settle();
+    mode = view.container.querySelector('[data-testid="mc-media-mode"]')!;
+    assert.match(mode.textContent!, /jimeng_v30_1080p/);
+    assert.equal(sendKey(view).disabled, false, "the preselected model sends");
+
+    const group = (kind: string) => [...view.container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=menuitemradio]`)];
+    const names = (kind: string) => group(kind).map(item => item.querySelector(".mc-menu-text")!.firstChild!.textContent);
+    assert.deepEqual(names("image"), ["doubao-seedream-5-0-260128", "doubao-seedream-4-0-250828"], "sendable first, unwired after");
+    assert.deepEqual(names("video"), ["jimeng_v30_1080p", "MiniMax-H3", "viduq3-pro"]);
+    for (const [item, reason] of [[group("image")[1], "unwired"], [group("video")[1], "unwired"], [group("video")[2], "no_prompt"]] as const) {
+      assert.equal(item.getAttribute("aria-disabled"), "true");
+      assert.match(item.textContent!, new RegExp(`chatReact.unavailable_${reason}`));
+      await React.act(async () => item.click());
+    }
+    for (const item of [group("image")[0], group("video")[0]]) assert.equal(item.getAttribute("aria-disabled"), null);
+    assert.match(view.container.querySelector('[data-testid="mc-media-mode"]')!.textContent!, /jimeng_v30_1080p/, "an unwired pick is refused");
+    assert.equal(view.container.querySelector("textarea")!.value, "画一只猫", "draft kept");
+    assert.deepEqual(created, []);
+    assert.deepEqual(writes, []);
+  } finally { typed = null; await view.close(); }
+});
+
+test("with no sendable media model the pill preselects nothing, stays keyboard-reachable and says why", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  typed = { chat: [{ providerId: 1, model: "chat-model", type: "chat", capabilities: [] }], ...mediaTyped };
+  const view = await fixture();
+  response = wiredResponse([{ id: 901, name: "vidu", imported: true, status: "ready", mediaModel: "viduq3-pro" }]);
+  try {
+    await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {}, create: async () => { throw new Error("no create"); } }));
+    await settle();
+    await type(view, "草稿");
+    for (const kind of ["image", "video"]) {
+      const pill = view.container.querySelector<HTMLButtonElement>(`[data-testid="mc-gen-${kind}"]`)!;
+      assert.equal(pill.disabled, false, "focusable");
+      await React.act(async () => pill.click());
+      await settle();
+      assert.equal(pill.getAttribute("aria-disabled"), "true");
+      assert.match(pill.getAttribute("aria-label")!, /chatReact.mediaNone/);
+      assert.equal(view.container.querySelector('[data-testid="mc-media-mode"]'), null, "nothing preselected");
+    }
+    assert.equal(view.container.querySelector("textarea")!.value, "草稿");
+    assert.deepEqual(writes, []);
+  } finally { typed = null; await view.close(); }
 });
