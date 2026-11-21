@@ -198,7 +198,7 @@ export function ChatApp(props: ChatProps) {
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
@@ -652,7 +652,7 @@ function Parts({ t }: { t: Translate }) {
  * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
  * pointer), and always on the last reply.
  */
-export function MessageRow({ role, t, conversationId = "", evidence, actions }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
+export function MessageRow({ role, t, locale, conversationId = "", evidence, actions }: { role: string; t: Translate; locale?: string; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
   const messageId = useAuiState((state) => state.message.id);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
@@ -686,7 +686,7 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
         <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
         {isUser && stamp}
       </ActionBarPrimitive.Root>
-      {!isUser && <TurnUsage t={t} usage={turnUsage({ conversationId, turnId }, evidence)} />}
+      {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence)} />}
     </MessagePrimitive.Root>
   );
 }

@@ -92,7 +92,7 @@ test("every assistant response has an UNKNOWN usage area; user messages and raw 
     ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.equal((html.match(/data-testid="mc-turn-usage"/g) ?? []).length, 2);
   assert.equal((html.match(/data-settlement="unknown"/g) ?? []).length, 2);
-  assert.match(html, /—/);
+  assert.match(html, /chatReact\.usageBilling/, "exp106: no evidence shows 计费中, never a number");
   assert.doesNotMatch(html, /untrusted|9000/);
 });
 
@@ -563,21 +563,21 @@ test("usage view renders late settled zero without any 上游 text, then UNKNOWN
   const scope = { conversationId: "7", turnId: "one" };
   const receipt = { ...scope, state: "settled" as const, revision: 2, points: "0", upstreams: ["aihub-gateway", "everai-yunyi"] };
   const show = (usage: ReturnType<typeof turnUsage>) => renderToString(React.createElement(app.TurnUsage, { t, usage }));
-  assert.match(show(turnUsage(scope)), /data-settlement="unknown"[^>]*>chatReact.points<!-- -->: <!-- -->—/);
+  assert.match(show(turnUsage(scope)), /data-settlement="unknown"[^>]*>chatReact.usageBilling</);
   const settled = show(turnUsage(scope, [receipt]));
   assert.match(settled, /data-settlement="settled"/);
-  assert.match(settled, /: <!-- -->0/);
+  assert.match(settled, />0 chatReact.points</, "exp106: N 积分 without the shells contract");
   assert.doesNotMatch(settled, /aihub-gateway|everai-yunyi|chatReact\.upstream|上游/, "exp101: no upstream beside the points");
   const zhShow = renderToString(React.createElement(app.TurnUsage, { t: (key: string) => key === "chatReact.points" ? "积分" : key === "chatReact.upstream" ? "上游" : key, usage: turnUsage(scope, [receipt]) }));
   assert.doesNotMatch(zhShow, /上游/);
-  assert.match(show(turnUsage(scope, [{ ...receipt, upstreams: [] }])), /data-settlement="settled"[^]*: <!-- -->0/, "settled without upstreams still shows its points");
+  assert.match(show(turnUsage(scope, [{ ...receipt, upstreams: [] }])), /data-settlement="settled"[^]*>0 chatReact.points</, "settled without upstreams still shows its points");
   assert.equal(show(turnUsage(scope, JSON.parse(JSON.stringify([receipt])))), settled);
   assert.match(show(turnUsage({ ...scope, turnId: "two" }, [receipt])), /data-settlement="unknown"/);
   assert.match(show(turnUsage(scope, [receipt, { ...receipt, revision: 3, state: "unknown" }])), /data-settlement="unknown"/);
   const pending = show(turnUsage(scope, [{ ...receipt, revision: 1, state: "pending" }]));
   assert.match(pending, /data-settlement="pending"[^>]*title="chatReact.usagePending"/);
-  assert.match(pending, /: <!-- -->—<!-- --> · <!-- -->chatReact.usagePending</);
-  assert.doesNotMatch(pending, /aihub-gateway|: <!-- -->0/);
+  assert.match(pending, /data-settlement="pending"[^>]*>chatReact.usagePending</);
+  assert.doesNotMatch(pending, /aihub-gateway|\d|¥/);
   assert.match(show(turnUsage(scope)), /title="chatReact.usageUnknown"/);
   assert.doesNotMatch(show(turnUsage(scope)), /usagePending/);
 });
@@ -596,7 +596,7 @@ test("each reply binds its usage to its own step_id; message ids, other turns an
   const html = rows("7");
   assert.equal((html.match(/data-settlement="settled"/g) ?? []).length, 1);
   assert.equal((html.match(/data-settlement="unknown"/g) ?? []).length, 2);
-  assert.match(html, /answer1[^]*data-settlement="settled"[^>]*>chatReact.points<!-- -->: <!-- -->0[^]*answer2/);
+  assert.match(html, /answer1[^]*data-settlement="settled"[^>]*>0 chatReact.points<[^]*answer2/);
   assert.doesNotMatch(html, /everai-yunyi|: <!-- -->[57]/);
   assert.equal((rows("8").match(/data-settlement="unknown"/g) ?? []).length, 3);
 });
@@ -635,7 +635,7 @@ test("settlement reader: a late receipt replaces pending on re-read; superseded,
     assert.equal(reads[1]!.signal.aborted, true, "a newer read cancels the older one");
     await settle(2, [row({ state: "pending", revision: 1 }), row()]);
     assert.equal(shown().getAttribute("data-settlement"), "settled");
-    assert.equal(shown().textContent, "chatReact.points: 0");
+    assert.equal(shown().textContent, "0 chatReact.points");
     await settle(1, [row({ state: "pending", revision: 1 })]);
     assert.equal(shown().getAttribute("data-settlement"), "settled", "the superseded read is ignored");
     await draw(root, 3);
@@ -651,7 +651,7 @@ test("settlement reader: a late receipt replaces pending on re-read; superseded,
     root = createRoot(container);
     await draw(root, 0);
     await settle(6, JSON.parse(JSON.stringify([row()])));
-    assert.equal(shown().textContent, "chatReact.points: 0");
+    assert.equal(shown().textContent, "0 chatReact.points");
   } finally {
     await React.act(async () => root.unmount());
     container.remove();

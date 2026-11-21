@@ -2,6 +2,8 @@ export interface TurnScope { conversationId: string; turnId: string }
 export interface SettlementEvidence extends TurnScope {
   state: "unknown" | "pending" | "settled";
   points?: unknown;
+  /** exp106: Core's turn.points (per call rounded up, summed) and the top-level display rate; all optional (old Core). */
+  shells?: unknown; pointsName?: unknown; creditsPerCny?: unknown; rate?: unknown;
   upstreams: readonly string[];
   revision: number;
 }
@@ -18,7 +20,7 @@ export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
     && Array.isArray(row.upstreams) && typeof row.revision === "number") ? raw : [];
 }
 
-export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string }
+export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; shells?: string; name?: Record<string, unknown>; cny?: string }
 
 /** What every turn shows without authoritative evidence: no amount, never 0. */
 export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—" };
@@ -34,5 +36,11 @@ export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidenc
   if (latest.state === "pending") return { ...unknown, state: "pending" };
   // MUYU-365 exp101: the authority is Core's settled state with an amount; upstreams are display-only and not shown.
   if (latest.state !== "settled" || typeof latest.points !== "string" || !/^(0|[1-9]\d*)(\.\d+)?$/.test(latest.points)) return unknown;
-  return { state: "settled", points: latest.points };
+  const { shells, pointsName: name, creditsPerCny: per, rate } = latest as SettlementEvidence & { rate?: Record<string, unknown> };
+  // exp106: "N 贝壳（≈¥X.XXXX）" only with the whole contract (N = Core's points, never re-derived; ¥ = credits / creditsPerCny);
+  // anything missing or off keeps the old "N 积分" and no ¥. The Web holds no rate of its own.
+  const whole = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
+  return typeof shells === "string" && /^\d+$/.test(latest.points) && name && typeof name === "object" && whole(per) && whole(rate?.creditsAmount) && whole(rate?.coinAmount)
+    ? { state: "settled", points: latest.points, shells, name: name as Record<string, unknown>, cny: (+latest.points / (per as number)).toFixed(4) }
+    : { state: "settled", points: latest.points };
 }

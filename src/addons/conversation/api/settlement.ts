@@ -14,7 +14,10 @@ import type { SettlementReader } from "../../../chat-react/turnUsage.ts";
 export const readSettlement: SettlementReader = async (conversationId, signal) => {
   const { data } = (await getPlatformRuntime().http.get<{ data: any }>(`/api/v1/addons/conversation/${encodeURIComponent(conversationId)}/settlement`, { signal })).data;
   return data.turns.map((turn: any) => {
-    if (data.unit !== "credits" || (turn.state === "settled" ? !/^\d+$/.test(turn.credits) : turn.credits !== null)) throw new Error("settlement");
-    return { ...turn, conversationId, turnId: turn.stepId, points: turn.credits };
+    // exp106: turn.points (Core v0.1.74) is a whole-number string only on settled turns, else null/absent.
+    if (data.unit !== "credits" || (turn.state === "settled" ? !/^\d+$/.test(turn.credits) || turn.points != null && !(typeof turn.points === "string" && /^(0|[1-9]\d*)$/.test(turn.points)) : turn.credits !== null || turn.points != null)) throw new Error("settlement");
+    const row = { ...turn, conversationId, turnId: turn.stepId, points: turn.credits };
+    if (turn.points != null) Object.assign(row, { shells: turn.points, pointsName: data.pointsName, creditsPerCny: data.creditsPerCny, rate: data.rate });
+    return row;
   });
 };
