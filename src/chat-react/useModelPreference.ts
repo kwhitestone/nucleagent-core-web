@@ -84,5 +84,5 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       if (live()) writing.current = false;
     }
   }
-  return { profile, choice, save, selection: current?.selection, get ready() { return ready(); }, error: !!current?.error };
+  return { profile, storedProfileId: current?.preference.profileId ?? "", choice, save, selection: current?.selection, get ready() { return ready(); }, error: !!current?.error };
 }

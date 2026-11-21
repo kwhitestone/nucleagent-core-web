@@ -15,6 +15,9 @@ let adapter: { onNew(message: unknown): Promise<void> };
 let change: (value: string) => void;
 let profileControl: { disabled: boolean; onChange(value: { scope: string; profileId: string }): void };
 let settings: ReturnType<typeof app.useSettings>;
+let controlsSlot: unknown;
+let effortView: { off: string[] } | undefined;
+let catalogEfforts: string[] = ["low", "medium", "high"];
 let creates = 0;
 let sends = 0;
 let writes = 0;
@@ -23,6 +26,7 @@ let putGate: Promise<void> | undefined;
 let getGate: Promise<void> | undefined;
 let defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
 let preferenceQuery: unknown;
+const puts: { profileId: string; effort: string }[] = [];
 
 before(async () => {
   dom = new JSDOM("<div id='root'></div>", { url: "https://test.example/" });
@@ -46,7 +50,7 @@ before(async () => {
         if (id === "\0preference-gate-runtime") return `export * from "@assistant-ui/react";
           export function useExternalStoreRuntime(adapter) { globalThis.preferenceGateFixture.capture(adapter); return {}; }`;
         if (id === "\0preference-gate-core") return `import { createConversationState } from "/src/addons/conversation/task-conversation/core/index.ts";
-          export function useCoreConversation(id) { return id ? { state: createConversationState(id), controller: {
+          export function useCoreConversation(id, report, turn) { globalThis.preferenceGateFixture.turn = turn; return id ? { state: createConversationState(id), controller: {
             authoritativeReady: { value: true },
             send: globalThis.preferenceGateFixture.send, stop: async () => {}, loadOlder: async () => {} } } : null; }`;
       },
@@ -60,12 +64,12 @@ before(async () => {
       if (url.endsWith("model-selection")) return { data: { data: defaultSelection } };
       if (url.endsWith("model-preferences")) { preferenceQuery = config?.params; await getGate; return { data: { data: { ...preference } } }; }
       const measured = (config?.params as { model?: string })?.model === "gpt-6-astra";
-      return { data: { data: url.endsWith("model-profiles") ? [{ id: "quick", enabled: measured, efforts: measured ? ["low", "medium", "high"] : [] }]
+      return { data: { data: url.endsWith("model-profiles") ? [{ id: "quick", enabled: measured, efforts: measured ? catalogEfforts : [] }]
         : url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
         : /\/conversation\/9$/.test(url) ? { id: "9", providerId: 7, model: "gpt-6-astra", executionBackend: "codex" }
         : [] } };
     },
-    put: async (_url: string, body: typeof preference) => { writes++; await putGate; preference = body; return { data: { data: body } }; },
+    put: async (_url: string, body: typeof preference) => { writes++; puts.push({ ...body }); await putGate; preference = body; return { data: { data: body } }; },
   } });
   const catalog = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = catalog.registerModelCatalog({
@@ -81,8 +85,8 @@ function findControl(node: unknown): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) { node.forEach(findControl); return; }
   const props = (node as { props?: { effort?: { set: typeof change }; settings: typeof settings; children?: unknown; controls?: { props: { children: { props: typeof profileControl }[] } } } }).props;
-  if (props?.effort) { change = props.effort.set; settings = props.settings; }
-  if (props?.controls) profileControl = props.controls.props.children[0]!.props;
+  if (props?.effort) { change = props.effort.set; settings = props.settings; effortView = (props.effort as unknown as { view: { off: string[] } }).view; }
+  if (props?.controls) { controlsSlot = props.controls.props.children[0]; profileControl = (controlsSlot as { props?: typeof profileControl } | false)?.props as typeof profileControl; }
   findControl(props?.children);
 }
 
@@ -128,7 +132,7 @@ for (const conversationId of [undefined, "9"]) test(`ChatApp ${conversationId ? 
   }
 });
 
-for (const resolved of [true, false]) test(`normal fresh chat resolves the authoritative default and keeps its default profile operable (${resolved})`, async (context) => {
+for (const resolved of [true, false]) test(`normal fresh chat resolves the authoritative default and keeps its preference operable (${resolved})`, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   preference = { profileId: "", effort: "" };
   creates = sends = writes = 0;
@@ -146,12 +150,63 @@ for (const resolved of [true, false]) test(`normal fresh chat resolves the autho
     assert.equal(settings.model?.model ?? "", defaultSelection.model);
     assert.deepEqual(preferenceQuery, { executionBackend: "codex", providerId: resolved ? 7 : undefined, model: defaultSelection.model });
     assert.equal(creates + sends + writes, 0);
-    assert.equal(profileControl.disabled, false, "normal server-default selection must not permanently disable every profile");
-    await React.act(async () => profileControl.onChange({ scope: "new", profileId: "" }));
-    assert.equal(writes, 1, "default profile remains saveable even without a measured model/effort");
+    // MUYU-365 exp101 (5): the profile entry is hidden (PROFILE_UI_ENABLED=false); the preference stays saveable via effort.
+    assert.equal(controlsSlot === false, true, "no ProfileSlot in Controls");
+    assert.equal(profileControl === undefined, true);
+    await React.act(async () => change(""));
+    assert.equal(writes, 1, "the preference remains saveable even without a measured model/effort");
     assert.equal(preference.profileId, "");
     assert.equal(preference.effort, "");
   } finally {
     await React.act(async () => root.unmount());
   }
+});
+
+// MUYU-365 exp101 (5), exp102 HIDE-PLAN E1-E3: with the profile UI off, a stored profileId is neither offered,
+// sent, nor used to narrow effort; changing effort writes the stored profileId back unchanged (data kept).
+for (const conversationId of [undefined, "9"]) test(`profile hidden: stored quick is not sent, does not narrow, survives an effort change (${conversationId ? "followup" : "create"})`, async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  preference = { profileId: "quick", effort: "medium" };
+  catalogEfforts = ["low", "medium", "high"];
+  creates = sends = writes = 0;
+  puts.length = 0;
+  defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
+  const created: Record<string, unknown>[] = [];
+  function Harness() {
+    const tree = app.ChatApp({ conversationId, t: (key) => key, strings: {} as never, navigate: () => {},
+      create: async (payload: Record<string, unknown>) => { creates++; created.push(payload); return { id: "9" } as never; } });
+    findControl(tree);
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  const message = { content: [{ type: "text", text: "hello" }], attachments: [] };
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    if (!conversationId) await React.act(async () => settings.pick({ kind: "chat", model: { providerId: 7, model: "gpt-6-astra" } }));
+    assert.equal(controlsSlot === false, true, "no ProfileSlot in Controls");
+    assert.equal(JSON.stringify(effortView?.off ?? []), "[]", "the stored profile does not narrow effort levels");
+    await React.act(async () => { await adapter.onNew(message); });
+    if (conversationId) {
+      const turn = (globalThis as unknown as { preferenceGateFixture: { turn(): unknown } }).preferenceGateFixture.turn();
+      assert.equal(JSON.stringify(turn), '"medium"', "follow-up carries the legacy effort, not { profileId, modelParams }");
+    } else {
+      assert.equal(created.length, 1);
+      assert.equal("profileId" in created[0]!, false, "create carries no profileId");
+      assert.equal("modelParams" in created[0]!, false);
+      assert.equal(String(created[0]!.reasoningEffort), "medium");
+    }
+    await React.act(async () => change("high"));
+    assert.equal(JSON.stringify(puts), JSON.stringify([{ profileId: "quick", effort: "high" }]), "the stored profileId is written back unchanged");
+    assert.equal(preference.profileId, "quick");
+  } finally {
+    await React.act(async () => root.unmount());
+  }
+});
+
+test("profile UI switch defaults to off and ChatApp honours it", async () => {
+  const { readFileSync } = await import("node:fs");
+  const feature = readFileSync(new URL("../src/chat-react/profileFeature.ts", import.meta.url), "utf8");
+  assert.match(feature, /export const PROFILE_UI_ENABLED\s*=\s*false;/);
+  const chat = readFileSync(new URL("../src/chat-react/ChatApp.tsx", import.meta.url), "utf8");
+  assert.match(chat, /PROFILE_UI_ENABLED && <ProfileSlot/);
 });

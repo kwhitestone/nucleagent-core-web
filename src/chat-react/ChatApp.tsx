@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { PROFILE_UI_ENABLED } from "./profileFeature";
 import ProfileControls from "./ProfileControls";
 import ToolIO from "./ToolIO";
 import {
@@ -92,12 +93,14 @@ export function ChatApp(props: ChatProps) {
   const preference = useModelPreference(profileScope, selectedSettings.backend ?? "", selectedSettings.model?.providerId, selectedSettings.model?.model ?? "");
   const resolved = preference.selection;
   const settings = { ...selectedSettings, model: selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null) };
-  const profile = preference.profile;
+  // exp101 (5): hidden profile UI → no profile takes effect this turn; the stored one is kept and written back as is.
+  const storedProfileId = preference.storedProfileId;
+  const profile = PROFILE_UI_ENABLED ? preference.profile : null;
   const setProfile = (value: ProfileSelection) => { void preference.save(value.profileId, preference.choice); };
   const measured = useEffort(settings);
   // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
   const offered = profileEffortView(measured.view, profile, profileScope);
-  const effort = { ...measured, choice: preference.choice, view: offered, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(profile?.profileId ?? "", value); } };
+  const effort = { ...measured, choice: preference.choice, view: offered, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(PROFILE_UI_ENABLED ? profile?.profileId ?? "" : storedProfileId, value); } };
   // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
   const turn = profileRequest(profile, profileScope, effort.sent);
   const turnNow = useRef(turn);
@@ -193,7 +196,7 @@ export function ChatApp(props: ChatProps) {
               workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
-              controls={<><ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
+              controls={<>{PROFILE_UI_ENABLED && <ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />}{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </div>
       </ThreadPrimitive.Root>
