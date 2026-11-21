@@ -8,7 +8,7 @@ export const EN_STRINGS: IslandStrings = {
     profile: "Preset", profileDefault: "Default (no preset)", profileNote: "Saved automatically; reasoning effort overrides the preset", profileError: "Presets failed to load", profileRolledBack: "Not saved; the previous choice is restored", profileEffortOff: "not supported by this preset", profileEffortNote: "The current reasoning effort is outside this preset; the default is sent",  saving: "Saving", preferenceError: "Settings are not confirmed. Reload and check before sending",
     defaultModelUnresolved: "Using the default model. Select a model to see available settings.",
     optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",
-    ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioError: "Could not load; expand again.",
+    ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioErr: "Error", ioCut: "Truncated", ioNone: "No details yet", ioError: "Could not load; expand again.",
     upstream: "Upstream",
     visionSupported: "Image", visionUnsupported: "No image", visionUnverified: "Image unverified", availabilityUnprobed: "Not probed",
     unavailable_auth_401: "Upstream auth failed (401)", unavailable_capacity: "Upstream at capacity", unavailable_route_disabled: "Route disabled", unavailable_upstream_offline: "Upstream offline", unavailable_unknown: "Upstream error", unavailable_unwired: "Not connected", unavailable_no_prompt: "No text prompt", mediaNone: "No connected model yet",

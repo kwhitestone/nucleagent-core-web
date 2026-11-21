@@ -125,8 +125,8 @@ test("failure followed by success retains failed attempt and existing aggregate 
 });
 
 test("mixed running and failure stays compact with independently visible failure access", () => {
-  assert.equal(app.foldView(["running"], "streaming").open, false);
-  assert.equal(app.foldView(["failed", "running"], "streaming").open, false);
+  assert.equal(app.foldView(["running"]).open, false);
+  assert.equal(app.foldView(["failed", "running"]).open, false);
   assert.equal(app.foldView(["failed"]).open, false);
 });
 

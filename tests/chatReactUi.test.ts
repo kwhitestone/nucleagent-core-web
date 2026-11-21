@@ -244,10 +244,10 @@ test("process row: neutral calls retain original failure and exclude synthetic q
 });
 
 test("process fold defaults collapsed for all intermediate statuses", () => {
-  assert.deepEqual(app.foldView(["done", "done"], "complete"), { open: false, hideDone: false, done: 2 });
-  assert.deepEqual(app.foldView(["done", "running"], "streaming"), { open: false, hideDone: false, done: 1 });
-  assert.deepEqual(app.foldView(["done", "done", "done", "failed"], "failed"), { open: false, hideDone: false, done: 3 });
-  assert.deepEqual(app.foldView(["failed"], "failed"), { open: false, hideDone: false, done: 0 });
+  assert.deepEqual(app.foldView(["done", "done"]), { open: false, done: 2 });
+  assert.deepEqual(app.foldView(["done", "running"]), { open: false, done: 1 });
+  assert.deepEqual(app.foldView(["done", "done", "done", "failed"]), { open: false, done: 3 });
+  assert.deepEqual(app.foldView(["failed"]), { open: false, done: 0 });
   const html = render(stateOf([item("u1", { role: "user", content: "q" }), item("p1", { lane: "process", title: "排队", userReadable: true }), item("a1", { content: "答" })]),
     () => React.createElement(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
   assert.match(html, /<details class="mc-process" data-status="complete"><summary class="mc-process-head" aria-expanded="false"/);

@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { PROFILE_UI_ENABLED } from "./profileFeature";
 import ProfileControls from "./ProfileControls";
 import ToolIO from "./ToolIO";
@@ -568,7 +568,7 @@ function ToolStep({ part, t }: { part: { toolName: string; result?: unknown; isE
         </ul>
       )}
       {r?.content && <details className="mc-call-record"><summary>{t("chatReact.callRecord")}</summary><pre className="mc-step-detail">{r.content}</pre></details>}
-      {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <Suspense fallback={null}><ToolIO key={r.messageId} messageId={r.messageId} t={t} /></Suspense>}
+      {!!r?.messageId && getPlatformRuntime().useEmbeddedAuthorization().can("*:*:*") && <ToolIO key={r.messageId} messageId={r.messageId} failed={part.isError} t={t} />}
     </Step>
   );
 }
@@ -578,9 +578,9 @@ const groupBy = (part: { type: string }) =>
     ? (part.type === "data" && !["process", "process-step"].includes((part as { name?: string }).name ?? "") ? null : ["group-process" as const])
     : null;
 
-export function foldView(states: readonly StepState[], _summaryStatus?: string) {
+export function foldView(states: readonly StepState[]) {
   const done = states.filter((s) => s === "done").length;
-  return { open: false, hideDone: false, done };
+  return { open: false, done };
 }
 
 /** The 执行过程 fold over one GroupedParts group: it renders the header itself (from the data-process part) so it owns aria-expanded. */
@@ -588,7 +588,7 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   const parts = useAuiState((s) => s.message.parts);
   const group = indices.map((i) => parts[i]!);
   const head = (group.find((p) => p.type === "data" && p.name === "process") as { data?: ProcessPartData } | undefined)?.data;
-  const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)), head?.status);
+  const view = foldView(group.filter((p) => p.type !== "data" || p.name === "process-step").map((p) => stepState(p.type === "data" ? (p.data as { status?: string }).status : coreStatus(p), p.status, (p as { isError?: boolean }).isError)));
   const [open, setOpen] = useState(view.open);
   const ttft = head?.ttft && formatReadout(head.ttft, t);
   return (
