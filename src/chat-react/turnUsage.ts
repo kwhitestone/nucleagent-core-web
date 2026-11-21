@@ -18,10 +18,10 @@ export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
     && Array.isArray(row.upstreams) && typeof row.revision === "number") ? raw : [];
 }
 
-export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; upstreams: readonly string[] }
+export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string }
 
 /** What every turn shows without authoritative evidence: no amount, never 0. */
-export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—", upstreams: [] };
+export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—" };
 
 export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidence[] = []): TurnUsageView {
   const unknown = UNKNOWN_USAGE;
@@ -32,8 +32,7 @@ export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidenc
   if (!latest || matching.filter((entry) => entry.revision === latest.revision).length !== 1) return unknown;
   // Pending is a known state (a receipt is still expected), but it never carries an amount.
   if (latest.state === "pending") return { ...unknown, state: "pending" };
-  if (latest.state !== "settled"
-    || typeof latest.points !== "string" || !/^(0|[1-9]\d*)(\.\d+)?$/.test(latest.points)
-    || !latest.upstreams.length || latest.upstreams.some((name) => typeof name !== "string" || !name.trim())) return unknown;
-  return { state: "settled", points: latest.points, upstreams: [...new Set(latest.upstreams)] };
+  // MUYU-365 exp101: the authority is Core's settled state with an amount; upstreams are display-only and not shown.
+  if (latest.state !== "settled" || typeof latest.points !== "string" || !/^(0|[1-9]\d*)(\.\d+)?$/.test(latest.points)) return unknown;
+  return { state: "settled", points: latest.points };
 }

@@ -613,7 +613,7 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   );
 }
 
-function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
+function Parts({ t }: { t: Translate }) {
   const messageId = useAuiState((state) => state.message.id);
   return (
     <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="empty">
@@ -624,7 +624,7 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
           case "indicator":
             return null;
           case "text":
-            return raw ? null : <MarkdownText t={t} />;
+            return <MarkdownText t={t} />;
           case "reasoning":
             return null;
           case "tool-call":
@@ -660,11 +660,6 @@ function Parts({ t, raw = false }: { t: Translate; raw?: boolean }) {
  */
 export function MessageRow({ role, t, conversationId = "", evidence, actions }: { role: string; t: Translate; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
   const messageId = useAuiState((state) => state.message.id);
-  const source = useAuiState((state) => state.message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n\n"));
-  const sourceKey = JSON.stringify([conversationId, messageId]);
-  const [rawKey, setRawKey] = useState<string | null>(null);
-  const raw = rawKey === sourceKey;
-  useEffect(() => { setRawKey(null); }, [sourceKey]);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
   const turnId = useAuiState((s) => (s.message.metadata.custom as { turnId?: string }).turnId ?? "");
@@ -680,25 +675,22 @@ export function MessageRow({ role, t, conversationId = "", evidence, actions }: 
   const time = formatMessageTime(createdAt?.toISOString());
   const author = isUser ? t("conversation.you") : t("home.greeting");
   const stamp = time && <time className="mc-time" dateTime={createdAt?.toISOString()}>{time}</time>;
-  const toggle = source && <button type="button" className="mc-source-toggle" aria-pressed={raw}
-    onClick={() => setRawKey(raw ? null : sourceKey)}>{t(raw ? "chatReact.renderedView" : "chatReact.rawView")}</button>;
   return (
     <MessagePrimitive.Root className="mc-msg" data-scroll-message={messageId} data-message-role={role} data-failed={failed || undefined} data-last={isLast || undefined}>
-      {/* exp84 (OWUI UserMessage): the user side is the bubble alone; 原文 and the exact time move into its hover bar. */}
+      {/* exp84 (OWUI UserMessage): the user side is the bubble alone; the exact time moves into its hover bar. */}
       {!isUser && <div className="mc-header">
         <span className="mc-avatar" aria-hidden="true"><AssistantMark /></span>
         <span className="mc-author" title={time || undefined}>{author}</span>
-        {stamp}{toggle}
+        {stamp}
       </div>}
       <div className="mc-bubble" aria-label={isUser ? author : undefined}>
         {!isUser && activity !== null && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" /><span className="mc-shimmer">{activity || t('chatReact.processing')}</span></p>}
-        {raw && <pre className="mc-raw-body" role="region" aria-label={t("chatReact.rawView")} tabIndex={0}>{source}</pre>}
-        <Parts t={t} raw={raw} />
+        <Parts t={t} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
       <ActionBarPrimitive.Root className="mc-actions" aria-busy={actions?.busy} hideWhenRunning autohide="never">
         <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
-        {isUser && <>{toggle}{stamp}</>}
+        {isUser && stamp}
       </ActionBarPrimitive.Root>
       {!isUser && <TurnUsage t={t} usage={turnUsage({ conversationId, turnId }, evidence)} />}
     </MessagePrimitive.Root>
@@ -936,12 +928,12 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     setPending(true);
     void settle(kind, guess.label, false, run);
   };
-  // Why a kind has nothing to send: this conversation has it off, an upstream outage, or no connected model.
+  // Why a kind has nothing to send: this conversation has it off, an upstream outage (every option), or no connected model.
   const noneReason = (kind: string, read = found) => {
     const options = groups.find((group) => group.kind === kind)?.options.map((option) => read ? wiredOnly(option, read) : option) ?? [];
     if (!read || options.some((option) => !option.unavailable)) return;
     const why = options.map((option) => option.unavailable);
-    return t(why.includes("not_enabled") ? "chatReact.mediaNotEnabled" : why.some((reason) => !["unwired", "no_prompt"].includes(reason!)) ? "chatReact.mediaUpstream" : "chatReact.mediaNone");
+    return t(why.includes("not_enabled") ? "chatReact.mediaNotEnabled" : why.length && why.every((reason) => !["unwired", "no_prompt"].includes(reason!)) ? "chatReact.mediaUpstream" : "chatReact.mediaNone");
   };
 
   const allowedFor = (m: ModelChoice | null, id: string | null) => {

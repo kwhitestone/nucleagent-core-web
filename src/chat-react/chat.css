@@ -94,7 +94,6 @@
 .mc-msg[data-last] { animation: mc-rise 180ms var(--mc-ease); }
 .mc-msg[data-message-role="user"] { align-items: flex-end; }
 .mc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; min-height: 28px; width: 100%; }
-.mc-header > .mc-source-toggle { margin-left: auto; }
 .mc-avatar {
   width: 24px;
   height: 24px;
@@ -139,10 +138,6 @@
 .mc-copy-status { font-size: 12px; color: var(--text-secondary); }
 .mc-copy-status:empty { display: none; }
 .mc-bubble { min-width: 0; max-width: 100%; color: var(--fg-primary); overflow-wrap: anywhere; }
-.mc-source-toggle { border: 0; border-radius: 8px; padding: 4px 8px; background: transparent; color: var(--fg-tertiary); font: inherit; font-size: 12px; cursor: pointer; }
-.mc-source-toggle:hover { background: var(--bg-hover); }
-.mc-source-toggle:focus-visible, .mc-raw-body:focus-visible { outline: 2px solid var(--indigo-500); outline-offset: 2px; }
-.mc-raw-body { margin: 0; max-width: 100%; max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; }
 .mc-msg[data-message-role="assistant"] .mc-bubble { width: 100%; }
 .mc-msg[data-message-role="user"] .mc-bubble { max-width: 80%; padding: 8px 16px; }
 /* Assistant replies are frameless; body, process and files start under the name (24px mark + 8px gap). */
