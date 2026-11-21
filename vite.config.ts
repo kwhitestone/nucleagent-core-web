@@ -22,6 +22,12 @@ export default defineConfig(({ mode }) => {
       name: "aui-partial-json-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "assistant-stream/utils" && importer?.endsWith("/@assistant-ui/core/dist/runtime/utils/thread-message-like.js")
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/assistant-stream-utils.ts") : null,
+    }, {
+      // MUYU-365 exp107: the island registers no model-context provider, so the thread runtime never has composer metadata
+      // or interactables to gate (tests/auiSessionStubs.test.ts pins this). Scoped to that one importer.
+      name: "aui-interactable-gate-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "../../model-context/interactable-composer-metadata.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/interactable-composer-metadata.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

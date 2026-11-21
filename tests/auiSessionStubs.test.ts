@@ -143,3 +143,24 @@ test("assistant-stream/utils stand-in: aui parses argsText only for a tool-call 
   assert.equal(parsePartialJsonObject('{"__proto__":{"x":1}}'), undefined);
   assert.equal(parsePartialJsonObject('{"a":'), undefined, "partial args are not repaired (the caller falls back to {})");
 });
+
+test("interactable composer-metadata stand-in (exp107): the island registers no model-context provider, so nothing is ever gated", async () => {
+  const core = "node_modules/@assistant-ui/core/dist";
+  assert.match(read("vite.config.ts"), /id === "\.\.\/\.\.\/model-context\/interactable-composer-metadata\.js" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/runtime\/base\/base-thread-runtime-core\.js"\)\n[^\n]*src\/vendor\/assistant-ui-core\/interactable-composer-metadata\.ts/);
+  // The one bundled importer reads only gateInteractableComposerMetadata, on the composer metadata of the model context.
+  const host = read(`${core}/runtime/base/base-thread-runtime-core.js`);
+  assert.match(host, /^import \{ gateInteractableComposerMetadata \} from "\.\.\/\.\.\/model-context\/interactable-composer-metadata\.js";$/m);
+  assert.equal(host.match(/gateInteractableComposerMetadata\(/g)?.length, 1, "one call site");
+  assert.match(host, /gateInteractableComposerMetadata\(this\.getModelContext\(\)\.unstable_composerMetadata, /);
+  // Composer metadata only comes from model-context providers / interactables; the island source has none.
+  for (const file of ["src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts", "src/chat-react/mount.tsx", "src/chat-react/auiPrimitives.ts"]) {
+    assert.doesNotMatch(read(file), /unstable_composerMetadata|Interactable|ModelContext|makeAssistantTool|useAssistantInstructions/, file);
+  }
+  const stub = await import("../src/vendor/assistant-ui-core/interactable-composer-metadata.ts");
+  const original = await import(`../${core}/model-context/interactable-composer-metadata.js`);
+  const messages = [{ id: "u1", role: "user", content: [], metadata: {} }];
+  for (const meta of [undefined, {}, { other: 1 }, { a: "x", b: [1] }]) {
+    assert.deepEqual(stub.gateInteractableComposerMetadata(meta as never, messages as never), original.gateInteractableComposerMetadata(meta, messages), JSON.stringify(meta));
+  }
+  assert.throws(() => stub.gateInteractableComposerMetadata({ interactables: [{ id: "i", name: "n", state: {} }] } as never, messages as never), /not bundled/);
+});
