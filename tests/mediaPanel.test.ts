@@ -273,6 +273,28 @@ test("nothing sendable: 暂无 only when no job tool exists, and upstream outage
   } finally { await view.close(); }
 });
 
+// exp101 (exp98 REMAINING §1, PRE): one upstream_offline row beside models that are merely not connected is
+// "暂无已接通的模型", not "上游暂不可用"; only when every option is an upstream outage is the upstream named.
+test("one upstream_offline row among unconnected models says 暂无, not 上游暂不可用", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  setup();
+  const plain = base(null);
+  response = (url: string) => /\/catalog(\?|$)/.test(url) ? { data: [] } : plain(url);
+  typed.image = [{ providerId: 1, model: "nano-banana", type: "image", capabilities: [], available: false, unavailableReason: "upstream_offline" },
+    ...media("image", "doubao-seedream-5-0-260128", "seedream-4")];
+  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: [], available: false, unavailableReason: "upstream_offline" },
+    { providerId: 1, model: "veo-3", type: "video", capabilities: [], available: false, unavailableReason: "capacity" }];
+  const view = await mount(chat());
+  try {
+    await settle();
+    assert.match(pill(view.container, "image").getAttribute("aria-label") ?? "", /chatReact.mediaNone/);
+    assert.doesNotMatch(pill(view.container, "image").getAttribute("aria-label") ?? "", /mediaUpstream/);
+    assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaUpstream/, "all upstream outages still name the upstream");
+    await React.act(async () => pill(view.container, "image").click());
+    assert.equal(mode(view.container), null);
+  } finally { await view.close(); }
+});
+
 test("catalog pages after the first are requested together, not one after another", async () => {
   const { listToolCatalogPages } = await vite.ssrLoadModule("/src/addons/conversation/api/toolCatalog.ts");
   const started: number[] = [];

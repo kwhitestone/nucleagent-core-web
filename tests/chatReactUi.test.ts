@@ -539,7 +539,7 @@ test("model menu keeps its own keys beside Controls: arrows do not open it, Esca
   }
 });
 
-test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on revision and refresh", async () => {
+test("usage view renders late settled zero without any 上游 text, then UNKNOWN on revision and refresh", async () => {
   const { turnUsage } = await import("../src/chat-react/turnUsage.ts");
   const scope = { conversationId: "7", turnId: "one" };
   const receipt = { ...scope, state: "settled" as const, revision: 2, points: "0", upstreams: ["aihub-gateway", "everai-yunyi"] };
@@ -548,9 +548,12 @@ test("usage view renders late settled zero and mixed upstreams, then UNKNOWN on 
   const settled = show(turnUsage(scope, [receipt]));
   assert.match(settled, /data-settlement="settled"/);
   assert.match(settled, /: <!-- -->0/);
-  assert.match(settled, /aihub-gateway \/ everai-yunyi/);
+  assert.doesNotMatch(settled, /aihub-gateway|everai-yunyi|chatReact\.upstream|上游/, "exp101: no upstream beside the points");
+  const zhShow = renderToString(React.createElement(app.TurnUsage, { t: (key: string) => key === "chatReact.points" ? "积分" : key === "chatReact.upstream" ? "上游" : key, usage: turnUsage(scope, [receipt]) }));
+  assert.doesNotMatch(zhShow, /上游/);
+  assert.match(show(turnUsage(scope, [{ ...receipt, upstreams: [] }])), /data-settlement="settled"[^]*: <!-- -->0/, "settled without upstreams still shows its points");
   assert.equal(show(turnUsage(scope, JSON.parse(JSON.stringify([receipt])))), settled);
-  assert.doesNotMatch(show(turnUsage({ ...scope, turnId: "two" }, [receipt])), /aihub-gateway/);
+  assert.match(show(turnUsage({ ...scope, turnId: "two" }, [receipt])), /data-settlement="unknown"/);
   assert.match(show(turnUsage(scope, [receipt, { ...receipt, revision: 3, state: "unknown" }])), /data-settlement="unknown"/);
   const pending = show(turnUsage(scope, [{ ...receipt, revision: 1, state: "pending" }]));
   assert.match(pending, /data-settlement="pending"[^>]*title="chatReact.usagePending"/);
@@ -613,7 +616,7 @@ test("settlement reader: a late receipt replaces pending on re-read; superseded,
     assert.equal(reads[1]!.signal.aborted, true, "a newer read cancels the older one");
     await settle(2, [row({ state: "pending", revision: 1 }), row()]);
     assert.equal(shown().getAttribute("data-settlement"), "settled");
-    assert.match(shown().textContent!, /: 0 · chatReact.upstream: aihub-gateway/);
+    assert.equal(shown().textContent, "chatReact.points: 0");
     await settle(1, [row({ state: "pending", revision: 1 })]);
     assert.equal(shown().getAttribute("data-settlement"), "settled", "the superseded read is ignored");
     await draw(root, 3);
@@ -629,7 +632,7 @@ test("settlement reader: a late receipt replaces pending on re-read; superseded,
     root = createRoot(container);
     await draw(root, 0);
     await settle(6, JSON.parse(JSON.stringify([row()])));
-    assert.match(shown().textContent!, /: 0 · /);
+    assert.equal(shown().textContent, "chatReact.points: 0");
   } finally {
     await React.act(async () => root.unmount());
     container.remove();

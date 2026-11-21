@@ -10,33 +10,42 @@ const settled = (over: Partial<SettlementEvidence> = {}): SettlementEvidence => 
 });
 
 test("only authoritative settled decimal strings show true zero or positive points", () => {
-  assert.deepEqual(turnUsage(scope, [settled()]), { state: "settled", points: "0", upstreams: ["aihub-gateway"] });
+  assert.deepEqual(turnUsage(scope, [settled()]), { state: "settled", points: "0" });
   assert.equal(turnUsage(scope, [settled({ points: "1.25" })]).points, "1.25");
   for (const points of [undefined, null, 0, -1, "", "-1", "NaN", "Infinity", "1e3", " 0"]) {
     assert.equal(turnUsage(scope, [settled({ points })]).points, "—");
   }
 });
 
-test("UNKNOWN, pending, missing authority and incomplete upstream evidence never become zero", () => {
-  assert.deepEqual(turnUsage(scope), { state: "unknown", points: "—", upstreams: [] });
-  for (const evidence of [settled({ state: "unknown" }), settled({ state: "pending" }), settled({ upstreams: [] }), settled({ upstreams: [""] })]) {
+test("UNKNOWN, pending and missing authority never become zero", () => {
+  assert.deepEqual(turnUsage(scope), { state: "unknown", points: "—" });
+  for (const evidence of [settled({ state: "unknown" }), settled({ state: "pending" })]) {
     assert.equal(turnUsage(scope, [evidence]).points, "—");
   }
 });
 
+// exp101 (user item 4): upstreams are display-only and no longer shown; the authority for an amount is Core's
+// state=settled with whole credits (Core already requires calls behind a settled turn, settlement.go:181).
+// So a settled turn with an empty upstream list still shows its points (this case used to be asserted UNKNOWN).
+test("settled with no upstreams still shows its points; the view carries no upstream field", () => {
+  assert.deepEqual(turnUsage(scope, [settled({ upstreams: [] })]), { state: "settled", points: "0" });
+  assert.deepEqual(turnUsage(scope, [settled({ upstreams: [""], points: "4" })]), { state: "settled", points: "4" });
+  assert.equal("upstreams" in turnUsage(scope, [settled()]), false);
+});
+
 test("pending settlement is its own state, never zero, and yields to a later settled or UNKNOWN revision", () => {
   const pending = settled({ state: "pending", points: "0", upstreams: [] });
-  assert.deepEqual(turnUsage(scope, [pending]), { state: "pending", points: "—", upstreams: [] });
+  assert.deepEqual(turnUsage(scope, [pending]), { state: "pending", points: "—" });
   assert.equal(turnUsage(scope, [settled({ revision: 0 }), pending]).state, "pending");
-  assert.deepEqual(turnUsage(scope, [pending, settled({ revision: 2 })]), { state: "settled", points: "0", upstreams: ["aihub-gateway"] });
+  assert.deepEqual(turnUsage(scope, [pending, settled({ revision: 2 })]), { state: "settled", points: "0" });
   assert.equal(turnUsage(scope, [pending, settled({ revision: 2, state: "unknown" })]).state, "unknown");
   assert.equal(turnUsage(scope, [pending, { ...pending }]).state, "unknown");
   assert.equal(turnUsage({ ...scope, turnId: "turn-b" }, [pending]).state, "unknown");
 });
 
-test("mixed upstreams stay bound to the matching conversation and turn", () => {
+test("mixed upstreams: the amount stays bound to the matching conversation and turn", () => {
   const evidence = settled({ points: "2", upstreams: ["aihub-gateway", "everai-yunyi"] });
-  assert.deepEqual(turnUsage(scope, [evidence]).upstreams, ["aihub-gateway", "everai-yunyi"]);
+  assert.deepEqual(turnUsage(scope, [evidence]), { state: "settled", points: "2" });
   assert.equal(turnUsage({ ...scope, turnId: "turn-b" }, [evidence]).points, "—");
   assert.equal(turnUsage({ ...scope, conversationId: "8" }, [evidence]).points, "—");
 });
@@ -95,11 +104,14 @@ test("Core reader: the owner route's turns become evidence by step id; anything 
       assert.deepEqual(settlementRows(await readSettlement("7", signal).catch((error: unknown) => error)), [], JSON.stringify(broken));
     }
     // A turn whose own values are off stays unknown and never borrows a number; the turns beside it still read.
-    for (const wrong of [{ credits: 7 }, { credits: "07" }, { stepId: "" }, { upstreams: [7] }, { upstreams: [] }, { revision: 1.5 }, { revision: -1 }, { state: "done", credits: null }]) {
+    for (const wrong of [{ credits: 7 }, { credits: "07" }, { stepId: "" }, { revision: 1.5 }, { revision: -1 }, { state: "done", credits: null }]) {
       reply = answer({}, turn(wrong), good);
       const shown = settlementRows(await readSettlement("7", signal));
       assert.deepEqual([turnUsage(scope, shown).points, turnUsage({ ...scope, turnId: "turn-d" }, shown).points], ["—", "3"], JSON.stringify(wrong));
     }
+    // exp101: an empty upstream list no longer voids a settled turn (display-only field).
+    reply = answer({}, turn({ upstreams: [] }), good);
+    assert.equal(turnUsage(scope, settlementRows(await readSettlement("7", signal))).points, "7");
     reply = Object.assign(new Error("ledger down"), { status: 503 });
     await assert.rejects(readSettlement("7", signal), /ledger down/);
   } finally {

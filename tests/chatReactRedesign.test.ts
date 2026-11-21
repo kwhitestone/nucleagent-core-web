@@ -98,7 +98,7 @@ test('user message: light rounded bubble like OWUI UserMessage, no brand gradien
   assert.equal(user.querySelector('.mc-avatar'), null, 'no avatar badge on the user side');
   assert.equal(user.querySelector('.mc-header'), null, 'no header row above the user bubble');
   assert.ok(user.querySelector('.mc-bubble + .mc-actions, .mc-bubble ~ .mc-actions'), 'actions stay under the bubble');
-  assert.ok(user.querySelector('.mc-actions .mc-source-toggle'), '原文 moves into the hover bar, still reachable');
+  assert.equal(dom.querySelector('.mc-source-toggle'), null, 'exp101: no 原文/返回排版 switch on any message');
   assert.ok(user.querySelector('.mc-actions time.mc-time'), 'exact time stays reachable');
 });
 

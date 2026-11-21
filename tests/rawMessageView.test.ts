@@ -37,104 +37,88 @@ before(async () => {
 });
 after(async () => { await vite?.close(); dom.window.close(); });
 
-async function mount(content: string | string[], running = false) {
+async function mount(content: string | string[], running = false, role: 'assistant' | 'user' = 'assistant') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  const translate = (key: string) => ({ 'chatReact.rawView': '原文', 'chatReact.renderedView': '返回排版' })[key] ?? key;
+  const translate = (key: string) => key;
   function View({ body, active, id }: { body: string | string[]; active: boolean; id: string }) {
     const runtime = aui.useExternalStoreRuntime<import('@assistant-ui/react').ThreadMessageLike>({
-      messages: [{ id, role: 'assistant', content: (Array.isArray(body) ? body : [body]).map((text) => ({ type: 'text' as const, text })),
-        status: active ? { type: 'running' } : { type: 'complete', reason: 'stop' } }],
+      messages: [{ id, role, content: (Array.isArray(body) ? body : [body]).map((text) => ({ type: 'text' as const, text })),
+        ...(role === 'assistant' ? { status: active ? { type: 'running' as const } : { type: 'complete' as const, reason: 'stop' as const } } : {}) }],
       isRunning: active, convertMessage: (message) => message, onNew: async () => { throw new Error('send prohibited'); },
     });
     return React.createElement(aui.AssistantRuntimeProvider, { runtime },
       React.createElement(primitives.ThreadPrimitive.Viewport, null,
         React.createElement(primitives.ThreadPrimitive.Messages, null,
-          () => React.createElement(app.MessageRow, { role: 'assistant', conversationId: '1471', t: translate }))));
+          () => React.createElement(app.MessageRow, { role, conversationId: '1471', t: translate }))));
   }
   const update = async (body: string | string[], active = false, id = '13051') => {
     await React.act(async () => root.render(React.createElement(View, { body, active, id })));
   };
   await update(content, running);
-  return { container, update, raw: () => container.querySelector<HTMLElement>('.mc-raw-body'),
-    toggle: () => container.querySelector<HTMLButtonElement>('.mc-source-toggle')!,
+  // Presence checks return booleans: a failing assert on a JSDOM node inspects the whole DOM graph (exp101: ~63GB OOM).
+  return { container, update, raw: () => container.querySelector('.mc-raw-body') !== null,
+    toggle: () => container.querySelector('.mc-source-toggle') !== null,
+    has: (selector: string) => container.querySelector(selector) !== null,
     click: async (button: HTMLButtonElement) => { await React.act(async () => button.click()); },
     close: async () => { await React.act(async () => root.unmount()); container.remove(); } };
 }
 
-test('entire immutable 13051 explicitly displays exact text and preserves nested JSON and raw copy', async () => {
+// MUYU-365 exp101 (user item 3): the 原文/返回排版 switch is gone; every message is always the formatted view.
+// Copy (aui ActionBar) still copies the exact source text.
+for (const role of ['assistant', 'user'] as const) {
+  test(`${role}: no 原文/返回排版 control and no raw <pre>, markdown renders as elements`, { timeout: 30000 }, async () => {
+    const view = await mount('**b** and `c`\n\n```\nx < y\n```', false, role);
+    try {
+      assert.equal(view.toggle(), false, 'no .mc-source-toggle');
+      assert.equal(view.raw(), false, 'no .mc-raw-body');
+      assert.ok(view.has('.mc-md strong'), 'bold is an element');
+      assert.ok(view.has('.mc-md pre code, .mc-md pre'), 'code block is an element');
+      assert.doesNotMatch(view.container.textContent ?? '', /chatReact\.(rawView|renderedView)/);
+    } finally { await view.close(); }
+  });
+}
+
+test('entire immutable 13051 renders formatted, copy still yields the exact source', { timeout: 30000 }, async () => {
   assert.equal(createHash('sha256').update(fixture.content).digest('hex'), fixture.contentSha256);
   const view = await mount(fixture.content);
   try {
-    const markdown = view.container.querySelector('.mc-md')!.innerHTML;
-    assert.equal(markdown, '<p>我会读取“豆瓣资源搜索”技能正文，并按正文转换 query 参数。<br>\n{"query":"{"keyword":"甄嬛传","cat":"1002"}"}</p>\n<p>分类依据：技能正文规定电视剧的 cat 为“1002”。</p>\n');
-    assert.equal(view.raw(), null);
-    assert.ok(view.toggle(), 'explicit raw view control exists');
-    assert.equal(view.toggle().textContent, '原文');
-    assert.equal(view.toggle().type, 'button');
-    assert.equal(view.toggle().getAttribute('aria-pressed'), 'false');
-    view.toggle().focus();
-    assert.equal(document.activeElement, view.toggle());
-    await view.click(view.toggle());
-    assert.equal(view.toggle().textContent, '返回排版');
-    assert.equal(view.toggle().getAttribute('aria-pressed'), 'true');
-    assert.equal(view.raw()!.textContent, fixture.content);
-    assert.equal(view.raw()!.tagName, 'PRE');
-    assert.equal(view.raw()!.tabIndex, 0);
-    assert.deepEqual(JSON.parse(JSON.parse(view.raw()!.textContent!.split('\n')[1]).query), { keyword: '甄嬛传', cat: '1002' });
+    assert.equal(String(view.container.querySelector('.mc-md')?.innerHTML), '<p>我会读取“豆瓣资源搜索”技能正文，并按正文转换 query 参数。<br>\n{"query":"{"keyword":"甄嬛传","cat":"1002"}"}</p>\n<p>分类依据：技能正文规定电视剧的 cat 为“1002”。</p>\n');
+    assert.equal(view.toggle(), false);
+    assert.equal(view.raw(), false);
     await view.click(view.container.querySelector<HTMLButtonElement>('[aria-label="common.copy"]')!);
     assert.equal(copied.at(-1), fixture.content);
-    await view.click(view.toggle());
-    assert.equal(view.raw(), null);
-    assert.equal(view.container.querySelector('.mc-md')!.innerHTML, markdown);
   } finally { await view.close(); }
 });
 
-test('raw is safe text, stays exact on streaming updates, and resets for another message/reentry', async () => {
+test('streaming updates stay formatted and unsafe markup stays inert', { timeout: 30000 }, async () => {
   const payload = '<script>globalThis.pwned=1</script><img src=x onerror="alert(1)"><a href="javascript:alert(1)">x</a>\\\n';
   const view = await mount(payload, true);
   try {
-    await view.click(view.toggle());
-    assert.equal(view.raw()!.textContent, payload);
-    assert.equal(view.raw()!.children.length, 0);
-    await view.update(payload + fixture.content, true);
-    assert.equal(view.raw()!.textContent, payload + fixture.content);
-    await view.update(payload + fixture.content);
-    assert.equal(view.raw()!.textContent, payload + fixture.content);
-    await view.update('another **message**', false, '13052');
-    assert.equal(view.raw(), null);
-    assert.ok(view.container.querySelector('.mc-md strong'));
-  } finally { await view.close(); }
-  const reentry = await mount(fixture.content);
-  try {
-    assert.equal(reentry.raw(), null);
-    await reentry.click(reentry.toggle());
-    assert.equal(reentry.raw()!.textContent, fixture.content);
-  } finally { await reentry.close(); }
-});
-
-test('long text is complete within a keyboard-scrollable bounded region', async () => {
-  const text = ('x'.repeat(1000) + '\n').repeat(500);
-  const view = await mount(text);
-  try {
-    await view.click(view.toggle());
-    assert.equal(view.raw()!.textContent, text);
-    assert.equal(view.raw()!.getAttribute('role'), 'region');
-    assert.equal(view.raw()!.getAttribute('aria-label'), '原文');
-    const styles = readFileSync(new URL('../src/chat-react/chat.css', import.meta.url), 'utf8');
-    assert.match(styles, /\.mc-raw-body\s*\{[^}]*max-height:\s*60vh/);
-    assert.match(styles, /\.mc-raw-body\s*\{[^}]*overflow:\s*auto/);
+    assert.equal(view.toggle(), false);
+    await view.update(payload + '**streamed**', true);
+    assert.ok(view.has('.mc-md strong'), 'formatted while streaming');
+    assert.equal(view.raw(), false);
+    await view.update(payload + '**streamed** done');
+    assert.ok(view.has('.mc-md strong'), 'formatted after completion');
+    assert.equal(view.has('script'), false);
+    assert.equal(view.has('[onerror]'), false);
+    assert.equal(view.toggle(), false);
+    assert.equal(view.raw(), false);
   } finally { await view.close(); }
 });
 
-test('multiple text parts follow the existing copy separator and preserve blank lines', async () => {
+test('multiple text parts copy with the existing separator; the stylesheet has no toggle/raw rules', { timeout: 30000 }, async () => {
   const parts = ['first\\\n', '\n' + fixture.content];
   const view = await mount(parts);
   try {
-    await view.click(view.toggle());
     await view.click(view.container.querySelector<HTMLButtonElement>('[aria-label="common.copy"]')!);
-    assert.equal(view.raw()!.textContent, parts.join('\n\n'));
-    assert.equal(view.raw()!.textContent, copied.at(-1));
+    assert.equal(copied.at(-1), parts.join('\n\n'));
   } finally { await view.close(); }
+  const styles = readFileSync(new URL('../src/chat-react/chat.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(styles, /mc-source-toggle|mc-raw-body/);
+  for (const locale of ['islandStringsZh', 'islandStringsEn']) {
+    assert.doesNotMatch(readFileSync(new URL(`../src/chat-react/${locale}.ts`, import.meta.url), 'utf8'), /rawView|renderedView/, locale);
+  }
 });
