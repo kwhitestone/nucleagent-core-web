@@ -28,6 +28,11 @@ export default defineConfig(({ mode }) => {
       name: "aui-interactable-gate-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "../../model-context/interactable-composer-metadata.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/interactable-composer-metadata.ts") : null,
+    }, {
+      // MUYU-365 exp107: no runtime-adapters provider, so useExternalStoreRuntime never copies history (auiSessionStubs pins it).
+      name: "aui-history-copy-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "./external-store-history-copy.js" && importer?.endsWith("/@assistant-ui/core/dist/react/runtimes/useExternalStoreRuntime.js")
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/external-store-history-copy.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

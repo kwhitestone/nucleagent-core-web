@@ -114,6 +114,9 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/voice-session.ts")));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/dictation-session.ts")));
   assert.ok(!graph.some((id) => /@assistant-ui\/core\/dist\/runtime\/base\/(voice|dictation)-session\.js/.test(id)));
+  // exp107: the interactable gate and the history copy also resolve to their stand-ins in the running island runtime.
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/interactable-composer-metadata.ts")));
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/external-store-history-copy.ts")));
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
 });
 
@@ -163,4 +166,22 @@ test("interactable composer-metadata stand-in (exp107): the island registers no 
     assert.deepEqual(stub.gateInteractableComposerMetadata(meta as never, messages as never), original.gateInteractableComposerMetadata(meta, messages), JSON.stringify(meta));
   }
   assert.throws(() => stub.gateInteractableComposerMetadata({ interactables: [{ id: "i", name: "n", state: {} }] } as never, messages as never), /not bundled/);
+});
+
+test("external-store history-copy stand-in (exp107): with no history adapter the runtime hook only constructs it", async () => {
+  const hook = read("node_modules/@assistant-ui/core/dist/react/runtimes/useExternalStoreRuntime.js");
+  assert.match(read("vite.config.ts"), /id === "\.\/external-store-history-copy\.js" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/react\/runtimes\/useExternalStoreRuntime\.js"\)\n[^\n]*src\/vendor\/assistant-ui-core\/external-store-history-copy\.ts/);
+  // The copy is used only when a runtime-adapters provider supplies `history.unstable_copy`; both uses sit behind that.
+  assert.match(hook, /const \{ modelContext, feedback, history \} = useRuntimeAdapters\(\) \?\? \{\};/);
+  assert.match(hook, /const copiesHistory = !!history\?\.unstable_copy && /);
+  assert.match(hook, /if \(!copiesHistory \|\| store\.unstable_onRecordToolInteraction\) return withFeedback;/);
+  assert.match(hook, /if \(!copiesHistory \|\| !history\) return;\n\t\treturn historyCopy\.attach\(/);
+  assert.deepEqual([...hook.matchAll(/historyCopy\.(\w+)/g)].map((m) => m[1]).sort(), ["attach", "recordInteraction"]);
+  for (const file of ["src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts", "src/chat-react/mount.tsx"]) {
+    assert.doesNotMatch(read(file), /RuntimeAdapterProvider|useRuntimeAdapters|unstable_copy|unstable_persistsHistory/, file);
+  }
+  const { ExternalStoreHistoryCopy } = await import("../src/vendor/assistant-ui-core/external-store-history-copy.ts");
+  const copy = new ExternalStoreHistoryCopy();
+  assert.throws(() => copy.attach(), /not bundled/);
+  await assert.rejects(copy.recordInteraction(), /not bundled/);
 });
