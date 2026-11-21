@@ -1,0 +1,164 @@
+{
+ "PROD-1007": {
+  "data": {
+   "code": 0,
+   "data": {
+    "pointsName": {
+     "zh-CN": "贝壳",
+     "en": "Seashell"
+    },
+    "creditsPerCny": 3000,
+    "rate": {
+     "creditsAmount": 3000,
+     "coinAmount": 100
+    },
+    "unit": "credits",
+    "revision": 1795262422398,
+    "turns": [
+     {
+      "stepId": "step-PROD-1007-0",
+      "state": "settled",
+      "credits": "17",
+      "points": "3",
+      "upstreams": [
+       "upstream"
+      ],
+      "callIds": [
+       "1",
+       "2",
+       "3"
+      ],
+      "logicalRequestIds": [
+       "lr-1",
+       "lr-2",
+       "lr-3"
+      ],
+      "keyIds": [
+       "k"
+      ],
+      "revision": 1795262422398
+     }
+    ]
+   }
+  }
+ },
+ "PROD-1027": {
+  "data": {
+   "code": 0,
+   "data": {
+    "pointsName": {
+     "zh-CN": "贝壳",
+     "en": "Seashell"
+    },
+    "creditsPerCny": 3000,
+    "rate": {
+     "creditsAmount": 3000,
+     "coinAmount": 100
+    },
+    "unit": "credits",
+    "revision": 1795262424436,
+    "turns": [
+     {
+      "stepId": "step-PROD-1027-0",
+      "state": "settled",
+      "credits": "7",
+      "points": "1",
+      "upstreams": [
+       "upstream"
+      ],
+      "callIds": [
+       "1"
+      ],
+      "logicalRequestIds": [
+       "lr-1"
+      ],
+      "keyIds": [
+       "k"
+      ],
+      "revision": 1795262424436
+     }
+    ]
+   }
+  }
+ },
+ "PRE-253": {
+  "data": {
+   "code": 0,
+   "data": {
+    "pointsName": {
+     "zh-CN": "贝壳",
+     "en": "Seashell"
+    },
+    "creditsPerCny": 3000,
+    "rate": {
+     "creditsAmount": 3000,
+     "coinAmount": 100
+    },
+    "unit": "credits",
+    "revision": 1795262426204,
+    "turns": [
+     {
+      "stepId": "step-PRE-253-0",
+      "state": "settled",
+      "credits": "3880",
+      "points": "131",
+      "upstreams": [
+       "upstream"
+      ],
+      "callIds": [
+       "1",
+       "2"
+      ],
+      "logicalRequestIds": [
+       "lr-1",
+       "lr-2"
+      ],
+      "keyIds": [
+       "k"
+      ],
+      "revision": 1795262426204
+     }
+    ]
+   }
+  }
+ },
+ "TEST-1461": {
+  "data": {
+   "code": 0,
+   "data": {
+    "pointsName": {
+     "zh-CN": "贝壳",
+     "en": "Seashell"
+    },
+    "creditsPerCny": 3000,
+    "rate": {
+     "creditsAmount": 3000,
+     "coinAmount": 100
+    },
+    "unit": "credits",
+    "revision": 1795262427658,
+    "turns": [
+     {
+      "stepId": "step-TEST-1461-0",
+      "state": "settled",
+      "credits": "0",
+      "points": "0",
+      "upstreams": [
+       "upstream"
+      ],
+      "callIds": [
+       "1"
+      ],
+      "logicalRequestIds": [
+       "lr-1"
+      ],
+      "keyIds": [
+       "k"
+      ],
+      "revision": 1795262427658
+     }
+    ]
+   }
+  }
+ }
+}

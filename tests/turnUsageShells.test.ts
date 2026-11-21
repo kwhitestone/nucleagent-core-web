@@ -59,8 +59,19 @@ test("settled: N 贝壳（≈¥X.XXXX） with N from Core's per-call points and 
   assert.equal(text(await read(answer({}, turn({ credits: "17", points: "3" })))), "3 贝壳（≈¥0.0057）");
 });
 
-test("settled and zero is the only real zero: 0 贝壳（≈¥0）", async () => {
-  assert.equal(text(await read(answer({}, turn({ credits: "0", points: "0" })))), "0 贝壳（≈¥0）");
+// exp106 (user, 2026-11-21): free is "0 贝壳" with no ¥ at all (replaces exp103's "0 贝壳（≈¥0）").
+test("settled and zero is the only real zero: 0 贝壳, without ¥", async () => {
+  assert.equal(text(await read(answer({}, turn({ credits: "0", points: "0" })))), "0 贝壳");
+});
+
+// exp106: the real Core GET answers of PROD 1007/1027, PRE 253 and TEST 1461 (ids replaced, tests/fixtures/settlement-shells.json).
+test("real Core answers (PROD 1007/1027, PRE 253, TEST 1461) render N from turn.points and ¥ from credits / creditsPerCny", async () => {
+  const fixtures = JSON.parse(readFileSync(new URL("./fixtures/settlement-shells.json", import.meta.url), "utf8"));
+  const shown = async (key: string) => { const raw = fixtures[key]; return text(await read(raw), raw.data.data.turns[0].stepId); };
+  assert.equal(await shown("PROD-1007"), "3 贝壳（≈¥0.0057）", "17 credits over three calls: Core's 3, never ceil(17/3000*100)=1");
+  assert.equal(await shown("PROD-1027"), "1 贝壳（≈¥0.0023）");
+  assert.equal(await shown("PRE-253"), "131 贝壳（≈¥1.2933）");
+  assert.equal(await shown("TEST-1461"), "0 贝壳");
 });
 
 test("unit name and rate come only from the contract: another name or rate changes the text (nothing hard-coded)", async () => {
@@ -87,6 +98,7 @@ test("no rate, no creditsPerCny, no pointsName or no turn points: N 积分 (cred
     assert.equal(text(await read(answer({}, turn({ credits: "7", points })))), "7 积分", String(points));
   }
   assert.equal(text(await read(answer({ rate: null }, turn({ credits: "0", points: null })))), "0 积分", "a settled zero without rate is still 0, without ¥");
+  assert.equal(text(await read(answer({ rate: null }, turn({ credits: "0", points: "0" })))), "0 积分", "no rate: the old unit even for a free turn");
 });
 
 test("an old Core without any of the new fields still reads, shows N 积分 and never throws or shows ¥", async () => {
@@ -96,16 +108,18 @@ test("an old Core without any of the new fields still reads, shows N 积分 and 
   assert.equal(text(rows), "7 积分");
 });
 
-test("pending shows 待结算 with no number and no ¥; unknown shows — with no ¥", async () => {
+// exp106: unknown (and no evidence yet) shows 计费中, never 0 and never ¥ (replaces exp103's "—").
+test("pending shows 待结算 with no number and no ¥; unknown shows 计费中 with no number and no ¥", async () => {
   const rows = await read(answer({}, turn({ stepId: "turn-p", state: "pending", credits: null, points: null }),
     turn({ stepId: "turn-u", state: "unknown", credits: null, points: null })));
   const pending = text(rows, "turn-p");
   assert.match(pending, /待结算/);
   assert.doesNotMatch(pending, /\d|¥|贝壳（/);
   const unknown = text(rows, "turn-u");
-  assert.match(unknown, /—/);
-  assert.doesNotMatch(unknown, /\d|¥/);
-  assert.doesNotMatch(text(rows, "turn-none"), /\d|¥/);
+  assert.equal(unknown, "计费中");
+  assert.equal(text(rows, "turn-none"), "计费中");
+  assert.equal(pending, "待结算");
+  assert.equal(text(await read(new Error("ledger down"))), "计费中", "a failed read is not 0 and not ¥");
 });
 
 test("contract check: points is a whole-number string and only on settled turns; anything else voids the read, never a number", async () => {
