@@ -31,6 +31,24 @@ test("tool-invocation tracker stand-in: the host builds a tracker only on opt-in
   assert.throws(() => new (stub.ToolInvocationTracker as unknown as new () => unknown)(), /not bundled/);
 });
 
+test("tool-approval resolver stand-in (exp104): both library call sites sit behind a pending approval the island never makes", async () => {
+  const core = "node_modules/@assistant-ui/core/dist";
+  const config = read("vite.config.ts");
+  assert.match(config, /"\.\.\/utils\/resolveToolApprovalResponse\.js": [^\n]*src\/vendor\/assistant-ui-core\/resolve-tool-approval\.ts/);
+  assert.match(config, /"\.\.\/\.\.\/runtime\/utils\/resolveToolApprovalResponse\.js": [^\n]*src\/vendor\/assistant-ui-core\/resolve-tool-approval\.ts/);
+  const part = read(`${core}/runtime/api/message-part-runtime.js`);
+  assert.equal(part.match(/resolveToolApprovalResponse\(/g)?.length, 1);
+  assert.match(part, /if \(!approval \|\| approval\.approved !== void 0 \|\| approval\.resolution !== void 0\) throw new Error\("Tool call has no pending approval"\);\n\t\treturn core\.respondToToolApproval\(resolveToolApprovalResponse\(/);
+  const external = read(`${core}/store/clients/external-thread.js`);
+  assert.equal(external.match(/resolveToolApprovalResponse\(/g)?.length, 1);
+  assert.match(external, /if \(!part\.approval \|\| part\.approval\.approved !== void 0 \|\| part\.approval\.resolution !== void 0\) throw new Error\("Tool call has no pending approval"\);\n\t\t\tconst options = resolveToolApprovalResponse\(/);
+  for (const file of ["src/chat-react/threadMessages.ts", "src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts"]) {
+    assert.doesNotMatch(read(file), /approval|onRespondToToolApproval/i, file);
+  }
+  const stub = await import("../src/vendor/assistant-ui-core/resolve-tool-approval.ts");
+  assert.throws(() => stub.resolveToolApprovalResponse(), /not bundled/);
+});
+
 test("every member the library hosts touch exists on the stand-ins and behaves as the original without a session", async () => {
   const messages = [{ id: "a", role: "assistant", status: { type: "running" } }];
   const host = { adapter: () => undefined, isRunning: () => false, dirty: 0, notified: 0, getBaseMessages: () => messages,

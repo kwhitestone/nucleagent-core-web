@@ -133,8 +133,10 @@ test("server-backed choices survive remount, isolate accounts and reconcile save
     failWrite = true;
     await React.act(async () => current.save("quick", "high"));
     assert.equal(writes, 3, "unknown write is never automatically repeated");
-    assert.equal(current.ready, false);
-    assert.equal(current.error, true);
+    // MUYU-365 exp104 S3: the failed save reads back; the server's kept choice is shown and confirmed, and it says so.
+    assert.equal(current.ready, true, "send reopens only after the readback confirmed the kept choice");
+    assert.equal(current.error, false);
+    assert.equal(current.rolledBack, true);
     assert.equal(current.choice, "low", "failed save is not presented as persisted");
   } finally { await React.act(async () => root.unmount()); }
 });
@@ -355,8 +357,11 @@ test("review: committed UNKNOWN write recovers on GET without replay", async () 
     const previousWrites = writes;
     loseAcknowledgement = true;
     await React.act(async () => current.save("quick", "medium"));
-    assert.equal(current.ready, false);
-    assert.equal(current.error, true);
+    // exp104 S3: the lost acknowledgement is reconciled by the readback, which shows the commit; nothing is replayed.
+    assert.equal(current.ready, true);
+    assert.equal(current.error, false);
+    assert.equal(current.rolledBack, false);
+    assert.equal(current.choice, "medium");
     assert.equal(writes, previousWrites + 1);
     loseAcknowledgement = false;
     await React.act(async () => root.unmount());

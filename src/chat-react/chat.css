@@ -460,6 +460,14 @@
 .mc-controls > button[aria-expanded="true"] { color: var(--fg-brand); background: var(--bg-brand-soft); }
 .mc-usage { display: block; color: var(--fg-tertiary); font-size: 12px; padding: 0 0 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 @keyframes mc-controls-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+/* exp104 profile design: root rows 「名称 · 值 ›」, saving spinner, read-only detail; drawer/scrim/grab only on narrow screens. */
+.mc-controls .mc-menu-hint { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-scrim { display: none; }
+.mc-grab { display: none; }
+.mc-busy { display: inline-block; width: 10px; height: 10px; margin-left: 6px; vertical-align: -1px; border: 2px solid var(--border); border-top-color: var(--fg-brand); border-radius: 50%; animation: mc-spin .8s linear infinite; }
+.mc-profile-detail { margin: 0 8px 4px; padding: 4px 8px; border-radius: 8px; background: var(--bg-fill); font-weight: 400; }
+.mc-controls .mc-error { color: var(--fg-danger, #dc2626); }
+[data-testid="mc-profile-value"] { font-size: 12px; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .mc-controls .mc-menu:not([hidden]) { animation: none; } }
 .mc-menu-group + .mc-menu-group { border-top: 1px solid var(--border-divider, var(--border)); margin-top: 4px; padding-top: 4px; }
 /* Group titles: 12px/500 secondary, distinct from the tertiary disabled row. */
@@ -550,6 +558,10 @@
   .mc-pill-text, .mc-model-exec { display: none; }
   .mc-model-trigger { max-width: min(140px, 100%); }
   .mc-menu { width: min(300px, calc(100vw - 32px)); }
+  .mc-controls .mc-menu { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: 100%; max-height: 75vh; z-index: 41; border-radius: 16px 16px 0 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .mc-controls .mc-menu-item { min-height: 44px; }
+  .mc-controls .mc-scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .25); }
+  .mc-controls .mc-grab { display: block; width: 36px; height: 4px; margin: 2px auto 8px; border-radius: 4px; background: var(--border); }
 }
 .mc-tool-io { margin: 0; font-size: 12px; color: var(--fg-tertiary); }
 .mc-tool-io button { color: inherit; font: inherit; background: transparent; border: 0; border-radius: 6px; cursor: pointer; padding: 0 4px; }

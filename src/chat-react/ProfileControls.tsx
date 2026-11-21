@@ -1,43 +1,34 @@
-import { useEffect, useId, useState } from "react";
-import { getPlatformRuntime } from "@/contracts/platform-runtime";
 import { CheckMark } from "./icons";
-import type { ProfileSelection } from "./modelProfile";
+import { cap } from "./requestEffort";
+import type { ProfileRow } from "./useModelPreference";
 import type { Translate } from "./ChatApp";
 
-interface Profile { id: string; displayName: string; enabled: boolean; reason?: string; efforts?: string[] }
-
-/** MUYU-408 profile choices, rendered only as slot content of the one Controls panel (ModelControls children). */
-export default function ProfileControls({ t, backend, providerId, model, scope, value, onChange, disabled }: {
-  t: Translate; backend: string; providerId?: number; model: string; scope: string;
-  value: ProfileSelection | null; onChange(value: ProfileSelection): void;
-  disabled?: boolean;
+/**
+ * MUYU-365 exp104: the 「预设」 page of the Controls menu (design D2A/D4A, S1–S7). Choosing saves at once (S1); while
+ * saving the group is disabled with a spinner; a failed save shows the server's kept choice and says so (S3).
+ * Read-only: the selected preset gets one line of what it changes, no parameter editing (D4A).
+ */
+export default function ProfileControls({ t, rows, selected, saving, rolledBack, error, outside, onChange, onRetry }: {
+  t: Translate; rows: ProfileRow[]; selected: string; saving: boolean; rolledBack: boolean; error: boolean; outside: boolean;
+  onChange(profileId: string): void; onRetry(): void;
 }) {
-  const [catalog, setCatalog] = useState<{ scope: string; profiles: Profile[] } | null>(null);
-  const [error, setError] = useState(false);
-  useEffect(() => {
-    let active = true;
-    setError(false);
-    getPlatformRuntime().http.get<{ data: Profile[] }>("/api/v1/addons/conversation/model-profiles", {
-      params: { executionBackend: backend, providerId, model },
-    }).then((response) => { if (active) setCatalog({ scope, profiles: response.data.data }); })
-      .catch(() => { if (active) setError(true); });
-    return () => { active = false; };
-  }, [scope, backend, providerId, model]);
-  const profiles = catalog?.scope === scope && !error ? catalog.profiles : [];
-  const selected = value?.scope === scope ? value.profileId : "";
-  const id = useId();
-  // Its own radio group, so assistive tech does not count these with the effort radios of the same menu.
-  return <div role="group" aria-labelledby={id}>
-    <div className="mc-menu-label" id={id}>{t("chatReact.profile")}</div>
-    {/* shortcut: a failed load is retried only on a model/conversation change or reload; add a retry item if this shows up in TEST. */}
-    {error && <p className="mc-menu-label" role="alert">{t("chatReact.profileError")}</p>}
-    {[{ id: "", displayName: t("chatReact.effortDefault"), enabled: true } as Profile, ...profiles].map((profile) =>
-      <button key={profile.id} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
-        aria-checked={selected === profile.id} disabled={disabled || !profile.enabled} title={profile.enabled ? undefined : t("chatReact.optionUnavailable")}
-        onClick={() => onChange({ scope, profileId: profile.id, efforts: profile.efforts })}>
-        <span className="mc-menu-text">{profile.displayName}{profile.enabled ? "" : `（${t("chatReact.optionUnavailable")}）`}</span>
-        {selected === profile.id && <CheckMark size={14} />}
-      </button>)}
+  const effort = (row: ProfileRow) => row.params?.reasoningEffort;
+  return <div role="group" aria-label={t("chatReact.profile")} aria-busy={saving}>
+    <div className="mc-menu-label">{t("chatReact.profile")}{saving && <span className="mc-busy" data-testid="mc-profile-saving" role="status" aria-label={t("chatReact.saving")} />}</div>
+    {error ? <>
+      <p className="mc-menu-label mc-error" role="alert">{t("chatReact.profileError")}</p>
+      <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" data-testid="mc-profile-retry" onClick={onRetry}>{t("common.retry")}</button>
+    </> : [{ id: "", displayName: t("chatReact.profileDefault"), enabled: true } as ProfileRow, ...rows].map((row) => <div key={row.id}>
+      <button type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
+        aria-checked={selected === row.id} disabled={saving || !row.enabled} title={row.enabled ? undefined : t("chatReact.optionUnavailable")}
+        onClick={() => { if (row.id !== selected) onChange(row.id); }}>
+        <span className="mc-menu-text">{row.displayName || row.id}{row.enabled ? "" : `（${t("chatReact.optionUnavailable")}）`}</span>
+        {selected === row.id && <CheckMark size={14} />}
+      </button>
+      {selected === row.id && row.id && <p className="mc-menu-label mc-profile-detail" data-testid="mc-profile-detail">{row.displayName} · {effort(row) ? `${t("chatReact.effort")} ${t(`chatReact.effort${cap(effort(row)!)}`)}` : t("chatReact.effortDefault")}</p>}
+    </div>)}
+    {rolledBack && <p className="mc-menu-label mc-error" role="alert">{t("chatReact.profileRolledBack")}</p>}
+    {outside && !saving && <p className="mc-menu-label">{t("chatReact.profileEffortNote")}</p>}
     <p className="mc-menu-label">{t("chatReact.profileNote")}</p>
   </div>;
 }

@@ -4,7 +4,9 @@ import type { ProfileSelection } from "./modelProfile";
 import { EFFORT_LEVELS, type EffortChoice } from "./requestEffort";
 
 type Preference = { profileId: string; effort: EffortChoice };
-type Catalog = { id: string; enabled: boolean; efforts?: string[] }[];
+/** One /model-profiles row (Core svc.ModelProfile); `params` is read-only display (D4A). */
+export type ProfileRow = { id: string; displayName?: string; enabled: boolean; efforts?: string[]; params?: Record<string, string> };
+type Catalog = ProfileRow[];
 type Selection = { executionBackend: string; providerId?: number; model: string };
 const endpoint = "/api/v1/addons/conversation/model-preferences";
 
@@ -13,10 +15,11 @@ export function useModelPreference(scope: string, backend: string, providerId: n
   const writing = useRef(false);
   const confirmed = useRef(false);
   const transport = useRef<AbortController | null>(null);
+  const reload = useRef<() => void>(() => {});
   const key = JSON.stringify([scope, backend, providerId, model]);
   const renderedKey = useRef(key);
   renderedKey.current = key;
-  const [state, setState] = useState<{ key: string; session: number; turn: number; signal: AbortSignal; selection: Selection; preference: Preference; catalog: Catalog; ready: boolean; error: boolean }>();
+  const [state, setState] = useState<{ key: string; session: number; turn: number; signal: AbortSignal; selection: Selection; preference: Preference; catalog: Catalog; ready: boolean; error: boolean; pending?: Preference; rolledBack?: boolean }>();
   useEffect(() => {
     const load = () => {
       transport.current?.abort();
@@ -52,6 +55,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
         if (live()) setState({ ...identity, selection: initial, preference: { profileId: "", effort: "" }, catalog: [], ready: false, error: true });
       });
     };
+    reload.current = load;
     load();
     window.addEventListener(SESSION_CHANGE_EVENT, load);
     return () => { generation.current++; transport.current?.abort(); window.removeEventListener(SESSION_CHANGE_EVENT, load); };
@@ -69,20 +73,25 @@ export function useModelPreference(scope: string, backend: string, providerId: n
     const signal = current.signal;
     writing.current = true;
     confirmed.current = false;
-    setState({ ...current, ready: false, error: false });
+    setState({ ...current, ready: false, error: false, pending: { profileId, effort }, rolledBack: false });
     try {
-      await runtime.http.put(endpoint, { profileId, effort }, { params, signal });
+      // exp104 S3: a failed or unacknowledged PUT is never replayed; the server's own readback decides what is kept.
+      // A PUT that succeeded must read back exactly; one that failed is reconciled to whatever the server kept.
+      const failed = await runtime.http.put(endpoint, { profileId, effort }, { params, signal }).then(() => false, () => true);
       if (!live()) return;
       const response = await runtime.http.get<{ data: Preference }>(endpoint, { params, signal });
+      const value = response.data.data;
       if (!live()) return;
-      if (response.data.data.profileId !== profileId || response.data.data.effort !== effort) throw new Error("Preference readback mismatch");
+      const kept = value?.profileId === profileId && value.effort === effort;
+      if (typeof value?.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || (!failed && !kept)) throw new Error("Preference readback mismatch");
       confirmed.current = true;
-      setState({ ...current, preference: response.data.data, ready: true, error: false });
+      setState({ ...current, preference: value, ready: true, error: false, pending: undefined, rolledBack: !kept });
     } catch {
-      if (live()) setState({ ...current, ready: false, error: true });
+      if (live()) setState({ ...current, ready: false, error: true, pending: undefined });
     } finally {
       if (live()) writing.current = false;
     }
   }
-  return { profile, storedProfileId: current?.preference.profileId ?? "", choice, save, selection: current?.selection, get ready() { return ready(); }, error: !!current?.error };
+  return { profile, storedProfileId: current?.preference.profileId ?? "", choice, save, selection: current?.selection, get ready() { return ready(); }, error: !!current?.error,
+    catalog: current?.catalog ?? [], pending: current?.pending, rolledBack: !!current?.rolledBack, reload: () => reload.current() };
 }

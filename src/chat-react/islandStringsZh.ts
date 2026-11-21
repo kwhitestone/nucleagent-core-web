@@ -3,7 +3,7 @@ export const ZH_STRINGS = {
     audioPreview: "播放音频",
     modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "Toolgate额度未知", usagePending: "待结算", usageSettled: "Toolgate额度",
     effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高",
-    profile: "模型预设", profileNote: "自动保存；思考强度优先于预设。", profileError: "预设加载失败，刷新后重试", preferenceError: "设置尚未确认保存，请刷新后核对再发送",
+    profile: "预设", profileDefault: "默认（不使用预设）", profileNote: "自动保存；思考强度优先于预设", profileError: "预设加载失败", profileRolledBack: "未保存，已恢复原选择", profileEffortOff: "当前预设不支持", profileEffortNote: "当前思考强度不在该预设范围内，发送时按默认",  saving: "保存中", preferenceError: "设置尚未确认保存，请刷新后核对再发送",
     defaultModelUnresolved: "使用默认模型。选择具体模型可查看可用设置。",
     optionUnavailable: "暂未开放", addTools: "添加附件或工具", closeTools: "收起工具",
     ioToggle: "完整工具输入输出", ioInput: "输入", ioOutput: "输出", ioMore: "加载更多", ioEmpty: "（空）", ioMissing: "未采集", ioError: "无法读取，请重新展开。",

@@ -19,8 +19,9 @@ const t = (key: string) => key;
 
 type Row = { id: string; displayName: string; enabled: boolean; efforts?: string[]; params?: Record<string, string>; reason?: string };
 const PROFILES: Row[] = [
-  { id: "quick", displayName: "快速", enabled: true, efforts: ["low"], params: { reasoningEffort: "low" } },
+  // Core lists the model's whitelist first (useEffort reads the first non-empty `efforts` as level evidence).
   { id: "thinking", displayName: "思考", enabled: true, efforts: ["low", "medium", "high"], params: { reasoningEffort: "high" } },
+  { id: "quick", displayName: "快速", enabled: true, efforts: ["low"], params: { reasoningEffort: "low" } },
   { id: "long-context", displayName: "长上下文", enabled: false, efforts: [], params: {}, reason: "原生链尚无可验证的每轮上下文窗口参数" },
 ];
 let profilesFor: (model: string) => Row[] = () => PROFILES;
@@ -144,11 +145,11 @@ test("D1A entry: Controls root lists 「思考强度 ›」 and 「预设 · 当
     assert.equal(view.visible(view.page("profile")), true);
     assert.equal(view.visible(view.q('[data-testid="mc-ctl-profile"]')), false, "root rows give way to the page");
     assert.equal(view.items("profile").map((item) => `${item.querySelector(".mc-menu-text")!.textContent}${item.disabled ? "-" : "+"}`).join("|"),
-      "chatReact.profileDefault+|快速+|思考+|长上下文（chatReact.optionUnavailable）-", "默认（不使用预设）, Core presets, unavailable one disabled");
+      "chatReact.profileDefault+|思考+|快速+|长上下文（chatReact.optionUnavailable）-", "默认（不使用预设）, Core presets, unavailable one disabled");
     assert.equal(view.checked("profile"), "chatReact.profileDefault");
     assert.match(view.page("profile")!.textContent!, /chatReact\.profileNote/);
     const back = view.q('[data-testid="mc-profile-page"] [data-testid="mc-ctl-back"]');
-    assert.match(back!.textContent!, /chatReact\.back/);
+    assert.match(back!.textContent!, /common\.back/);
     await view.click(back);
     assert.equal(view.visible(view.q('[data-testid="mc-ctl-profile"]')), true, "返回 goes to the root list");
     await view.click(view.q('[data-testid="mc-ctl-effort"]'));
@@ -277,7 +278,7 @@ test("S7 load failure: the page says 预设加载失败 with 重试, which loads
     assert.equal(page.querySelector("[role=alert]")?.textContent ?? "", "chatReact.profileError");
     assert.equal(view.items("profile").length, 0, "no choices from a failed load");
     const retry = view.q('[data-testid="mc-profile-retry"]');
-    assert.equal(retry?.textContent ?? "", "chatReact.retry");
+    assert.equal(retry?.textContent ?? "", "common.retry");
     profileFailures = 0;
     await view.click(retry);
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null);
@@ -290,7 +291,7 @@ test("S8 switching model refetches that model's presets and shows its own rememb
   reset();
   saved.set(DEFAULT, { profileId: "thinking", effort: "" });
   saved.set(keyOf({ executionBackend: "codex", providerId: 7, model: "deepseek-v4-flash" }), { profileId: "quick", effort: "" });
-  profilesFor = (model) => model === "deepseek-v4-flash" ? PROFILES.slice(0, 1) : PROFILES;
+  profilesFor = (model) => model === "deepseek-v4-flash" ? PROFILES.slice(1, 2) : PROFILES;
   const view = await mount();
   try {
     await view.openProfile();
@@ -339,9 +340,11 @@ test("D4A: no temperature/top_p/max output editing anywhere in Controls", { time
 test("design copy (draft recommended wording) and the narrow bottom drawer", () => {
   const zh = readFileSync("src/chat-react/islandStringsZh.ts", "utf8");
   for (const [key, text] of [["profile", "预设"], ["profileDefault", "默认（不使用预设）"], ["profileNote", "自动保存；思考强度优先于预设"],
-    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"], ["retry", "重试"], ["back", "返回"], ["profileEffortOff", "当前预设不支持"]]) {
+    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"], ["profileEffortOff", "当前预设不支持"]]) {
     assert.match(zh, new RegExp(`\\b${key}: "${text}"`), `${key} = ${text}`);
   }
+  // 返回/重试 reuse the host's common.back/common.retry (zh 返回/重试).
+  assert.match(readFileSync("src/i18n/zh.ts", "utf8"), /back: "返回"[^]*retry: "重试"/);
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   const narrow = css.slice(css.indexOf("@media (max-width: 520px)"));
   assert.match(narrow, /\.mc-controls \.mc-menu \{[^}]*position: fixed;[^}]*bottom: 0;[^}]*max-height: 75vh;/, "full-width bottom drawer, ≤75% viewport");

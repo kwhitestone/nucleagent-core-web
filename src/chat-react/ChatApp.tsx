@@ -47,11 +47,11 @@ import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, effortEvidence, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
-import { cap, defaultEffort, effortView, sentEffort, serverEvidence, storedEffort, storeEffort, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
+import { cap, effortView, sentEffort, serverEvidence, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
-import { profileEffortView, profileRequest, type ProfileSelection } from "./modelProfile";
+import { profileEffortView, profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
 export { ModelControls, TurnUsage };
 import "./chat.css";
@@ -93,16 +93,26 @@ export function ChatApp(props: ChatProps) {
   const preference = useModelPreference(profileScope, selectedSettings.backend ?? "", selectedSettings.model?.providerId, selectedSettings.model?.model ?? "");
   const resolved = preference.selection;
   const settings = { ...selectedSettings, model: selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null) };
-  // exp101 (5): hidden profile UI → no profile takes effect this turn; the stored one is kept and written back as is.
+  // exp101 (5) / exp104: the stored profile and the one in effect stay apart; with the switch off none takes effect and
+  // an effort change writes the stored one back as is (D7A: effort has priority, the preset only adds the rest).
   const storedProfileId = preference.storedProfileId;
   const profile = PROFILE_UI_ENABLED ? preference.profile : null;
-  const setProfile = (value: ProfileSelection) => { void preference.save(value.profileId, preference.choice); };
   const measured = useEffort(settings);
   // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
   const offered = profileEffortView(measured.view, profile, profileScope);
-  const effort = { ...measured, choice: preference.choice, view: offered, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(PROFILE_UI_ENABLED ? profile?.profileId ?? "" : storedProfileId, value); } };
+  const effort = { choice: preference.choice, view: { ...offered, profileOff: profile ? offered.off.filter((level) => !measured.view.off.includes(level)) : [] }, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(storedProfileId, value); } };
   // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
   const turn = profileRequest(profile, profileScope, effort.sent);
+  // D1A/D6A/S1–S8: the 「预设」 row exists only when this model has presets (or their load failed, S7).
+  const pending = preference.pending;
+  const shownId = pending ? pending.profileId : storedProfileId;
+  const shown = preference.catalog.find((row) => row.id === shownId && shownId);
+  const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.length > 0 || preference.error) ? {
+    summary: shown ? shown.displayName || shown.id : t("chatReact.effortDefault"), name: shown ? shown.displayName || shown.id : undefined,
+    page: <ProfileControls t={t} rows={preference.catalog} selected={shownId} saving={!!pending} rolledBack={preference.rolledBack} error={preference.error && !pending}
+      outside={!!profile && !!preference.choice && offered.off.includes(preference.choice)}
+      onChange={(profileId) => { void preference.save(profileId, preference.choice); }} onRetry={preference.reload} />,
+  } : undefined;
   const turnNow = useRef(turn);
   turnNow.current = turn;
   const defaultModelNow = useRef<ModelChoice | undefined>(undefined);
@@ -196,7 +206,7 @@ export function ChatApp(props: ChatProps) {
               workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
-              controls={<>{PROFILE_UI_ENABLED && <ProfileSlot t={t} backend={settings.backend ?? ""} providerId={settings.model?.providerId} model={settings.model?.model ?? ""} scope={profileScope} value={profile} onChange={setProfile} disabled={!preference.ready} />}{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
+              profile={profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </div>
       </ThreadPrimitive.Root>
@@ -303,30 +313,11 @@ function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t:
 export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
- * MUYU-408 profile choices for the Controls slot. The panel keeps its slot mounted while hidden, so the chunk and
- * its /model-profiles request wait here for the first open.
- */
-export function ProfileSlot(props: ComponentProps<typeof ProfileControls>) {
-  const [opened, setOpened] = useState(false);
-  const mark = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    const menu = mark.current?.closest<HTMLElement>("[role=menu]");
-    if (!menu) return;
-    const check = () => { if (!menu.hidden) setOpened(true); };
-    const observer = new MutationObserver(check);
-    observer.observe(menu, { attributeFilter: ["hidden"] });
-    check();
-    return () => observer.disconnect();
-  }, []);
-  return opened ? <Suspense fallback={null}><ProfileControls {...props} /></Suspense> : <span ref={mark} hidden />;
-}
-
-/**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, effort, controls, workflow, grants }: { t: Translate; settings: Settings; placeholder: string; effort?: ReturnType<typeof useEffort>; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants }) {
+export function Composer({ t, settings, placeholder, effort, controls, workflow, grants, profile }: { t: Translate; settings: Settings; placeholder: string; effort?: { choice: EffortChoice; sent: EffortChoice; set(value: EffortChoice): void; view: ComponentProps<typeof ModelControls>["view"] }; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
   const menu = useMenu();
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
@@ -399,7 +390,7 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
-          {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy}>{controls}</ModelControls>}
+          {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
             <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
@@ -416,10 +407,12 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
   );
 }
 
-/** Reasoning effort for the selected model (remembered per model, env default from runtime config). */
+/**
+ * The effort levels this model offers (evidence view). The choice itself is the server preference (MUYU-408,
+ * /model-preferences); exp104 removed the old per-browser memory, which ChatApp always overrode.
+ */
 export function useEffort(settings: { model: ModelChoice | null; backend: string | null; effortEvidence?: ReturnType<typeof effortEvidence> }) {
   const key = settings.model ? `${settings.model.providerId}:${settings.model.model}` : "default";
-  const [, bump] = useState(0);
   // MUYU-365 exp3: without measured strategy evidence, Core's per-model whitelist (/model-profiles `efforts`) decides.
   const [server, setServer] = useState<{ key: string; evidence?: EffortEvidence }>();
   const ask = settings.backend === "codex" && !!settings.model && !settings.effortEvidence;
@@ -431,9 +424,7 @@ export function useEffort(settings: { model: ModelChoice | null; backend: string
     }).then((response) => { if (live) setServer({ key, evidence: serverEvidence(response.data.data) }); }).catch(() => {});
     return () => { live = false; };
   }, [ask, key]);
-  const choice = storedEffort(key) ?? defaultEffort();
-  const view = effortView(settings.backend, settings.effortEvidence ?? (ask && server?.key === key ? server.evidence : undefined));
-  return { choice, view, sent: sentEffort(choice, view), set: (level: EffortChoice) => { storeEffort(key, level); bump((n) => n + 1); } };
+  return { view: effortView(settings.backend, settings.effortEvidence ?? (ask && server?.key === key ? server.evidence : undefined)) };
 }
 
 

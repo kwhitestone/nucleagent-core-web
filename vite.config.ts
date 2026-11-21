@@ -48,6 +48,9 @@ export default defineConfig(({ mode }) => {
         "./dictation-session.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/dictation-session.ts"),
         // MUYU-365 batch 2: the island never sets unstable_enableToolInvocations, so the tracker is never constructed.
         "../tool-invocations/ToolInvocationTracker.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/tool-invocation-tracker.ts"),
+        // MUYU-365 exp104: island tool-call parts never carry `approval`; both library call sites are behind that check.
+        "../utils/resolveToolApprovalResponse.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/resolve-tool-approval.ts"),
+        "../../runtime/utils/resolveToolApprovalResponse.js": resolve(process.cwd(), "src/vendor/assistant-ui-core/resolve-tool-approval.ts"),
         "@": resolve(process.cwd(), "src"),
       },
     },

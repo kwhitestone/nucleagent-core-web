@@ -5,7 +5,7 @@ export const EN_STRINGS: IslandStrings = {
     audioPreview: "Play audio",
     modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usagePending: "Settlement pending", usageSettled: "Turn settled",
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High",
-    profile: "Model preset", profileNote: "Saved automatically. Reasoning effort overrides the preset.", profileError: "Presets failed to load; reload to retry", preferenceError: "Settings are not confirmed. Reload and check before sending",
+    profile: "Preset", profileDefault: "Default (no preset)", profileNote: "Saved automatically; reasoning effort overrides the preset", profileError: "Presets failed to load", profileRolledBack: "Not saved; the previous choice is restored", profileEffortOff: "not supported by this preset", profileEffortNote: "The current reasoning effort is outside this preset; the default is sent",  saving: "Saving", preferenceError: "Settings are not confirmed. Reload and check before sending",
     defaultModelUnresolved: "Using the default model. Select a model to see available settings.",
     optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",
     ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioError: "Could not load; expand again.",

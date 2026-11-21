@@ -1,43 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultEffort, effortView, sentEffort, storedEffort, storeEffort, withRequestEffort } from "../src/chat-react/requestEffort.ts";
+import { effortView, sentEffort, withRequestEffort } from "../src/chat-react/requestEffort.ts";
 
 // MUYU-365 gap2: per-model reasoning effort (Core `reasoningEffort` low|medium|high, codex only).
-const memory = () => {
-  const data = new Map<string, string>();
-  return { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v), data };
-};
-
 test("reasoningEffort is sent only for a chosen level on codex; '' = backend default (field omitted)", () => {
   const base = { input: "q" };
   for (const level of ["low", "medium", "high"] as const) assert.deepEqual(withRequestEffort(base, level, "codex"), { ...base, reasoningEffort: level });
   assert.equal("reasoningEffort" in withRequestEffort(base, "", "codex"), false);
   assert.equal("reasoningEffort" in withRequestEffort(base, "high", "hermes"), false, "Core rejects non-codex (400)");
   assert.equal("reasoningEffort" in withRequestEffort(base, "high", null), false);
-});
-
-test("environment default comes from runtime config and only accepts low|medium|high", () => {
-  assert.equal(defaultEffort(() => "low"), "low");
-  assert.equal(defaultEffort(() => "high"), "high");
-  for (const v of ["", "minimal", "none", "HIGH"]) assert.equal(defaultEffort(() => v), "");
-  assert.equal(defaultEffort(() => { throw new Error("not loaded"); }), "");
-});
-
-test("choice is remembered per model; corrupt or blocked storage falls back to undefined", () => {
-  const s = memory();
-  assert.equal(storedEffort("1:m", s), undefined);
-  storeEffort("1:m", "high", s);
-  storeEffort("1:n", "", s);
-  assert.equal(storedEffort("1:m", s), "high");
-  assert.equal(storedEffort("1:n", s), "", "explicit backend default is remembered too");
-  assert.equal(storedEffort("2:m", s), undefined);
-  s.data.set("nucleagent_chat_effort", "{bad");
-  assert.equal(storedEffort("1:m", s), undefined);
-  s.data.set("nucleagent_chat_effort", JSON.stringify({ "1:m": "minimal" }));
-  assert.equal(storedEffort("1:m", s), undefined);
-  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
-  assert.equal(storedEffort("1:m", blocked), undefined);
-  assert.doesNotThrow(() => storeEffort("1:m", "low", blocked));
 });
 
 test("sent level: unsupported or disabled choices fall back to the backend default, never a level the model lacks", () => {

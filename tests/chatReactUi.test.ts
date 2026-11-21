@@ -58,7 +58,7 @@ test("effort capability states disable radio choices and suppress a remembered u
   for (const evidence of [undefined, { levels: [], effective: false, source: "catalog:unsupported" }]) {
     const view = effortView("codex", evidence);
     const html = renderToString(React.createElement(app.ModelControls, {
-      t, value: sentEffort("high", view), view, onChange: () => {}, defaultOpen: true,
+      t, value: sentEffort("high", view), view, onChange: () => {}, defaultOpen: "effort",
     }));
     assert.equal((html.match(/disabled=""/g) ?? []).length, 4);
     assert.match(html, /aria-checked="true"/);
@@ -68,15 +68,18 @@ test("effort capability states disable radio choices and suppress a remembered u
 
 test("model controls opens from an icon, exposes supported radio choices and leaves an extension slot", () => {
   const view = effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" });
+  // exp104 D1A: the root page lists 「思考强度 · 值 ›」 (and the slot); the radios live on the effort page.
   const html = renderToString(React.createElement(app.ModelControls, {
     t, value: "high", view, onChange: () => {}, defaultOpen: true,
   }, React.createElement("button", null, "extension")));
   assert.match(html, /aria-label="chatReact.modelControls"/);
   assert.match(html, /aria-haspopup="menu" aria-expanded="true"/);
-  assert.equal((html.match(/role="menuitemradio"/g) ?? []).length, 4);
-  assert.match(html, /aria-checked="true"[^>]*>.*chatReact.effortHigh/);
-  assert.match(html, /disabled=""[^>]*>.*chatReact.effortMedium/);
+  assert.match(html, /data-testid="mc-ctl-effort"[^]*chatReact.effort<[^]*chatReact.effortHigh/);
   assert.match(html, /extension/);
+  const page = renderToString(React.createElement(app.ModelControls, { t, value: "high", view, onChange: () => {}, defaultOpen: "effort" }));
+  assert.equal((page.match(/role="menuitemradio"/g) ?? []).length, 4);
+  assert.match(page, /aria-checked="true"[^>]*>.*chatReact.effortHigh/);
+  assert.match(page, /disabled=""[^>]*>.*chatReact.effortMedium/);
   assert.doesNotMatch(html, /<select/);
 });
 
@@ -368,7 +371,7 @@ test("process timing is not repeated in the header; independent TTFT diagnostic 
 });
 
 test("effort radios preserve gates while showing short product language", () => {
-  const html = (value: string, view: object) => renderToString(React.createElement(app.ModelControls, { t, value, view, onChange: () => {}, defaultOpen: true }));
+  const html = (value: string, view: object) => renderToString(React.createElement(app.ModelControls, { t, value, view, onChange: () => {}, defaultOpen: "effort" }));
   const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
   const document = new JSDOM(partial).window.document;
   const choices = document.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
@@ -404,8 +407,10 @@ test("composer: one Controls menu; another issue's content goes into its slot, n
   assert.equal((html.match(/class="mc-model mc-controls"/g) ?? []).length, 1);
   assert.equal((html.match(/aria-label="chatReact.modelControls"/g) ?? []).length, 2, "one trigger + its one panel");
   assert.match(html, /role="menu" aria-label="chatReact.modelControls"[^]*profile-slot/);
-  // Counted inside the Controls container only; the model menu beside it has its own radios.
-  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 5);
+  // Counted inside the Controls container only; the model menu beside it has its own radios. exp104: the closed
+  // root page holds the effort row and the slot; the effort radios render only on their own page.
+  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 1);
+  assert.match(html.split('class="mc-model mc-controls"')[1]!, /data-testid="mc-ctl-effort"/);
 });
 
 test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and disabled evidence", async () => {
@@ -429,11 +434,20 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
     const menu = container.querySelector<HTMLElement>("[role=menu]")!;
     assert.equal(menu.hidden, true);
     await React.act(async () => trigger.click());
-    const radios = container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+    // exp104 D1A: the root row 「思考强度 ›」 opens the effort page; its radios then behave as before.
+    const effortPage = async () => {
+      const row = container.querySelector<HTMLButtonElement>("[data-testid=mc-ctl-effort]")!;
+      assert.equal(document.activeElement, row, "focus lands on the first root row");
+      await React.act(async () => row.click());
+      return container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-effort-page] [role=menuitemradio]");
+    };
+    let radios = await effortPage();
     assert.equal(document.activeElement, radios[1]);
     await key(radios[1], "ArrowDown");
     assert.equal(document.activeElement, radios[3]);
     await key(radios[3], "Home");
+    assert.equal(document.activeElement, container.querySelector("[data-testid=mc-effort-page] [data-testid=mc-ctl-back]"), "Home reaches 返回 first");
+    await key(document.activeElement!, "ArrowDown");
     assert.equal(document.activeElement, radios[0]);
     await key(radios[0], "End");
     assert.equal(document.activeElement, radios[3]);
@@ -446,7 +460,8 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
     assert.equal(document.activeElement, trigger);
     await key(trigger, "ArrowDown");
     assert.equal(menu.hidden, false);
-    await key(radios[1], "Tab");
+    assert.equal(container.querySelector("[data-testid=mc-effort-page]"), null, "reopens on the root list (S4)");
+    await key(document.activeElement!, "Tab");
     assert.equal(menu.hidden, true);
     await React.act(async () => trigger.click());
     await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
@@ -454,6 +469,7 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
     await React.act(async () => root.render(draw(effortView("codex", undefined))));
     await React.act(async () => trigger.click());
     assert.equal(menu.hidden, false);
+    radios = await effortPage();
     for (const radio of radios) assert.equal(radio.disabled, true);
     await key(trigger, "Escape");
     assert.equal(menu.hidden, true);
@@ -465,6 +481,9 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
     assert.equal(menu.contains(slot), true);
     await key(document.activeElement!, "End");
     assert.equal(document.activeElement, slot);
+    await key(slot, "Home");
+    assert.equal(document.activeElement, container.querySelector("[data-testid=mc-ctl-effort]"), "root rows and slot share one roving focus");
+    await key(document.activeElement!, "End");
     await React.act(async () => slot.click());
     assert.deepEqual(selected, ["high"]);
     assert.equal(menu.hidden, false);

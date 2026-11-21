@@ -1,5 +1,3 @@
-import { configValue } from "../runtimeConfig.ts";
-
 /**
  * MUYU-365 gap2: per-request reasoning effort. Core (v0.1.11+) accepts `reasoningEffort` low|medium|high
  * on create and follow-up for the codex backend only (400 otherwise); "" = omit = executor default.
@@ -12,27 +10,6 @@ export type EffortChoice = EffortLevel | "";
 /** Measured per-model evidence (chat-strategy.json `effort`): levels accepted and whether effort changed anything. */
 export interface EffortEvidence { levels: EffortLevel[]; effective: boolean; source: string }
 export type EffortNote = "backend" | "unverified" | "ineffective" | "effective" | "server";
-
-const KEY = "nucleagent_chat_effort";
-const valid = (v: unknown): v is EffortChoice => v === "" || (EFFORT_LEVELS as readonly unknown[]).includes(v);
-
-/** Environment default (runtime-config CHAT_EFFORT_DEFAULT); anything else = backend default. */
-export function defaultEffort(read: () => string = () => configValue("CHAT_EFFORT_DEFAULT")): EffortChoice {
-  try { const v = read(); return valid(v) ? v : ""; } catch { return ""; }
-}
-
-type Store = Pick<Storage, "getItem" | "setItem">;
-const readAll = (s: Store | undefined): Record<string, unknown> => {
-  try { const v = JSON.parse(s?.getItem(KEY) ?? "{}"); return v && typeof v === "object" ? v : {}; } catch { return {}; }
-};
-/** The user's last choice for this model ("providerId:model"), or undefined. */
-export function storedEffort(model: string, s: Store | undefined = globalThis.localStorage): EffortChoice | undefined {
-  const v = readAll(s)[model];
-  return valid(v) ? v : undefined;
-}
-export function storeEffort(model: string, level: EffortChoice, s: Store | undefined = globalThis.localStorage) {
-  try { s?.setItem(KEY, JSON.stringify({ ...readAll(s), [model]: level })); } catch { /* storage blocked: this page only */ }
-}
 
 /** What the selector may offer: non-codex → disabled; levels outside the evidence → off; note = honest effect label. */
 export function effortView(backend: string | null, evidence: EffortEvidence | undefined) {

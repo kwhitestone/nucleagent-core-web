@@ -16,6 +16,7 @@ let change: (value: string) => void;
 let profileControl: { disabled: boolean; onChange(value: { scope: string; profileId: string }): void };
 let settings: ReturnType<typeof app.useSettings>;
 let controlsSlot: unknown;
+let profilePanel: { summary: string; page: { props: { onChange(profileId: string): void; rows: { id: string }[] } } } | undefined;
 let effortView: { off: string[] } | undefined;
 let catalogEfforts: string[] = ["low", "medium", "high"];
 let creates = 0;
@@ -86,6 +87,7 @@ function findControl(node: unknown): void {
   if (Array.isArray(node)) { node.forEach(findControl); return; }
   const props = (node as { props?: { effort?: { set: typeof change }; settings: typeof settings; children?: unknown; controls?: { props: { children: { props: typeof profileControl }[] } } } }).props;
   if (props?.effort) { change = props.effort.set; settings = props.settings; effortView = (props.effort as unknown as { view: { off: string[] } }).view; }
+  if (props?.effort) profilePanel = (props as unknown as { profile?: typeof profilePanel }).profile;
   if (props?.controls) { controlsSlot = props.controls.props.children[0]; profileControl = (controlsSlot as { props?: typeof profileControl } | false)?.props as typeof profileControl; }
   findControl(props?.children);
 }
@@ -150,10 +152,11 @@ for (const resolved of [true, false]) test(`normal fresh chat resolves the autho
     assert.equal(settings.model?.model ?? "", defaultSelection.model);
     assert.deepEqual(preferenceQuery, { executionBackend: "codex", providerId: resolved ? 7 : undefined, model: defaultSelection.model });
     assert.equal(creates + sends + writes, 0);
-    // MUYU-365 exp101 (5): the profile entry is hidden (PROFILE_UI_ENABLED=false); the preference stays saveable via effort.
-    assert.equal(controlsSlot === false, true, "no ProfileSlot in Controls");
-    assert.equal(profileControl === undefined, true);
-    await React.act(async () => change(""));
+    // MUYU-365 exp104 (MUYU-408 default page): the 「预设」 page is there when the default model has presets and its
+    // default item saves, also when no level is measured (408: profile saving is not tied to effort support).
+    // Unresolved: the catalog still lists quick, disabled (unmeasured) — the 默认 item stays the saveable choice.
+    assert.equal(profilePanel?.page.props.rows.map((row) => `${row.id}${(row as { enabled?: boolean }).enabled ? "+" : "-"}`).join(","), resolved ? "quick+" : "quick-");
+    await React.act(async () => profilePanel!.page.props.onChange(""));
     assert.equal(writes, 1, "the preference remains saveable even without a measured model/effort");
     assert.equal(preference.profileId, "");
     assert.equal(preference.effort, "");
@@ -162,12 +165,12 @@ for (const resolved of [true, false]) test(`normal fresh chat resolves the autho
   }
 });
 
-// MUYU-365 exp101 (5), exp102 HIDE-PLAN E1-E3: with the profile UI off, a stored profileId is neither offered,
-// sent, nor used to narrow effort; changing effort writes the stored profileId back unchanged (data kept).
-for (const conversationId of [undefined, "9"]) test(`profile hidden: stored quick is not sent, does not narrow, survives an effort change (${conversationId ? "followup" : "create"})`, async (context) => {
+// MUYU-365 exp104 (HIDE-PLAN §7 restored, D7A): the stored quick is in effect — sent on create/follow-up as
+// { profileId, modelParams } and narrowing effort to its whitelist; an effort change writes it back unchanged.
+for (const conversationId of [undefined, "9"]) test(`profile on: stored quick is sent, narrows effort, survives an effort change (${conversationId ? "followup" : "create"})`, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   preference = { profileId: "quick", effort: "medium" };
-  catalogEfforts = ["low", "medium", "high"];
+  catalogEfforts = ["low", "medium"];
   creates = sends = writes = 0;
   puts.length = 0;
   defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
@@ -183,30 +186,32 @@ for (const conversationId of [undefined, "9"]) test(`profile hidden: stored quic
   try {
     await React.act(async () => root.render(React.createElement(Harness)));
     if (!conversationId) await React.act(async () => settings.pick({ kind: "chat", model: { providerId: 7, model: "gpt-6-astra" } }));
-    assert.equal(controlsSlot === false, true, "no ProfileSlot in Controls");
-    assert.equal(JSON.stringify(effortView?.off ?? []), "[]", "the stored profile does not narrow effort levels");
+    assert.equal(profilePanel?.summary, "quick", "the 预设 row shows the stored choice");
+    assert.equal(JSON.stringify(effortView?.off ?? []), '["high"]', "the stored profile narrows effort levels");
     await React.act(async () => { await adapter.onNew(message); });
     if (conversationId) {
       const turn = (globalThis as unknown as { preferenceGateFixture: { turn(): unknown } }).preferenceGateFixture.turn();
-      assert.equal(JSON.stringify(turn), '"medium"', "follow-up carries the legacy effort, not { profileId, modelParams }");
+      assert.equal(JSON.stringify(turn), '{"profileId":"quick","modelParams":{"reasoningEffort":"medium"}}');
     } else {
       assert.equal(created.length, 1);
-      assert.equal("profileId" in created[0]!, false, "create carries no profileId");
-      assert.equal("modelParams" in created[0]!, false);
-      assert.equal(String(created[0]!.reasoningEffort), "medium");
+      assert.equal(String(created[0]!.profileId), "quick", "create carries profileId");
+      assert.equal(JSON.stringify(created[0]!.modelParams), '{"reasoningEffort":"medium"}');
+      assert.equal("reasoningEffort" in created[0]!, false, "never both");
     }
-    await React.act(async () => change("high"));
-    assert.equal(JSON.stringify(puts), JSON.stringify([{ profileId: "quick", effort: "high" }]), "the stored profileId is written back unchanged");
+    await React.act(async () => change("low"));
+    assert.equal(JSON.stringify(puts), JSON.stringify([{ profileId: "quick", effort: "low" }]), "the stored profileId is written back unchanged");
     assert.equal(preference.profileId, "quick");
   } finally {
+    catalogEfforts = ["low", "medium", "high"];
     await React.act(async () => root.unmount());
   }
 });
 
-test("profile UI switch defaults to off and ChatApp honours it", async () => {
+test("profile UI switch is on (D8A code switch) and ChatApp honours it", async () => {
   const { readFileSync } = await import("node:fs");
   const feature = readFileSync(new URL("../src/chat-react/profileFeature.ts", import.meta.url), "utf8");
-  assert.match(feature, /export const PROFILE_UI_ENABLED\s*=\s*false;/);
+  assert.match(feature, /export const PROFILE_UI_ENABLED\s*=\s*true;/);
   const chat = readFileSync(new URL("../src/chat-react/ChatApp.tsx", import.meta.url), "utf8");
-  assert.match(chat, /PROFILE_UI_ENABLED && <ProfileSlot/);
+  assert.match(chat, /const profile = PROFILE_UI_ENABLED \? preference\.profile : null;/);
+  assert.match(chat, /const profilePanel = PROFILE_UI_ENABLED &&/);
 });
