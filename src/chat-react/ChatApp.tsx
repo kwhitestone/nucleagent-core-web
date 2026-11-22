@@ -50,7 +50,7 @@ import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCap
 import { cap, effortView, sentEffort, serverEvidence, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
-import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
+import { LOADING_EVIDENCE, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileEffortView, profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
 import { effectiveSelectionLabel, readEffectiveSelection, sendWithSelection, turnFields, useModelCapability, type EffectiveSelection, type Fields, type SelectionChoice } from "./modelSelection";
@@ -701,7 +701,7 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
         <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
         {isUser && stamp}
       </ActionBarPrimitive.Root>
-      {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence)} />}
+      {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence, activity !== null)} />}
       {!isUser && selection && conversationId && turnId && <Effective t={t} conversationId={conversationId} stepId={turnId} />}
     </MessagePrimitive.Root>
   );
@@ -790,10 +790,14 @@ const NO_EVIDENCE: readonly SettlementEvidence[] = [];
  * drops what was shown instead of keeping a stale total.
  */
 export function useSettlement(conversationId: string | undefined, read: SettlementReader | undefined, refresh?: unknown, steps = '') {
-  const [evidence, setEvidence] = useState(NO_EVIDENCE);
+  // exp117: rows are kept with the conversation they answer for; until this conversation's first read answers (or 5 s
+  // pass) the hook returns LOADING_EVIDENCE, so a settled turn does not flash 计费中 first.
+  const [seen, setSeen] = useState<{ id?: string; rows: readonly SettlementEvidence[] }>({ rows: NO_EVIDENCE });
+  const setEvidence = (rows: readonly SettlementEvidence[]) => setSeen({ id: conversationId, rows });
   useEffect(() => {
-    if (!conversationId || !read) { setEvidence(NO_EVIDENCE); return; }
+    if (!conversationId || !read) return;
     const abort = new AbortController();
+    const slow = setTimeout(() => setSeen((was) => was.id === conversationId ? was : { id: conversationId, rows: NO_EVIDENCE }), 5000);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let outstanding = false;
     let pending = true;
@@ -816,9 +820,9 @@ export function useSettlement(conversationId: string | undefined, read: Settleme
     window.addEventListener('focus', resume);
     document.addEventListener('visibilitychange', resume);
     load(3000);
-    return () => { abort.abort(); clearTimeout(timer); window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
+    return () => { abort.abort(); clearTimeout(timer); clearTimeout(slow); window.removeEventListener('focus', resume); document.removeEventListener('visibilitychange', resume); };
   }, [conversationId, read, refresh, steps]);
-  return evidence;
+  return !conversationId || !read ? NO_EVIDENCE : seen.id === conversationId ? seen.rows : LOADING_EVIDENCE;
 }
 
 export function useSettings(conversationId: string | undefined, t: Translate) {

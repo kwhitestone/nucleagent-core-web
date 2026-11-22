@@ -11,6 +11,8 @@ export function TurnUsage({ t, usage = UNKNOWN_USAGE, locale = "zh-CN" }: { t: T
   // exp116: the note is small print after the amount; the reason is only a translated hint in the title (unknown code: the note itself).
   const note = usage.note && t(usage.note === "off" ? "chatReact.rateUnavailable" : usage.age === undefined ? "chatReact.rateOld" : "chatReact.rateAge").replace("{n}", String(usage.age));
   const key = `chatReact.rateReason_${usage.reason}`, hint = usage.reason && t(key);
+  // exp117: loading keeps the line's height (nbsp) and says nothing until the first read answers.
+  if (usage.loading) return <span className="mc-usage" data-testid="mc-turn-usage" data-settlement="unknown" aria-label={t("chatReact.turnUsage")} aria-busy="true">{"\u00a0"}</span>;
   return <span className="mc-usage" data-testid="mc-turn-usage" data-settlement={usage.state}
     aria-label={t("chatReact.turnUsage")} title={note ? hint && hint !== key ? hint : note : t(`chatReact.usage${cap(usage.state)}`)}>
     {usage.state !== "settled" ? t(usage.state === "pending" ? "chatReact.usagePending" : "chatReact.usageBilling")

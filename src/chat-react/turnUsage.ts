@@ -24,13 +24,22 @@ export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
 
 export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; shells?: string; name?: Record<string, unknown>; cny?: string;
   /** exp116: "stale" (shells kept; age in seconds when known) or "off" (rate unavailable); reason only as a checked snake_case code. */
-  note?: "stale" | "off"; age?: number; reason?: string }
+  note?: "stale" | "off"; age?: number; reason?: string;
+  /** exp117: first settlement read still outstanding (state stays "unknown"): placeholder, no 计费中 / number / ¥. */
+  loading?: true }
 
 /** What every turn shows without authoritative evidence: no amount, never 0. */
 export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—" };
 
-export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidence[] = []): TurnUsageView {
+/**
+ * exp117: "no read has answered yet" (by identity; an equal empty array is a real empty answer). A finished turn then
+ * shows a quiet placeholder instead of 计费中; a turn running right now (`active`) keeps 计费中.
+ */
+export const LOADING_EVIDENCE: readonly SettlementEvidence[] = [];
+
+export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidence[] = [], active?: boolean): TurnUsageView {
   const unknown = UNKNOWN_USAGE;
+  if (evidence === LOADING_EVIDENCE && !active) return { ...unknown, loading: true };
   if (!scope.conversationId || !scope.turnId) return unknown;
   const matching = evidence.filter((entry) => entry.conversationId === scope.conversationId && entry.turnId === scope.turnId);
   if (matching.some((entry) => !Number.isSafeInteger(entry.revision) || entry.revision < 0)) return unknown;
