@@ -44,6 +44,11 @@ export default defineConfig(({ mode }) => {
       name: "aui-edit-composer-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "./default-edit-composer-runtime-core.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/default-edit-composer.ts") : null,
+    }, {
+      // MUYU-365 exp109: radix Slot renders only for asChild/render, which the island never passes to an aui primitive.
+      name: "radix-slot-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "@radix-ui/react-slot" && (importer?.endsWith("/radix-ui/dist/index.mjs") || importer?.endsWith("/@radix-ui/react-primitive/dist/index.mjs"))
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/radix-slot.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

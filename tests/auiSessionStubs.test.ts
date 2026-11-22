@@ -82,7 +82,7 @@ let vite: ViteDevServer;
 before(async () => {
   Object.defineProperty(globalThis, "window", { configurable: true, value: new JSDOM("").window });
   vite = await createServer({ appType: "custom", optimizeDeps: { noDiscovery: true, entries: [] },
-    ssr: { noExternal: [/^@assistant-ui\//] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
+    ssr: { noExternal: [/^@assistant-ui\//, /^radix-ui/, /^@radix-ui\//] }, server: { middlewareMode: true, hmr: false, ws: false, watch: null } });
 });
 after(async () => { await vite?.close(); });
 
@@ -122,6 +122,9 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/top-anchor.ts")));
   assert.ok(!graph.some((id) => /@assistant-ui\/react\/dist\/primitives\/thread\/topAnchor\//.test(id)));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/default-edit-composer.ts")));
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/radix-slot.ts")));
+  // (The full @assistant-ui/react barrel loaded here also pulls radix menu/collection, which import react-slot themselves;
+  // the island's per-file primitives never do. The production bundle check is in the exp109 build evidence.)
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
 });
 
@@ -238,4 +241,31 @@ test("edit-composer stand-in (exp109): the island passes no onEdit, so the exter
   }
   const { DefaultEditComposerRuntimeCore } = await import("../src/vendor/assistant-ui-core/default-edit-composer.ts");
   assert.throws(() => new DefaultEditComposerRuntimeCore(), /not bundled/);
+});
+
+test("radix Slot stand-in (exp109): Slot renders only for asChild/render, which the island never passes to an aui primitive", async () => {
+  const dist = "node_modules/@assistant-ui/react/dist";
+  assert.equal(JSON.parse(read("node_modules/@radix-ui/react-slot/package.json")).version, "1.5.0");
+  assert.match(read("vite.config.ts"), /id === "@radix-ui\/react-slot" && \(importer\?\.endsWith\("\/radix-ui\/dist\/index\.mjs"\) \|\| importer\?\.endsWith\("\/@radix-ui\/react-primitive\/dist\/index\.mjs"\)\)\n[^\n]*src\/vendor\/assistant-ui-core\/radix-slot\.ts/);
+  // Every bundled Slot render sits behind asChild or a `render` element.
+  const primitive = read("node_modules/@radix-ui/react-primitive/dist/index.mjs");
+  assert.match(primitive, /const Slot = createSlot\(`Primitive\.\$\{node\}`\);/);
+  assert.match(primitive, /const Comp = asChild \? Slot : node;/);
+  assert.equal(primitive.match(/\bSlot\b/g)?.length, 2);
+  const wrapper = read(`${dist}/utils/Primitive.js`);
+  assert.equal(wrapper.match(/Slot\.Root/g)?.length, 1);
+  assert.match(wrapper, /function renderSlot\(render, children, props\) \{\n\treturn \/\* @__PURE__ \*\/ jsx\(Slot\.Root, \{/);
+  assert.match(wrapper, /if \(render && isValidElement\(render\)\) \{/);
+  assert.match(read(`${dist}/primitives/composer/ComposerInput.js`), /if \(render && isValidElement\(render\)\) return renderSlot\(render, rest\.children, inputProps\);\n\tconst Component = asChild \? Slot\.Root : TextareaAutosize;/);
+  assert.match(read(`${dist}/primitives/composer/ComposerAttachmentDropzone.js`), /if \(render && isValidElement\(render\)\) return renderSlot\(render, children, mergedProps\);\n\tconst Comp = asChild \? Slot\.Root : "div";/);
+  // The island never passes asChild or render; it renders its own elements as children.
+  for (const file of ["ChatApp.tsx", "ScrollViewport.tsx", "MessageActions.tsx", "ModelControls.tsx", "ProfileControls.tsx", "ToolGrants.tsx", "WorkflowForm.tsx", "AudioFilePicker.tsx", "MediaCard.tsx", "auiPrimitives.ts"]) {
+    assert.doesNotMatch(read(`src/chat-react/${file}`), /asChild|\brender=\{/, file);
+  }
+  const stub = await import("../src/vendor/assistant-ui-core/radix-slot.ts");
+  const Slot = stub.createSlot("Primitive.div") as unknown as () => unknown;
+  assert.equal(typeof Slot, "function", "module-load construction stays inert");
+  assert.throws(() => Slot(), /not bundled/);
+  assert.throws(() => (stub.Root as unknown as () => unknown)(), /not bundled/);
+  assert.equal(stub.Root, stub.Slot);
 });
