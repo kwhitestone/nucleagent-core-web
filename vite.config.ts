@@ -49,6 +49,13 @@ export default defineConfig(({ mode }) => {
       name: "radix-slot-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "@radix-ui/react-slot" && (importer?.endsWith("/radix-ui/dist/index.mjs") || importer?.endsWith("/@radix-ui/react-primitive/dist/index.mjs"))
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/radix-slot.ts") : null,
+    }, {
+      // MUYU-365 exp109: island tool parts carry no interactions or generative UI and it calls no tool-result API.
+      name: "aui-tool-parts-stand-in", enforce: "pre",
+      resolveId: (id, importer) => (id === "./tool-interactions.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/utils/thread-message-like.js"))
+        || ((id === "../utils/tool-interactions.js" || id === "assistant-stream") && importer?.endsWith("/@assistant-ui/core/dist/runtime/api/message-part-runtime.js"))
+        || (id === "../generativeUI/GenerativeUI.js" && importer?.endsWith("/@assistant-ui/core/dist/react/primitives/message/MessageParts.js"))
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/tool-parts.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

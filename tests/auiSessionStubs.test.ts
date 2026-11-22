@@ -123,6 +123,7 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   assert.ok(!graph.some((id) => /@assistant-ui\/react\/dist\/primitives\/thread\/topAnchor\//.test(id)));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/default-edit-composer.ts")));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/radix-slot.ts")));
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/tool-parts.ts")));
   // (The full @assistant-ui/react barrel loaded here also pulls radix menu/collection, which import react-slot themselves;
   // the island's per-file primitives never do. The production bundle check is in the exp109 build evidence.)
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
@@ -268,4 +269,39 @@ test("radix Slot stand-in (exp109): Slot renders only for asChild/render, which 
   assert.throws(() => Slot(), /not bundled/);
   assert.throws(() => (stub.Root as unknown as () => unknown)(), /not bundled/);
   assert.equal(stub.Root, stub.Slot);
+});
+
+test("tool-interaction / tool-response / generative-ui stand-ins (exp109): the island's parts carry none and it calls no tool-result API", async () => {
+  const core = "node_modules/@assistant-ui/core/dist";
+  const config = read("vite.config.ts");
+  assert.match(config, /id === "\.\/tool-interactions\.js" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/runtime\/utils\/thread-message-like\.js"\)/);
+  assert.match(config, /\(id === "\.\.\/utils\/tool-interactions\.js" \|\| id === "assistant-stream"\) && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/runtime\/api\/message-part-runtime\.js"\)/);
+  assert.match(config, /id === "\.\.\/generativeUI\/GenerativeUI\.js" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/react\/primitives\/message\/MessageParts\.js"\)/);
+  // Conversion reads the interaction log only from a tool-call part's unstable_interactions, which the island never sets.
+  const convert = read(`${core}/runtime/utils/thread-message-like.js`);
+  assert.equal(convert.match(/readToolInteractionLog\(/g)?.length, 1);
+  assert.match(convert, /const \{ parentId, messages, unstable_interactions, \.\.\.basePart \} = part;\n\t+const interactions = readToolInteractionLog\(unstable_interactions\);/);
+  // The part runtime uses createToolInteraction / ToolResponse only in unstable_recordInteraction / addToolResult.
+  const part = read(`${core}/runtime/api/message-part-runtime.js`);
+  assert.match(part, /^import \{ ToolResponse \} from "assistant-stream";$/m);
+  assert.equal(part.match(/ToolResponse\./g)?.length, 1);
+  assert.match(part, /\taddToolResult\(result\) \{\n(?:\t\t[^\n]*\n)*?\t\tconst response = ToolResponse\.toResponse\(result\);/);
+  assert.equal(part.match(/createToolInteraction\(/g)?.length, 1);
+  assert.match(part, /\tasync unstable_recordInteraction\(input\) \{\n(?:\t\t[^\n]*\n)*?\t\t\tinteraction: createToolInteraction\(input\)/);
+  // MessageParts renders GenerativeUIRender only for a generative-ui part with a components.generativeUI allowlist.
+  const parts = read(`${core}/react/primitives/message/MessageParts.js`);
+  assert.equal(parts.match(/GenerativeUIRender\b/g)?.length, 2, "import + one render");
+  assert.match(parts, /case "generative-ui": \{\n\t\t\tif \(!generativeUI\?\.components\) \{/);
+  const island = read("src/chat-react/threadMessages.ts");
+  assert.doesNotMatch(island, /unstable_interactions|generative-ui/);
+  for (const file of ["ChatApp.tsx", "ToolIO.tsx", "MessageActions.tsx", "threadMessages.ts", "externalStore.ts", "useCoreConversation.ts"]) {
+    assert.doesNotMatch(read(`src/chat-react/${file}`), /addResult|addToolResult|resumeToolCall|recordInteraction|generativeUI|GenerativeUI|ToolResponse/, file);
+  }
+  const stub = await import("../src/vendor/assistant-ui-core/tool-parts.ts");
+  const original = await import(`../${core}/runtime/utils/tool-interactions.js`);
+  assert.equal(stub.readToolInteractionLog(undefined), original.readToolInteractionLog(undefined));
+  assert.throws(() => stub.readToolInteractionLog({ entries: [] }), /not bundled/);
+  assert.throws(() => stub.createToolInteraction(), /not bundled/);
+  assert.throws(() => stub.ToolResponse.toResponse(), /not bundled/);
+  assert.throws(() => (stub.GenerativeUIRender as unknown as () => unknown)(), /not bundled/);
 });
