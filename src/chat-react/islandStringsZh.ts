@@ -2,7 +2,8 @@
 export const ZH_STRINGS = {
     audioPreview: "播放音频",
     modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "Toolgate额度未知", usageBilling: "计费中", usagePending: "待结算", usageSettled: "Toolgate额度",
-    effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高",
+    effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "关闭",
+    protocol: "调用协议", level: "思考档位", selectionDefault: "默认（继承）", selectionPickProtocol: "请先选择调用协议", selectionStale: "模型能力已更新，请重新选择", selectionSupported: "可选：{values}", selectionProfile: "本轮由调用协议/档位决定",
     profile: "预设", profileDefault: "默认（不使用预设）", profileNote: "自动保存；思考强度优先于预设", profileError: "预设加载失败", profileRolledBack: "未保存，已恢复原选择", profileEffortOff: "当前预设不支持", profileEffortNote: "当前思考强度不在该预设范围内，发送时按默认",  saving: "保存中", preferenceError: "设置尚未确认保存，请刷新后核对再发送",
     defaultModelUnresolved: "使用默认模型。选择具体模型可查看可用设置。",
     optionUnavailable: "暂未开放", addTools: "添加附件或工具", closeTools: "收起工具",

@@ -3,6 +3,7 @@ import { moveFocus } from "./composerState";
 import { CheckMark, ControlsMark } from "./icons";
 import { cap, EFFORT_LEVELS, type EffortChoice, type effortView } from "./requestEffort";
 import type { Translate } from "./ChatApp";
+import type { SelectionChoice, SelectionView } from "./modelSelection";
 
 /**
  * Popover plumbing shared by the model menu and Controls: opening focuses the checked radio (again when
@@ -37,17 +38,30 @@ export function useMenu(defaultOpen = false, refocus?: unknown) {
  * MUYU-365 exp104 (design D1A): one Controls menu, a root list 「思考强度 · 值 ›」「预设 · 值 ›」, each opening its own page
  * with 「‹ 返回」. `profile` is absent when the model has no presets (D6A). Narrow screens show it as a bottom drawer.
  */
-export function ModelControls({ t, value, view, onChange, children, disabled, defaultOpen = false, profile }: {
+export function ModelControls({ t, value, view, onChange, children, disabled, defaultOpen = false, profile, selection }: {
   t: Translate; value: EffortChoice; view: ReturnType<typeof effortView> & { profileOff?: readonly string[] }; onChange(value: EffortChoice): void;
   children?: ReactNode; disabled?: boolean; defaultOpen?: boolean | "effort"; profile?: { summary: string; name?: string; page: ReactNode };
+  /** exp113 stage 2: shown only when Core marks a protocol selectable for this backend; it then replaces 思考强度. */
+  selection?: { view: SelectionView; choice: SelectionChoice | null; onChange(choice: SelectionChoice | null): void };
 }) {
-  const [page, setPage] = useState<"root" | "effort" | "profile">(defaultOpen === "effort" ? defaultOpen : "root");
+  const [page, setPage] = useState<"root" | "effort" | "profile" | "protocol" | "level">(defaultOpen === "effort" ? defaultOpen : "root");
   const { open, setOpen, root, trigger, close, rove } = useMenu(!!defaultOpen, `${view.disabled}${page}`);
   useEffect(() => { if (!open) setPage("root"); }, [open]);
   const swipe = useRef(0);
   const id = useId();
   const label = (suffix: string) => t(`chatReact.effort${cap(suffix)}`);
-  const row = (name: "effort" | "profile", current: string) => <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" data-testid={`mc-ctl-${name}`} onClick={() => setPage(name)}>
+  const open2 = selection?.view.state === "visible" ? selection.view : null;
+  const pick = selection?.choice;
+  const chosen = open2?.protocols.find((p) => p.name === pick?.protocol);
+  const fallback = t("chatReact.selectionDefault");
+  // One radio page: 「默认」 then each item; a disabled one shows Core's reason under it and cannot be chosen.
+  const radios = (items: { value: string; label: string; on: boolean; reason?: string }[], current: string, set: (value: string) => void) =>
+    [{ value: "", label: fallback, on: true }, ...items].map((item) => <div key={item.value}>
+      <button type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" data-value={item.value} aria-checked={current === item.value}
+        disabled={disabled || !item.on} onClick={() => set(item.value)}><span className="mc-menu-text">{item.label}</span>{current === item.value && <CheckMark size={14} />}</button>
+      {item.reason && <p className="mc-menu-label">{item.reason}</p>}
+    </div>);
+  const row = (name: "effort" | "profile" | "protocol" | "level", current: string) => <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" data-testid={`mc-ctl-${name}`} onClick={() => setPage(name)}>
     <span className="mc-menu-text">{t(`chatReact.${name}`)}</span><span className="mc-menu-hint">{current}</span><span aria-hidden="true">›</span>
   </button>;
   const back = <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" data-testid="mc-ctl-back" onClick={() => setPage("root")}><span aria-hidden="true">‹</span><span className="mc-menu-text">{t("common.back")}</span></button>;
@@ -71,7 +85,14 @@ export function ModelControls({ t, value, view, onChange, children, disabled, de
       onTouchStart={(event) => { swipe.current = event.touches[0]!.clientY; }}
       onTouchEnd={(event) => { if (event.changedTouches[0]!.clientY - swipe.current > 60) close(); }}>
       <div className="mc-grab" aria-hidden="true" />
-      {page === "root" && <>{row("effort", label(value || "default"))}{profile && row("profile", profile.summary)}{children}</>}
+      {page === "root" && <>{open2 ? <>{row("protocol", pick?.protocol || fallback)}{row("level", pick?.level ? label(pick.level) : fallback)}</> : row("effort", label(value || "default"))}{profile && row("profile", profile.summary)}{children}</>}
+      {page === "protocol" && open2 && <div data-testid="mc-protocol-page">{back}<div className="mc-menu-label">{t("chatReact.protocol")}</div>
+        {radios(open2.protocols.map((p) => ({ value: p.name, label: p.name, on: p.selectable, reason: p.reason })), pick?.protocol ?? "",
+          (name) => selection!.onChange(name ? { protocol: name, level: null } : null))}</div>}
+      {page === "level" && open2 && <div data-testid="mc-level-page">{back}<div className="mc-menu-label">{t("chatReact.level")}</div>
+        {!chosen && <p className="mc-menu-label">{t("chatReact.selectionPickProtocol")}</p>}
+        {radios((chosen?.levels ?? []).map((l) => ({ value: l.level, label: label(l.level), on: l.selectable, reason: l.reason })), pick?.level ?? "",
+          (level) => chosen && selection!.onChange({ protocol: chosen.name, level: (level || null) as SelectionChoice["level"] }))}</div>}
       {page === "effort" && <div data-testid="mc-effort-page">{back}
         <div className="mc-menu-label">{t("chatReact.effort")}</div>
         {view.disabled && <p className="mc-menu-label">{t("chatReact.optionUnavailable")}</p>}

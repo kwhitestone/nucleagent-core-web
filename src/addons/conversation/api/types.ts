@@ -135,6 +135,8 @@ export interface CreateConversationRequest {
   /** MUYU-408：模型预设及其显式参数；与上面的 reasoningEffort 二选一，同发 Core 返回 400。 */
   profileId?: string;
   modelParams?: { reasoningEffort?: "low" | "medium" | "high" };
+  /** MUYU-418 阶段 2：仅本轮的调用协议/思考档位；只在 Core 标记 selectable 时发送，此时不带上面三项。 */
+  modelSelection?: { callProtocol: string; thinkingLevel: "off" | "low" | "medium" | "high" | null; capabilityRevision: number };
   /** 暂存执行模式/输出格式等前端-only 元数据（后端暂未持久化，预留给未来字段）。 */
   metadata?: Record<string, unknown>;
   /** 附件引用（先经 storage 上传拿到 fileId）。 */

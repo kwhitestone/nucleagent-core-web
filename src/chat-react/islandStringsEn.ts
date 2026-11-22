@@ -4,7 +4,8 @@ import type { IslandStrings } from "./islandStringsZh";
 export const EN_STRINGS: IslandStrings = {
     audioPreview: "Play audio",
     modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usageBilling: "Billing…", usagePending: "Settlement pending", usageSettled: "Turn settled",
-    effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High",
+    effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "Off",
+    protocol: "Call protocol", level: "Thinking level", selectionDefault: "Default (inherit)", selectionPickProtocol: "Choose a call protocol first", selectionStale: "Model capabilities changed; choose again", selectionSupported: "Available: {values}", selectionProfile: "Set by call protocol / level this turn",
     profile: "Preset", profileDefault: "Default (no preset)", profileNote: "Saved automatically; reasoning effort overrides the preset", profileError: "Presets failed to load", profileRolledBack: "Not saved; the previous choice is restored", profileEffortOff: "not supported by this preset", profileEffortNote: "The current reasoning effort is outside this preset; the default is sent",  saving: "Saving", preferenceError: "Settings are not confirmed. Reload and check before sending",
     defaultModelUnresolved: "Using the default model. Select a model to see available settings.",
     optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",

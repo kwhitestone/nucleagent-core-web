@@ -108,7 +108,7 @@ export async function followUp(
   model?: ModelChoice,
   executionBackend?: ExecutionBackendId | string,
   /** One argument, one field set: legacy per-turn effort (MUYU-365 gap2, codex only) or a profile with its params (MUYU-408). Core rejects both together. */
-  turn?: "low" | "medium" | "high" | Pick<CreateConversationRequest, "profileId" | "modelParams">,
+  turn?: "low" | "medium" | "high" | Pick<CreateConversationRequest, "profileId" | "modelParams" | "modelSelection">,
   toolInvocation?: ToolInvocation,
 ): Promise<Conversation> {
   toolCallCache.clear();

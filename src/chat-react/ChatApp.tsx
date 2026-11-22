@@ -53,6 +53,7 @@ import { TurnUsage } from "./TurnUsage";
 import { settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileEffortView, profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
+import { effectiveSelectionLabel, readEffectiveSelection, sendWithSelection, turnFields, useModelCapability, type EffectiveSelection, type Fields, type SelectionChoice } from "./modelSelection";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -101,8 +102,21 @@ export function ChatApp(props: ChatProps) {
   // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
   const offered = profileEffortView(measured.view, profile, profileScope);
   const effort = { choice: preference.choice, view: { ...offered, profileOff: profile ? offered.off.filter((level) => !measured.view.off.includes(level)) : [] }, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(storedProfileId, value); } };
-  // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone.
-  const turn = profileRequest(profile, profileScope, effort.sent);
+  // exp113 stage 2: Core's declaration for the actual backend; hidden (selectable=0) keeps the v0.1.44 turn as is.
+  const capability = useModelCapability(settings.backend, settings.model?.providerId, settings.model?.model);
+  const [picked, setPicked] = useState<{ key: string; choice: SelectionChoice | null }>();
+  const choice = picked?.key === capability.key ? picked.choice : null;
+  const selectable = capability.view.state === "visible";
+  // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone;
+  // with selectable stage-2 controls, the explicit modelSelection only (D-1/D-2).
+  const legacy = profileRequest(profile, profileScope, effort.sent);
+  const turn = turnFields(capability.view, choice, legacy) as Fields;
+  const selectionNow = useRef({ legacy, choice, capability });
+  selectionNow.current = { legacy, choice, capability };
+  const wrap = <R,>(send: (fields: Fields) => Promise<R>, fields: Fields) => sendWithSelection(send, fields, {
+    t, reset: () => setPicked(undefined),
+    refetch: async () => { const now = selectionNow.current; return turnFields(await now.capability.refetch(), now.choice, now.legacy) as Fields; },
+  });
   // D1A/D6A/S1–S8: the 「预设」 row exists only when this model has presets (or their load failed, S7).
   const pending = preference.pending;
   const shownId = pending ? pending.profileId : storedProfileId;
@@ -117,7 +131,7 @@ export function ChatApp(props: ChatProps) {
   turnNow.current = turn;
   const defaultModelNow = useRef<ModelChoice | undefined>(undefined);
   defaultModelNow.current = !selectedSettings.model && preference.ready ? settings.model ?? undefined : undefined;
-  const core = useCoreConversation(conversationId, report, () => turnNow.current, () => defaultModelNow.current);
+  const core = useCoreConversation(conversationId, report, () => turnNow.current as never, () => defaultModelNow.current, wrap as never);
   const grants = useToolGrants(conversationId, t, locale);
   const messageActions = useMessageActions(conversationId, !!core && isRunning(core.state), props.navigate, (fork) => props.onFork?.(fork), report);
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
@@ -141,7 +155,7 @@ export function ChatApp(props: ChatProps) {
       mode: "a2a_agent", model: settings.model?.model ?? "", providerId: settings.model?.providerId,
       executionBackend: settings.backend ?? undefined, ...request,
     };
-    const created = await props.create(!withTurn ? payload : typeof turn === "string" ? withRequestEffort(payload, turn, settings.backend) : { ...payload, ...turn });
+    const created = !withTurn ? await props.create(payload) : await wrap((fields) => props.create(typeof fields === "string" ? withRequestEffort(payload, fields as EffortChoice, settings.backend) : { ...payload, ...fields } as CreateConversationRequest), turn);
     props.navigate(`/c/${created.id}`);
   };
   const controller: ChatController = {
@@ -198,15 +212,16 @@ export function ChatApp(props: ChatProps) {
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} selection={selectable} />}</ThreadPrimitive.Messages>
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
             <Composer t={t} settings={settings} effort={effort} grants={grants}
+              selection={{ view: capability.view, choice, onChange: (next) => setPicked({ key: capability.key, choice: next }) }}
               workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
-              profile={profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
+              profile={selectable && choice ? { summary: t("chatReact.selectionProfile"), page: <p className="mc-menu-label">{t("chatReact.selectionProfile")}</p> } : profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </div>
       </ThreadPrimitive.Root>
@@ -317,7 +332,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, effort, controls, workflow, grants, profile }: { t: Translate; settings: Settings; placeholder: string; effort?: { choice: EffortChoice; sent: EffortChoice; set(value: EffortChoice): void; view: ComponentProps<typeof ModelControls>["view"] }; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
+export function Composer({ t, settings, placeholder, effort, controls, workflow, grants, profile, selection }: { t: Translate; settings: Settings; placeholder: string; effort?: { choice: EffortChoice; sent: EffortChoice; set(value: EffortChoice): void; view: ComponentProps<typeof ModelControls>["view"] }; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"]; selection?: ComponentProps<typeof ModelControls>["selection"] }) {
   const menu = useMenu();
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
@@ -390,7 +405,7 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
-          {effort && !settings.media && <ModelControls t={t} value={effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}
+          {effort && !settings.media && <ModelControls t={t} value={selection?.view.state === "visible" ? "" : effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} profile={profile} selection={selection}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
             <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
@@ -652,7 +667,7 @@ function Parts({ t }: { t: Translate }) {
  * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
  * pointer), and always on the last reply.
  */
-export function MessageRow({ role, t, locale, conversationId = "", evidence, actions }: { role: string; t: Translate; locale?: string; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
+export function MessageRow({ role, t, locale, conversationId = "", evidence, actions, selection }: { role: string; t: Translate; locale?: string; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController; selection?: boolean }) {
   const messageId = useAuiState((state) => state.message.id);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
@@ -687,8 +702,23 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
         {isUser && stamp}
       </ActionBarPrimitive.Root>
       {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence)} />}
+      {!isUser && selection && conversationId && turnId && <Effective t={t} conversationId={conversationId} stepId={turnId} />}
     </MessagePrimitive.Root>
   );
+}
+
+const effective = new Map<string, Promise<EffectiveSelection | null>>();
+/** exp113 (D-3): this turn's dispatched selection, read once per step and only where the stage-2 controls are shown. */
+function Effective({ t, conversationId, stepId }: { t: Translate; conversationId: string; stepId: string }) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    const key = `${conversationId}/${stepId}`;
+    let live = true;
+    if (!effective.has(key)) effective.set(key, readEffectiveSelection(getPlatformRuntime().http, conversationId, stepId).catch(() => { effective.delete(key); return null; }));
+    void effective.get(key)!.then((data) => { if (live) setText(effectiveSelectionLabel(data, t)); });
+    return () => { live = false; };
+  }, [conversationId, stepId, t]);
+  return text ? <span className="mc-usage" data-testid="mc-effective-selection">{text}</span> : null;
 }
 
 /**
