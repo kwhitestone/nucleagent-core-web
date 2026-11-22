@@ -16,7 +16,8 @@ export const readSettlement: SettlementReader = async (conversationId, signal) =
   return data.turns.map((turn: any) => {
     // exp106: turn.points (Core v0.1.74) is a whole-number string only on settled turns, else null/absent.
     if (data.unit !== "credits" || (turn.state === "settled" ? !/^\d+$/.test(turn.credits) || turn.points != null && !(typeof turn.points === "string" && /^(0|[1-9]\d*)$/.test(turn.points)) : turn.credits !== null || turn.points != null)) throw new Error("settlement");
-    const row = { ...turn, conversationId, turnId: turn.stepId, points: turn.credits };
+    // exp116: Core v0.1.80 rate status rides along raw on every row (turnUsage checks it; a bad value is null there, never a throw).
+    const row = { ...turn, conversationId, turnId: turn.stepId, points: turn.credits, rate: data.rate, pointsStatus: data.pointsStatus, pointsReason: data.pointsReason, rateAgeSeconds: data.rateAgeSeconds };
     if (turn.points != null) Object.assign(row, { shells: turn.points, pointsName: data.pointsName, creditsPerCny: data.creditsPerCny, rate: data.rate });
     return row;
   });

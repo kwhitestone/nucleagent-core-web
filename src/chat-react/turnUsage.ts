@@ -4,6 +4,8 @@ export interface SettlementEvidence extends TurnScope {
   points?: unknown;
   /** exp106: Core's turn.points (per call rounded up, summed) and the top-level display rate; all optional (old Core). */
   shells?: unknown; pointsName?: unknown; creditsPerCny?: unknown; rate?: unknown;
+  /** exp116: Core v0.1.80 rate status (ok|stale|unavailable, snake_case reason, stale age in seconds); optional (old Core). */
+  pointsStatus?: unknown; pointsReason?: unknown; rateAgeSeconds?: unknown;
   upstreams: readonly string[];
   revision: number;
 }
@@ -20,7 +22,9 @@ export function settlementRows(raw: unknown): readonly SettlementEvidence[] {
     && Array.isArray(row.upstreams) && typeof row.revision === "number") ? raw : [];
 }
 
-export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; shells?: string; name?: Record<string, unknown>; cny?: string }
+export interface TurnUsageView { state: "unknown" | "pending" | "settled"; points: string; shells?: string; name?: Record<string, unknown>; cny?: string;
+  /** exp116: "stale" (shells kept; age in seconds when known) or "off" (rate unavailable); reason only as a checked snake_case code. */
+  note?: "stale" | "off"; age?: number; reason?: string }
 
 /** What every turn shows without authoritative evidence: no amount, never 0. */
 export const UNKNOWN_USAGE: TurnUsageView = { state: "unknown", points: "—" };
@@ -36,11 +40,15 @@ export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidenc
   if (latest.state === "pending") return { ...unknown, state: "pending" };
   // MUYU-365 exp101: the authority is Core's settled state with an amount; upstreams are display-only and not shown.
   if (latest.state !== "settled" || typeof latest.points !== "string" || !/^(0|[1-9]\d*)(\.\d+)?$/.test(latest.points)) return unknown;
-  const { shells, pointsName: name, creditsPerCny: per, rate } = latest as SettlementEvidence & { rate?: Record<string, unknown> };
+  const { shells, pointsName: name, creditsPerCny: per, rate, pointsStatus: status, pointsReason: reason, rateAgeSeconds: age } = latest as SettlementEvidence & { rate?: Record<string, unknown> };
   // exp106: "N 贝壳（≈¥X.XXXX）" only with the whole contract (N = Core's points, never re-derived; ¥ = credits / creditsPerCny);
   // anything missing or off keeps the old "N 积分" and no ¥. The Web holds no rate of its own.
   const whole = (n: unknown) => Number.isSafeInteger(n) && (n as number) > 0;
-  return typeof shells === "string" && /^\d+$/.test(latest.points) && name && typeof name === "object" && whole(per) && whole(rate?.creditsAmount) && whole(rate?.coinAmount)
+  // exp116: stale keeps shells + ¥ and adds a note; unavailable (rate null) adds "rate unavailable" to N 积分. Any other status is no claim.
+  const view: TurnUsageView = typeof shells === "string" && /^\d+$/.test(latest.points) && name && typeof name === "object" && whole(per) && whole(rate?.creditsAmount) && whole(rate?.coinAmount)
     ? { state: "settled", points: latest.points, shells, name: name as Record<string, unknown>, cny: (+latest.points / (per as number)).toFixed(4) }
     : { state: "settled", points: latest.points };
+  const note = status === "stale" && view.cny ? "stale" : status === "unavailable" && rate == null ? "off" : undefined;
+  return note ? { ...view, note, age: note === "stale" && Number.isSafeInteger(age) && (age as number) >= 0 ? age as number : undefined,
+    reason: typeof reason === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(reason) ? reason : undefined } : view;
 }
