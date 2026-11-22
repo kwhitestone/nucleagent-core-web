@@ -6,10 +6,8 @@
 import { ThreadPrimitiveRoot } from "@aui-dist/primitives/thread/ThreadRoot.js";
 import { ThreadPrimitiveViewport } from "@aui-dist/primitives/thread/ThreadViewport.js";
 import { ThreadPrimitiveViewportProvider } from "@aui-dist/context/providers/ThreadViewportProvider.js";
-import { ThreadPrimitiveViewportFooter } from "@aui-dist/primitives/thread/ThreadViewportFooter.js";
 import { ThreadPrimitiveMessages } from "@aui-dist/primitives/thread/ThreadMessages.js";
 import { ThreadPrimitiveEmpty } from "@aui-dist/primitives/thread/ThreadEmpty.js";
-import { ThreadPrimitiveScrollToBottom } from "@aui-dist/primitives/thread/ThreadScrollToBottom.js";
 import { ThreadPrimitiveLoadEarlier } from "@aui-dist/primitives/thread/ThreadLoadEarlier.js";
 import { ThreadPrimitiveSuggestions } from "@aui-dist/primitives/thread/ThreadSuggestions.js";
 import { SuggestionPrimitiveTitle } from "@aui-dist/primitives/suggestion/SuggestionTitle.js";
@@ -35,8 +33,8 @@ import { MessagePrimitiveGroupedParts } from "@assistant-ui/core/react";
 
 export const ThreadPrimitive = {
   ViewportProvider: ThreadPrimitiveViewportProvider,
-  Root: ThreadPrimitiveRoot, Viewport: ThreadPrimitiveViewport, ViewportFooter: ThreadPrimitiveViewportFooter,
-  Messages: ThreadPrimitiveMessages, Empty: ThreadPrimitiveEmpty, ScrollToBottom: ThreadPrimitiveScrollToBottom,
+  Root: ThreadPrimitiveRoot, Viewport: ThreadPrimitiveViewport,
+  Messages: ThreadPrimitiveMessages, Empty: ThreadPrimitiveEmpty,
   LoadEarlier: ThreadPrimitiveLoadEarlier, Suggestions: ThreadPrimitiveSuggestions,
 };
 export const SuggestionPrimitive = { Title: SuggestionPrimitiveTitle, Description: SuggestionPrimitiveDescription, Trigger: SuggestionPrimitiveTrigger };
