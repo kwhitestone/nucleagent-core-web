@@ -33,6 +33,12 @@ export default defineConfig(({ mode }) => {
       name: "aui-history-copy-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "./external-store-history-copy.js" && importer?.endsWith("/@assistant-ui/core/dist/react/runtimes/useExternalStoreRuntime.js")
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/external-store-history-copy.ts") : null,
+    }, {
+      // MUYU-365 exp109: the island never sets turnAnchor="top", so the viewport and message root never reach top-anchor code.
+      name: "aui-top-anchor-stand-in", enforce: "pre",
+      resolveId: (id, importer) => ((id === "./topAnchor/useTopAnchorReserve.js" || id === "./topAnchor/topAnchorTurn.js") && importer?.endsWith("/@assistant-ui/react/dist/primitives/thread/ThreadViewport.js"))
+        || (id === "../thread/topAnchor/topAnchorUtils.js" && importer?.endsWith("/@assistant-ui/react/dist/primitives/message/MessageRoot.js"))
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/top-anchor.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

@@ -99,7 +99,8 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
       onNew: async (message) => { sent.push(message.content); },
     });
     return React.createElement(aui.AssistantRuntimeProvider, { runtime },
-      React.createElement(aui.ThreadPrimitive.Messages, { components: { Message: () => React.createElement(aui.MessagePrimitive.Root, null, React.createElement(aui.MessagePrimitive.Parts)) } }));
+      React.createElement(aui.ThreadPrimitive.Viewport, { autoScroll: false },
+        React.createElement(aui.ThreadPrimitive.Messages, { components: { Message: () => React.createElement(aui.MessagePrimitive.Root, null, React.createElement(aui.MessagePrimitive.Parts)) } })));
   }
   assert.match(renderToString(React.createElement(App)), /hello-stub/);
   const state = runtime.thread.getState();
@@ -117,6 +118,9 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   // exp107: the interactable gate and the history copy also resolve to their stand-ins in the running island runtime.
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/interactable-composer-metadata.ts")));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/external-store-history-copy.ts")));
+  // exp109: the viewport and message root resolve their top-anchor imports to the stand-in.
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/top-anchor.ts")));
+  assert.ok(!graph.some((id) => /@assistant-ui\/react\/dist\/primitives\/thread\/topAnchor\//.test(id)));
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
 });
 
@@ -184,4 +188,35 @@ test("external-store history-copy stand-in (exp107): with no history adapter the
   const copy = new ExternalStoreHistoryCopy();
   assert.throws(() => copy.attach(), /not bundled/);
   await assert.rejects(copy.recordInteraction(), /not bundled/);
+});
+
+test("top-anchor stand-in (exp109): the island never sets turnAnchor=\"top\", so the viewport and message root never reach it", async () => {
+  const dist = "node_modules/@assistant-ui/react/dist";
+  const config = read("vite.config.ts");
+  assert.match(config, /id === "\.\/topAnchor\/useTopAnchorReserve\.js" \|\| id === "\.\/topAnchor\/topAnchorTurn\.js"\) && importer\?\.endsWith\("\/@assistant-ui\/react\/dist\/primitives\/thread\/ThreadViewport\.js"\)/);
+  assert.match(config, /id === "\.\.\/thread\/topAnchor\/topAnchorUtils\.js" && importer\?\.endsWith\("\/@assistant-ui\/react\/dist\/primitives\/message\/MessageRoot\.js"\)/);
+  // The store defaults to "bottom"; the island passes no turnAnchor to the viewport or its provider.
+  assert.match(read(`${dist}/context/stores/ThreadViewport.js`), /turnAnchor: options\.turnAnchor \?\? "bottom",/);
+  for (const file of ["src/chat-react/ChatApp.tsx", "src/chat-react/ScrollViewport.tsx", "src/chat-react/mount.tsx", "src/chat-react/auiPrimitives.ts"]) {
+    assert.doesNotMatch(read(file), /turnAnchor|topAnchor|ViewportProvider options|options=\{/, file);
+  }
+  // Viewport: every top-anchor call is behind `topAnchorEnabled` (turnAnchor === "top").
+  const viewport = read(`${dist}/primitives/thread/ThreadViewport.js`);
+  assert.match(viewport, /const topAnchorEnabled = t2\.turnAnchor === "top";\n\tuseTopAnchorTurn\(topAnchorEnabled\);\n\tuseTopAnchorReserve\(topAnchorEnabled\);/);
+  assert.equal(viewport.match(/useTopAnchorReserve\(/g)?.length, 1);
+  assert.match(viewport, /if \(!enabled\) return;\n\t\t\treturn getActiveTopAnchorAnchorId\(s\.thread\);/);
+  assert.match(viewport, /if \(!enabled\) return;\n\t\t\treturn getActiveTopAnchorTargetId\(s_0\.thread\);/);
+  assert.match(viewport, /t3 = \(s_2\) => enabled && !!topAnchorTurn && isTopAnchorTurnValid\(/);
+  assert.equal(viewport.match(/(getActiveTopAnchorAnchorId|getActiveTopAnchorTargetId|isTopAnchorTurnValid)\(/g)?.length, 3);
+  // Message root: parseCssLength only inside the top-anchor target ref, which is mounted only for turnAnchor === "top".
+  const root = read(`${dist}/primitives/message/MessageRoot.js`);
+  assert.equal(root.match(/parseCssLength\(/g)?.length, 2);
+  assert.match(root, /if \(!active\) return;\n\t\t\tconst state = threadViewportStore\.getState\(\);\n\t\t\tconst clamp = state\.topAnchorMessageClamp;/);
+  assert.match(root, /if \(threadViewportStore\.getState\(\)\.turnAnchor === "top"\) \{/);
+  const stub = await import("../src/vendor/assistant-ui-core/top-anchor.ts");
+  assert.equal(stub.useTopAnchorReserve(false), undefined, "disabled: no hook, no effect");
+  assert.throws(() => stub.useTopAnchorReserve(true), /not bundled/);
+  for (const fn of [stub.getActiveTopAnchorAnchorId, stub.getActiveTopAnchorTargetId, stub.isTopAnchorTurnValid, stub.parseCssLength]) {
+    assert.throws(() => (fn as () => unknown)(), /not bundled/);
+  }
 });
