@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
       resolveId: (id, importer) => ((id === "./topAnchor/useTopAnchorReserve.js" || id === "./topAnchor/topAnchorTurn.js") && importer?.endsWith("/@assistant-ui/react/dist/primitives/thread/ThreadViewport.js"))
         || (id === "../thread/topAnchor/topAnchorUtils.js" && importer?.endsWith("/@assistant-ui/react/dist/primitives/message/MessageRoot.js"))
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/top-anchor.ts") : null,
+    }, {
+      // MUYU-365 exp109: the island adapter has no onEdit, so the external-store thread never opens aui's edit composer.
+      name: "aui-edit-composer-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "./default-edit-composer-runtime-core.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/default-edit-composer.ts") : null,
     }],
     resolve: {
       dedupe: ["vue", "vue-router"],

@@ -121,6 +121,7 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   // exp109: the viewport and message root resolve their top-anchor imports to the stand-in.
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/top-anchor.ts")));
   assert.ok(!graph.some((id) => /@assistant-ui\/react\/dist\/primitives\/thread\/topAnchor\//.test(id)));
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/default-edit-composer.ts")));
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
 });
 
@@ -219,4 +220,22 @@ test("top-anchor stand-in (exp109): the island never sets turnAnchor=\"top\", so
   for (const fn of [stub.getActiveTopAnchorAnchorId, stub.getActiveTopAnchorTargetId, stub.isTopAnchorTurnValid, stub.parseCssLength]) {
     assert.throws(() => (fn as () => unknown)(), /not bundled/);
   }
+});
+
+test("edit-composer stand-in (exp109): the island passes no onEdit, so the external-store thread never opens an aui edit composer", async () => {
+  const core = "node_modules/@assistant-ui/core/dist";
+  assert.match(read("vite.config.ts"), /id === "\.\/default-edit-composer-runtime-core\.js" && importer\?\.endsWith\("\/@assistant-ui\/core\/dist\/runtime\/base\/base-thread-runtime-core\.js"\)\n[^\n]*src\/vendor\/assistant-ui-core\/default-edit-composer\.ts/);
+  // The class is constructed only inside BaseThreadRuntimeCore.beginEdit, which the external-store core guards with onEdit.
+  const base = read(`${core}/runtime/base/base-thread-runtime-core.js`);
+  assert.equal(base.match(/new DefaultEditComposerRuntimeCore\(/g)?.length, 1, "one construction site");
+  assert.equal(base.match(/DefaultEditComposerRuntimeCore/g)?.length, 2, "import + construction only");
+  assert.match(base, /\tbeginEdit\(messageId\) \{\n(?:\t\t[^\n]*\n)*?\t\tconst open = \(message, runConfig\) => \{\n\t\t\tconst composer = new DefaultEditComposerRuntimeCore\(/);
+  const external = read(`${core}/runtimes/external-store/external-store-thread-runtime-core.js`);
+  assert.match(external, /\tbeginEdit\(messageId\) \{\n\t\tif \(!this\._store\.onEdit\) throw new Error\("Runtime does not support editing\."\);\n\t\tsuper\.beginEdit\(messageId\);/);
+  // The island adapter has no onEdit (its own edit button sends a new message through Core, see MessageActions).
+  for (const file of ["src/chat-react/externalStore.ts", "src/chat-react/ChatApp.tsx", "src/chat-react/useCoreConversation.ts", "src/chat-react/mount.tsx"]) {
+    assert.doesNotMatch(read(file), /onEdit|beginEdit|useActionBarEdit|ActionBarPrimitive\.Edit|EditComposer/, file);
+  }
+  const { DefaultEditComposerRuntimeCore } = await import("../src/vendor/assistant-ui-core/default-edit-composer.ts");
+  assert.throws(() => new DefaultEditComposerRuntimeCore(), /not bundled/);
 });
