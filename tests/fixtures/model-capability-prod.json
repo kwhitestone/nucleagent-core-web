@@ -1,0 +1,289 @@
+{
+ "source": "MUYU-418 stage2 acceptance5-all-PROD.json core.models[0:2] (public projection)",
+ "selectableCount": 0,
+ "capabilityCount": 96,
+ "models": [
+  {
+   "model": "MiniMax-M2",
+   "modelCapability": {
+    "model_type": "chat",
+    "model": "MiniMax-M2",
+    "upstream_id": 2,
+    "environment": "",
+    "capability_revision": 0,
+    "operator_default": null,
+    "protocols": {
+     "chat.completions": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "gemini.generateContent": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "messages": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "responses": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "capability_unverified",
+      "reason": "精确模型、上游、环境或原生执行链未验证",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "model": "MiniMax-M2.1",
+   "modelCapability": {
+    "model_type": "chat",
+    "model": "MiniMax-M2.1",
+    "upstream_id": 2,
+    "environment": "",
+    "capability_revision": 0,
+    "operator_default": null,
+    "protocols": {
+     "chat.completions": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "gemini.generateContent": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "messages": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "native_protocol_unsupported",
+      "reason": "本原生后端尚未验证此调用协议，不能转换或直连",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "native_protocol_unsupported",
+        "reason": "本原生后端尚未验证此调用协议，不能转换或直连"
+       }
+      }
+     },
+     "responses": {
+      "native_backend": "",
+      "vendor_verified": false,
+      "upstream_verified": false,
+      "native_verified": false,
+      "selectable": false,
+      "reason_code": "capability_unverified",
+      "reason": "精确模型、上游、环境或原生执行链未验证",
+      "official_default": null,
+      "thinking_levels": {
+       "high": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "low": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "medium": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       },
+       "off": {
+        "status": "unverified",
+        "reason_code": "capability_unverified",
+        "reason": "精确模型、上游、环境或原生执行链未验证"
+       }
+      }
+     }
+    }
+   }
+  }
+ ]
+}
