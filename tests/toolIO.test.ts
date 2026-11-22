@@ -31,7 +31,10 @@ before(async () => {
  const {registerPlatformRuntime}=await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
  unregister=registerPlatformRuntime({getSessionVersion:()=>1,http:{get:async (_url:string,options:{params:{field:string;offset:number}})=>{
    if(denied) throw new Error("403");
-   const {field,offset}=options.params;calls.push(`${field}:${offset}`);
+   const {field,offset}=options.params;
+   // exp118: this file pins the legacy input/output reads; record answers like Core <= v0.1.82 (422) and is covered in toolRecord.test.ts.
+   if(field==="record") throw Object.assign(new Error("422"),{status:422});
+   calls.push(`${field}:${offset}`);
    return {data:{data:missing?{available:false,content:"",nextOffset:-1,revision:"",reason:"未采集完整输入输出"}:{available:true,content:field==="input"?inputContent:offset===0?outputContent:"last",nextOffset:field==="input"||offset>0||!paged?-1:5,revision:"rev",status:"completed"}}};
  }}});
  ({default:ToolIO}=await vite.ssrLoadModule("/src/chat-react/ToolIO.tsx"));

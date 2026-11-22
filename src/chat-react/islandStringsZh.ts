@@ -9,6 +9,7 @@ export const ZH_STRINGS = {
     defaultModelUnresolved: "使用默认模型。选择具体模型可查看可用设置。",
     optionUnavailable: "暂未开放", addTools: "添加附件或工具", closeTools: "收起工具",
     ioToggle: "完整工具输入输出", ioInput: "输入", ioOutput: "输出", ioMore: "加载更多", ioEmpty: "（空）", ioMissing: "未采集", ioErr: "错误", ioCut: "已截断", ioNone: "暂无详情", ioError: "无法读取，请重新展开。",
+    recTitle: "调用记录详情", recSource: "来源", recUnknown: "来源未知", recTransport: "传输", recRejected: "网关拒绝，未外发", recBusiness: "业务结果", recHttp: "上游 HTTP", recDuration: "耗时", recTurn: "本轮合计", recUnknownState: "未知", recNone: "暂无数据",
     upstream: "上游",
     visionSupported: "图片", visionUnsupported: "不支持图片", visionUnverified: "图片未验证", availabilityUnprobed: "未探测",
     unavailable_auth_401: "上游鉴权失败(401)", unavailable_capacity: "上游容量不足", unavailable_route_disabled: "路由已停用", unavailable_upstream_offline: "上游已下线", unavailable_unknown: "上游异常", unavailable_unwired: "尚未接通", unavailable_no_prompt: "不支持文本提示", mediaNone: "暂无已接通的模型",

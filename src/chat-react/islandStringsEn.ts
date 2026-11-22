@@ -11,6 +11,7 @@ export const EN_STRINGS: IslandStrings = {
     defaultModelUnresolved: "Using the default model. Select a model to see available settings.",
     optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",
     ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioErr: "Error", ioCut: "Truncated", ioNone: "No details yet", ioError: "Could not load; expand again.",
+    recTitle: "Call record details", recSource: "Source", recUnknown: "Source unknown", recTransport: "Transport", recRejected: "Rejected by gateway, not sent", recBusiness: "Business result", recHttp: "Upstream HTTP", recDuration: "Duration", recTurn: "Turn total", recUnknownState: "Unknown", recNone: "No data",
     upstream: "Upstream",
     visionSupported: "Image", visionUnsupported: "No image", visionUnverified: "Image unverified", availabilityUnprobed: "Not probed",
     unavailable_auth_401: "Upstream auth failed (401)", unavailable_capacity: "Upstream at capacity", unavailable_route_disabled: "Route disabled", unavailable_upstream_offline: "Upstream offline", unavailable_unknown: "Upstream error", unavailable_unwired: "Not connected", unavailable_no_prompt: "No text prompt", mediaNone: "No connected model yet",

@@ -37,6 +37,8 @@ before(async () => {
   const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   unregister = registerPlatformRuntime({ getSessionVersion: () => 1, http: { get: async (_url: string, options: { params: { field: string; offset: number } }) => {
     const { field, offset } = options.params;
+    // exp118: legacy card contract; record answers like Core <= v0.1.82 (422) — the record card is tested in toolRecord.test.ts.
+    if (field === "record") throw Object.assign(new Error("422"), { status: 422 });
     calls.push(`${field}:${offset}`);
     const value = reply(field, offset);
     if (value instanceof Error) throw value;
