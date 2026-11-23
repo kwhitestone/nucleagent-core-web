@@ -331,7 +331,7 @@ test("design: the media panel has its own styled container, not bare inputs on t
 // fix-media-365: every available image/video model is pickable. A model without a ready job tool is not greyed
 // ("尚未接通" is gone); it sends through Core's media generations with the registry's own parameters. Only an
 // upstream-unavailable row stays greyed with its reason.
-const menuItems = (container: HTMLElement, kind: string) => [...container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=menuitemradio]`)];
+const menuItems = (container: HTMLElement, kind: string) => [...container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=option]`)];
 const itemName = (item: HTMLElement) => item.querySelector(".mc-menu-text")!.firstChild!.textContent;
 test("fix-media: only upstream-unavailable media rows are greyed; an unconnected model sends through Core media generations", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
@@ -343,9 +343,9 @@ test("fix-media: only upstream-unavailable media rows are greyed; an unconnected
   const view = await mount(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: (path: string) => { navigated.push(path); }, create: async () => { throw new Error("no create"); } }));
   try {
     await settle();
-    const disabled = (kind: string) => menuItems(view.container, kind).filter(item => item.getAttribute("aria-disabled") === "true").map(itemName);
-    assert.deepEqual(disabled("image"), ["nano-banana"]);
-    assert.deepEqual(disabled("video"), []);
+    // design-1123 C: the upstream-unavailable row is not listed at all; nothing else is greyed.
+    assert.equal(menuItems(view.container, "image").map(itemName).includes("nano-banana"), false);
+    assert.deepEqual([...menuItems(view.container, "image"), ...menuItems(view.container, "video")].filter(item => item.getAttribute("aria-disabled") === "true").map(itemName), []);
     assert.doesNotMatch(view.container.textContent!, /unavailable_unwired|unavailable_no_prompt/);
     const gpt = menuItems(view.container, "image").find(item => itemName(item) === "gpt-image-2")!;
     await React.act(async () => gpt.click());

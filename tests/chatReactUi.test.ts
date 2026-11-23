@@ -141,7 +141,7 @@ test("composer: empty idle send is a disabled aui button; hint, + attach, media 
   assert.match(html, /chatReact.hint/);
   assert.match(html, /data-testid="mc-attach"[^>]*aria-label="chatReact.attach"|aria-label="chatReact.attach"[^>]*data-testid="mc-attach"/);
   assert.equal(html.match(/aria-disabled="true"[^>]*data-testid="mc-gen-(image|video)"/g)?.length, 2);
-  assert.match(html, /data-testid="mc-model"[^>]*aria-haspopup="menu"/);  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  assert.match(html, /data-testid="mc-model"[^>]*aria-haspopup="listbox"/);  const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.doesNotMatch(css, /\.mc-pill[^{]*\{[^}]*dashed/, "no dashed pills");
   assert.match(css, /\.mc-model-trigger\[aria-expanded="true"\] \{[^}]*border-color/, "open picker has an active state");
   assert.match(css, /\.mc-model-trigger\[aria-expanded="true"\] > svg \{ transform: rotate\(180deg\)/, "chevron flips");
@@ -156,32 +156,29 @@ test("composer: running with an empty input shows only the stop square", () => {
   assert.doesNotMatch(html, /data-testid="mc-send"/);
 });
 
-test("model menu: typed image/video models are selectable in separate groups", () => {
+test("model menu: chat families, image and video sections; executors as segments; 默认模型 first", () => {
   const model = { providerId: "p", model: "m1" };
   const groups = [
     { kind: "chat" as const, options: [{ value: "chat:p:m1", label: "m1", hint: "P", choice: { kind: "chat" as const, model } }, { value: "chat:p:m2", label: "m2", hint: "P", choice: { kind: "chat" as const, model: { providerId: "p", model: "m2" } } }] },
     { kind: "image" as const, options: [{ value: "image:p:i", label: "i", hint: "P", choice: { kind: "image" as const, model: { providerId: "p", model: "i" } } }] },
     { kind: "video" as const, options: [{ value: "video:p:v", label: "v", hint: "P", choice: { kind: "video" as const, model: { providerId: "p", model: "v" } } }] },
-    { kind: "executor" as const, options: [{ value: "executor:x", label: "chatReact.executor", choice: { kind: "executor" as const, backend: "x" } }] },
+    { kind: "executor" as const, options: [{ value: "executor:x", label: "X", choice: { kind: "executor" as const, backend: "x" } }, { value: "executor:y", label: "Y", choice: { kind: "executor" as const, backend: "y" } }] },
   ];
   const props = { t, groups, value: "chat:p:m1", backend: "x", disabled: false, onPick: () => {} };
   const closed = renderToString(React.createElement(app.ModelMenu, props));
   assert.match(closed, /aria-expanded="false"/);
-  assert.match(closed, /role="menu"[^>]*hidden=""/);
+  assert.match(closed, /data-testid="mc-model-menu"[^>]*hidden=""/);
   assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider");
+  assert.match(closed, /mc-model-exec">X</, "and the executor");
   const open = renderToString(React.createElement(app.ModelMenu, { ...props, defaultOpen: true }));
-  assert.doesNotMatch(open, /role="menu"[^>]*hidden=""/);
-  assert.deepEqual([...open.matchAll(/data-kind="(\w+)"/g)].map((m) => m[1]), ["chat", "image", "video", "executor"]);
-  assert.match(open, /data-kind="chat"[^>]*><div class="mc-menu-label"[^>]*>model.types.chat<\/div><button[^>]*role="menuitemradio"[^>]*aria-checked="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
-  assert.match(open, /aria-checked="true"><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
-  assert.equal(open.match(/aria-checked="true"/g)?.length, 2, "current model and executor");
-  assert.match(open, /data-kind="image"/);
-  assert.match(open, /data-kind="video"/);
-  assert.equal(open.slice(open.indexOf(`role="menu"`)).match(/>chatReact.executor</g)?.length, 1, "executor group title not repeated");
+  assert.deepEqual([...open.matchAll(/role="group" aria-label="([^"]+)" data-kind="(\w+)"/g)].map((m) => `${m[2]}:${m[1]}`), ["chat:model.types.chat", "chat:m1", "chat:m2", "image:model.types.image", "video:model.types.video"]);
+  assert.match(open, /role="option"[^>]*aria-selected="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
+  assert.match(open, /aria-selected="true"[^>]*><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
+  assert.match(open, /role="radiogroup"[^]*aria-checked="true"[^>]*>X<[^]*aria-checked="false"[^>]*>Y</);
   const unpinned = renderToString(React.createElement(app.ModelMenu, { ...props, value: "", defaultOpen: true }));
-  assert.match(unpinned, /aria-checked="true"><span class="mc-menu-text">common.modelDefault<\/span><svg/, "默认模型 checked when nothing is pinned");
+  assert.match(unpinned, /aria-selected="true"[^>]*><span class="mc-menu-text">common.modelDefault<\/span><svg/, "默认模型 selected when nothing is pinned");
   assert.match(unpinned, /mc-model-name">common.modelDefault</);
-  assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-menu \{[^}]*max-height:[^}]*overflow-y: auto;/s, "panel scrolls");
+  assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-list \{[^}]*overflow-y: auto;/s, "list scrolls");
 });
 
 test("media composer with the model's job tool sends normally and offers only its real parameters", () => {
@@ -440,7 +437,7 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
   }
 });
 
-test("model menu keeps its own keys beside Controls: arrows do not open it, Escape bubbles, Escape/Tab/pick refocus the trigger, outside click closes", async () => {
+test("model menu keeps its own keys beside Controls: arrows on the trigger do not open it, Escape bubbles, Escape/Tab/pick refocus the trigger, outside click closes", async () => {
   const document = window.document;
   Object.defineProperty(globalThis, "document", { configurable: true, value: document });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
@@ -460,36 +457,32 @@ test("model menu keeps its own keys beside Controls: arrows do not open it, Esca
     await React.act(async () => root.render(React.createElement(app.ModelMenu, { t, groups: [{ kind: "chat" as const, options: [option("m1"), option("m2")] }],
       value: "chat:p:m1", backend: null, disabled: false, onPick: (choice: unknown) => picked.push(choice) })));
     const trigger = container.querySelector<HTMLButtonElement>("[data-testid=mc-model]")!;
-    const menu = container.querySelector<HTMLElement>("[role=menu]")!;
+    const menu = container.querySelector<HTMLElement>("[data-testid=mc-model-menu]")!;
     await key(trigger, "ArrowDown");
     assert.equal(menu.hidden, true, "unlike Controls, arrows on the trigger do not open the model menu");
     await React.act(async () => trigger.click());
-    const radios = container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
-    assert.equal(radios.length, 3);
-    assert.equal(document.activeElement, radios[1], "opens on the checked model");
-    await key(radios[1], "ArrowDown");
-    await key(radios[2], "ArrowDown");
-    assert.equal(document.activeElement, radios[0], "wraps");
-    await key(radios[0], "End");
-    assert.equal(document.activeElement, radios[2]);
-    await key(radios[2], "Escape");
+    const input = container.querySelector<HTMLInputElement>("[data-testid=mc-model-search]")!;
+    assert.equal(document.activeElement, input);
+    await key(input, "Escape");
     assert.equal(menu.hidden, true);
     assert.equal(document.activeElement, trigger);
     assert.deepEqual(escapes, ["body"], "the model menu does not swallow Escape");
     await React.act(async () => trigger.click());
-    await key(radios[1], "Tab");
+    await key(input, "Tab");
     assert.equal(menu.hidden, true);
     assert.equal(document.activeElement, trigger);
     await React.act(async () => trigger.click());
     await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
     assert.equal(menu.hidden, true);
     await React.act(async () => trigger.click());
-    await React.act(async () => radios[2].click());
+    const options = container.querySelectorAll<HTMLElement>("[role=option]");
+    assert.equal(options.length, 3);
+    await React.act(async () => options[2]!.click());
     assert.deepEqual(picked, [option("m2").choice]);
     assert.equal(menu.hidden, true);
     assert.equal(document.activeElement, trigger);
     await React.act(async () => trigger.click());
-    await React.act(async () => radios[0].click());
+    await React.act(async () => container.querySelectorAll<HTMLElement>("[role=option]")[0]!.click());
     assert.deepEqual(picked, [option("m2").choice, null], "默认模型 picks null");
   } finally {
     await React.act(async () => root.unmount());
@@ -689,39 +682,34 @@ test("model menu: upstream tag beside the model and on the trigger title, only w
   const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:a", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
   assert.match(open, /<span class="mc-menu-text">a<span class="mc-menu-hint">P<\/span><\/span><span class="mc-menu-tag" data-testid="mc-upstream">AIHub<\/span>/);
   assert.equal(open.match(/data-testid="mc-upstream"/g)?.length, 1, "no tag when the catalog has no upstream");
-  assert.match(open, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel · chatReact.upstream: AIHub"/);
+  assert.match(open, /data-testid="mc-model"[^>]*title="a · chatReact.upstream: AIHub"/);
   assert.match(open, /aria-label="chatReact.pickerLabel · a · P · AIHub"/);
   assert.doesNotMatch(open, /mc-model-upstream/);
   const unknown = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:d", backend: null, disabled: false, onPick: () => {} }));
-  assert.match(unknown, /data-testid="mc-model"[^>]*title="chatReact.pickerLabel"/);
+  assert.match(unknown, /data-testid="mc-model"[^>]*title="d"/);
   assert.doesNotMatch(unknown, /mc-model-upstream/);
 });
 
-test("model menu (MUYU-418): unavailable models are greyed with the reason, vision is tagged, unprobed is said", () => {
+test("model menu (design-1123 C): unavailable models are not listed; vision is badged, unprobed is said", () => {
   const opt = (model: string, over: Record<string, unknown>) => ({ value: `chat:1:${model}`, label: model, hint: "P", choice: { kind: "chat" as const, model: { providerId: 1, model } }, ...over });
   const chat = { kind: "chat" as const, options: [
     opt("see", { vision: "supported" }), opt("blind", { vision: "unsupported" }), opt("maybe", { vision: "unverified", unprobed: true }),
     opt("down", { vision: "supported", unavailable: "capacity" }),
   ] };
-  let picked: unknown = "none";
-  const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: (c: unknown) => { picked = c; }, defaultOpen: true }));
-  const row = (model: string) => open.match(new RegExp(`<button[^>]*role="menuitemradio"[^>]*>(?:(?!</button>).)*?mc-menu-text">${model}<.*?</button>`))?.[0] ?? "";
-  assert.match(row("see"), /data-testid="mc-vision"[^>]*data-vision="supported"[^>]*>chatReact.visionSupported</);
-  assert.match(row("blind"), /data-vision="unsupported"[^>]*>chatReact.visionUnsupported</);
-  assert.match(row("maybe"), /data-vision="unverified"[^>]*>chatReact.visionUnverified</);
+  const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
+  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-text">${model}<.*?</div>`))?.[0] ?? "";
+  assert.match(row("see"), /data-testid="mc-vision"[^>]*>chatReact.badgeVision</);
+  assert.doesNotMatch(row("blind"), /mc-vision/, "only a positive badge");
   assert.match(row("maybe"), /data-testid="mc-unprobed"[^>]*>chatReact.availabilityUnprobed</);
-  assert.match(row("down"), /aria-disabled="true"/);
-  assert.match(row("down"), /title="chatReact.unavailable_capacity"/);
-  assert.match(row("down"), /data-testid="mc-unavailable"[^>]*>chatReact.unavailable_capacity</);
-  assert.doesNotMatch(row("see"), /aria-disabled/);
-  assert.equal(picked, "none");
+  assert.equal(row("down"), "", "not listed");
+  assert.doesNotMatch(open, /mc-unavailable|aria-disabled/);
 });
 
 test("model menu (MUYU-418): with an image attached, models that cannot read images are blocked in the selector", () => {
   const opt = (model: string, vision: string) => ({ value: `chat:1:${model}`, label: model, hint: "P", vision, choice: { kind: "chat" as const, model: { providerId: 1, model } } });
   const chat = { kind: "chat" as const, options: [opt("see", "supported"), opt("blind", "unsupported"), opt("maybe", "unverified")] };
   const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true, hasImage: true }));
-  const row = (model: string) => open.match(new RegExp(`<button[^>]*role="menuitemradio"[^>]*>(?:(?!</button>).)*?mc-menu-text">${model}<.*?</button>`))?.[0] ?? "";
+  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-text">${model}<.*?</div>`))?.[0] ?? "";
   assert.match(row("blind"), /aria-disabled="true"/);
   assert.match(row("blind"), /title="chatReact.visionBlocked"/);
   assert.doesNotMatch(row("see"), /aria-disabled/);
