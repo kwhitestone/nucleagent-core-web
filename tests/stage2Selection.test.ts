@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
-import { effortView } from "../src/chat-react/requestEffort.ts";
 
 // MUYU-365 exp109 B — RED for the stage-2 call-protocol / thinking-level controls (MUYU-418 WEB-CONTRACT, Core v0.1.75).
 // Design: exp109/WEB-STAGE2-DESIGN.md. Nothing here is implemented yet: src/chat-react/modelSelection.ts does not exist
@@ -191,44 +190,15 @@ test("effective-selection reader uses the owned-conversation GET and returns dat
 });
 
 // ── rendering ────────────────────────────────────────────────────────────────────────────────────────────────────────
-async function renderControls(selection: unknown) {
+// design-1123 A: the input area has no 调用协议/思考档位 controls at all — protocol + level ride in the preset.
+test("rendering: Controls never shows protocol/level/effort rows, whatever the declaration", async () => {
   const container = document.getElementById("root")!;
   const root = createRoot(container);
-  await React.act(async () => root.render(React.createElement(app.ModelControls as any, {
-    t: (key: string) => key, value: "", view: effortView("codex", { levels: ["low", "medium", "high"], effective: true, source: "fixture" }),
-    onChange: () => {}, defaultOpen: true, selection,
-  })));
-  return { container, root };
-}
-
-test("rendering: hidden selection keeps today's menu exactly (effort row, no protocol/level rows)", async () => {
-  const capabilityView = need("capabilityView");
-  const { container, root } = await renderControls({ view: capabilityView(PROD.models[0]!.modelCapability, "codex"), choice: null, onChange: () => {} });
   try {
-    assert.ok(container.querySelector("[data-testid=mc-ctl-effort]"));
-    assert.equal(container.querySelector("[data-testid=mc-ctl-protocol]"), null);
-    assert.equal(container.querySelector("[data-testid=mc-ctl-level]"), null);
+    await React.act(async () => root.render(React.createElement(app.ModelControls as any, {
+      t: (key: string) => key, defaultOpen: true, profile: { page: React.createElement("p", null, "presets") },
+    })));
+    for (const id of ["mc-ctl-effort", "mc-ctl-protocol", "mc-ctl-level", "mc-protocol-page", "mc-level-page"]) assert.equal(container.querySelector(`[data-testid=${id}]`), null, id);
     assert.doesNotMatch(container.innerHTML, /reason|native_|evidence/);
-  } finally { await React.act(async () => root.unmount()); }
-});
-
-test("rendering: a really selectable protocol shows protocol + level rows and replaces the legacy effort row", async () => {
-  const capabilityView = need("capabilityView");
-  const picked: unknown[] = [];
-  const { container, root } = await renderControls({ view: capabilityView(opened(), "codex"), choice: null, onChange: (c: unknown) => picked.push(c) });
-  try {
-    assert.ok(container.querySelector("[data-testid=mc-ctl-protocol]"));
-    assert.ok(container.querySelector("[data-testid=mc-ctl-level]"));
-    assert.equal(container.querySelector("[data-testid=mc-ctl-effort]"), null, "one strength control per turn");
-    await React.act(async () => container.querySelector<HTMLButtonElement>("[data-testid=mc-ctl-protocol]")!.click());
-    const radios = [...container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-protocol-page] [role=menuitemradio]")];
-    assert.deepEqual(radios.map((r) => [r.dataset.value ?? "", r.disabled]),
-      [["", false], ["chat.completions", true], ["responses", false], ["gemini.generateContent", true], ["messages", true]]);
-    assert.match(container.textContent!, /本原生后端尚未验证此调用协议，不能转换或直连/);
-    assert.doesNotMatch(container.innerHTML, /native_protocol_unsupported|evidence_ref|vendor_verified/);
-    await React.act(async () => radios[1]!.click());
-    assert.deepEqual(picked, [], "a disabled protocol cannot be chosen");
-    await React.act(async () => radios[2]!.click());
-    assert.deepEqual(picked, [{ protocol: "responses", level: null }]);
   } finally { await React.act(async () => root.unmount()); }
 });

@@ -16,8 +16,7 @@ let change: (value: string) => void;
 let profileControl: { disabled: boolean; onChange(value: { scope: string; profileId: string }): void };
 let settings: ReturnType<typeof app.useSettings>;
 let controlsSlot: unknown;
-let profilePanel: { summary: string; page: { props: { onChange(profileId: string): void; rows: { id: string }[] } } } | undefined;
-let effortView: { off: string[] } | undefined;
+let profilePanel: { name?: string; page: { props: { onChange(profileId: string): void; rows: { id: string }[] } } } | undefined;
 let catalogEfforts: string[] = ["low", "medium", "high"];
 let creates = 0;
 let sends = 0;
@@ -85,9 +84,13 @@ after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close();
 function findControl(node: unknown): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) { node.forEach(findControl); return; }
-  const props = (node as { props?: { effort?: { set: typeof change }; settings: typeof settings; children?: unknown; controls?: { props: { children: { props: typeof profileControl }[] } } } }).props;
-  if (props?.effort) { change = props.effort.set; settings = props.settings; effortView = (props.effort as unknown as { view: { off: string[] } }).view; }
-  if (props?.effort) profilePanel = (props as unknown as { profile?: typeof profilePanel }).profile;
+  const props = (node as { props?: { placeholder?: string; settings: typeof settings; children?: unknown; controls?: { props: { children: { props: typeof profileControl }[] } } } }).props;
+  // design-1123 A: the Composer's only model control is the preset panel; choosing a preset is the preference write.
+  if (props?.settings && props.placeholder !== undefined) {
+    settings = props.settings;
+    profilePanel = (props as unknown as { profile?: typeof profilePanel }).profile;
+    change = (value: string) => profilePanel!.page.props.onChange(value);
+  }
   if (props?.controls) { controlsSlot = props.controls.props.children[0]; profileControl = (controlsSlot as { props?: typeof profileControl } | false)?.props as typeof profileControl; }
   findControl(props?.children);
 }
@@ -114,7 +117,7 @@ for (const conversationId of [undefined, "9"]) test(`ChatApp ${conversationId ? 
     getGate = new Promise<void>((resolve) => { releaseGet = resolve; });
     const beforeSave = adapter;
     await React.act(async () => {
-      change("medium");
+      change("quick");
       assert.equal(writes, 1, "actual ChatApp control starts the preference PUT");
       await assert.rejects(beforeSave.onNew(message), /preferenceError/);
     });
@@ -165,9 +168,9 @@ for (const resolved of [true, false]) test(`normal fresh chat resolves the autho
   }
 });
 
-// MUYU-365 exp104 (HIDE-PLAN §7 restored, D7A): the stored quick is in effect — sent on create/follow-up as
-// { profileId, modelParams } and narrowing effort to its whitelist; an effort change writes it back unchanged.
-for (const conversationId of [undefined, "9"]) test(`profile on: stored quick is sent, narrows effort, survives an effort change (${conversationId ? "followup" : "create"})`, async (context) => {
+// design-1123 A: the stored quick is in effect — sent on create/follow-up as { profileId } only (a stored legacy
+// effort is no longer sent; strength rides in the preset); choosing 默认（继承） writes both back empty.
+for (const conversationId of [undefined, "9"]) test(`profile on: stored quick is sent alone, and choosing the default clears it (${conversationId ? "followup" : "create"})`, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   preference = { profileId: "quick", effort: "medium" };
   catalogEfforts = ["low", "medium"];
@@ -186,21 +189,19 @@ for (const conversationId of [undefined, "9"]) test(`profile on: stored quick is
   try {
     await React.act(async () => root.render(React.createElement(Harness)));
     if (!conversationId) await React.act(async () => settings.pick({ kind: "chat", model: { providerId: 7, model: "gpt-6-astra" } }));
-    assert.equal(profilePanel?.summary, "quick", "the 预设 row shows the stored choice");
-    assert.equal(JSON.stringify(effortView?.off ?? []), '["high"]', "the stored profile narrows effort levels");
+    assert.equal(profilePanel?.name, "quick", "the 思考 pill shows the stored choice");
     await React.act(async () => { await adapter.onNew(message); });
     if (conversationId) {
       const turn = (globalThis as unknown as { preferenceGateFixture: { turn(): unknown } }).preferenceGateFixture.turn();
-      assert.equal(JSON.stringify(turn), '{"profileId":"quick","modelParams":{"reasoningEffort":"medium"}}');
+      assert.equal(JSON.stringify(turn), '{"profileId":"quick"}');
     } else {
       assert.equal(created.length, 1);
       assert.equal(String(created[0]!.profileId), "quick", "create carries profileId");
-      assert.equal(JSON.stringify(created[0]!.modelParams), '{"reasoningEffort":"medium"}');
+      assert.equal("modelParams" in created[0]!, false, "strength rides in the preset");
       assert.equal("reasoningEffort" in created[0]!, false, "never both");
     }
-    await React.act(async () => change("low"));
-    assert.equal(JSON.stringify(puts), JSON.stringify([{ profileId: "quick", effort: "low" }]), "the stored profileId is written back unchanged");
-    assert.equal(preference.profileId, "quick");
+    await React.act(async () => change(""));
+    assert.equal(JSON.stringify(puts), JSON.stringify([{ profileId: "", effort: "" }]), "默认（继承） clears the preset and the legacy effort");
   } finally {
     catalogEfforts = ["low", "medium", "high"];
     await React.act(async () => root.unmount());
