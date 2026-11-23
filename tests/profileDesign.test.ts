@@ -273,7 +273,7 @@ test("S8 switching model refetches that model's presets and shows its own rememb
     await view.key("Escape");
     profileReads = [];
     await view.click(view.q('[data-testid="mc-model"]'));
-    await view.click(view.all('[data-testid="mc-model-menu"] [role=menuitemradio]').find((item) => item.textContent!.includes("deepseek-v4-flash")) ?? null);
+    await view.click(view.all('[data-testid="mc-model-menu"] [role=option]').find((item) => item.textContent!.includes("deepseek-v4-flash")) ?? null);
     assert.equal(profileReads.includes("deepseek-v4-flash"), true, "catalog re-read for the new model");
     await view.openProfile();
     assert.equal(view.items("profile").length, 2, "that model's own catalog");

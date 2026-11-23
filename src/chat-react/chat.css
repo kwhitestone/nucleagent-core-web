@@ -425,17 +425,25 @@
 .mc-model { position: relative; min-width: 0; }
 .mc-model-picker { position: static; }
 .mc-toolbar > .mc-controls { flex: none; }
-.mc-model-picker > .mc-menu { width: min(320px, 100%); }
-.mc-model-picker .mc-menu-item { flex-wrap: wrap; }
-.mc-model-picker .mc-menu-text { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
-.mc-model-picker .mc-menu-hint { display: block; margin-left: 0; }
-.mc-model-picker .mc-menu-tag { max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
-.mc-model-trigger { max-width: min(260px, 100%); color: var(--fg-primary); font-weight: 500; }
+.mc-model-picker > .mc-menu { width: 20rem; max-width: calc(100vw - 1rem); max-height: none; overflow: visible; display: flex; flex-direction: column; }
+.mc-model-picker .mc-menu-item { min-height: 32px; }
+.mc-model-picker .mc-menu-item[data-active] { background: var(--bg-hover); }
+.mc-model-picker .mc-menu-hint { flex: none; }
+.mc-list { overflow-y: auto; min-height: 0; }
+.mc-search { display: flex; align-items: center; height: 27px; margin: 2px 2px 4px 8px; }
+.mc-search input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; }
+.mc-segments { display: flex; gap: 2px; margin: 0 4px 4px; padding: 2px; border-radius: 8px; background: var(--bg-fill); }
+.mc-segments button { flex: 1; min-width: 0; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-secondary); font: inherit; font-size: 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: keep-all; }
+.mc-segments button[aria-checked="true"] { background: var(--bg-card); color: var(--fg-primary); box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.08)); }
+.mc-model-trigger[data-stale] { border-color: var(--fg-warning, #ad6800); }
+.mc-tag-warn { background: transparent; color: var(--fg-warning, #ad6800); }
+.mc-model-trigger { max-width: 220px; min-width: 0; flex: 0 1 auto; color: var(--fg-primary); font-weight: 500; }
 .mc-model-trigger[aria-expanded="true"] { border-color: var(--fg-brand); background: var(--bg-brand-soft); color: var(--fg-primary); }
 .mc-model-trigger > svg { flex: none; transition: transform 0.15s; }
 .mc-model-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
-.mc-model-name, .mc-model-exec { overflow: hidden; text-overflow: ellipsis; }
-.mc-model-exec { color: var(--fg-tertiary); }
+.mc-model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-model-sep { flex: none; color: var(--fg-tertiary); }
+.mc-model-exec { flex: none; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -592,3 +600,14 @@
 .mc-notice { margin: 2px 4px 6px; padding: 6px 8px; border-radius: 8px; font-size: 12px; background: var(--bg-warning-soft, #fff7e6); color: var(--fg-warning, #ad6800); }
 .mc-controls > [data-stale] { color: var(--fg-warning, #ad6800); }
 .mc-controls [data-testid="mc-profile-value"] { font-size: 12px; max-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* design-1123 B: ≤480px — media pills as icon buttons, model pill ≤150px, both popovers open as bottom drawers. */
+@media (max-width: 480px) {
+  .mc-toolbar { display: flex; flex-wrap: nowrap; }
+  .mc-toolbar > .mc-spacer { display: block; }
+  .mc-pill-text, .mc-model-exec, .mc-model-sep { display: none; }
+  .mc-model-trigger { max-width: 150px; }
+  .mc-model-picker > .mc-menu, .mc-controls .mc-menu { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: 100%; max-width: 100%; max-height: 75vh; z-index: 41; border-radius: 16px 16px 0 0; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .mc-model-picker .mc-scrim, .mc-controls .mc-scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .25); }
+  .mc-model-picker .mc-grab, .mc-controls .mc-grab { display: block; width: 36px; height: 4px; margin: 2px auto 8px; border-radius: 4px; background: var(--border); }
+  .mc-model-picker .mc-menu-item { min-height: 44px; }
+}
