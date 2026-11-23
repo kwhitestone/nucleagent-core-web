@@ -348,11 +348,11 @@ test("direct media send key: enabled only with real text, a loaded job schema an
     await type(view, "画一只猫");
     assert.equal(sendKey(view).disabled, false, "chat mode with text");
 
-    // No job tool for any video model (exp86c): the pill preselects nothing and chat mode stays as it was.
+    // fix-media-365: no job tool for any video model still enters video mode (Core media API, registry choices).
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
     await settle();
-    assert.equal(view.container.querySelector('[data-testid="mc-media-mode"]'), null, "no unwired preselect");
-    assert.equal(view.container.querySelector('[data-testid="mc-gen-video"]')!.getAttribute("aria-disabled"), "true");
+    assert.match(view.container.querySelector('[data-testid="mc-media-mode"]')!.textContent!, /video-model/);
+    assert.equal(view.container.querySelector('[data-testid="mc-gen-video"]')!.getAttribute("aria-disabled"), "false");
 
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
     await settle();
@@ -434,14 +434,14 @@ test("a new conversation resolves the selected media model to its job tool; an e
     await React.act(async () => settings.setParam("aspect_ratio", "1:1"));
     assert.deepEqual(settings.params, { aspect_ratio: "1:1" });
 
-    // Another model without a job tool (exp86c): greyed with the reason and refused, the wired selection stays.
+    // fix-media-365: a model without a job tool is pickable and sends through Core's media API (toolId 0).
     const video = settings.groups.find((group) => group.kind === "video")!.options[0];
-    assert.equal(video.unavailable, "unwired");
+    assert.equal(video.unavailable, undefined);
     await React.act(async () => settings.pick(video.choice));
     await React.act(async () => undefined);
-    assert.equal(settings.media?.kind, "image");
-    assert.equal(settings.direct?.toolId, 9);
-    // Existing conversation: closed until the job tool is one of its bound tools (Core checks the same set).
+    assert.equal(settings.media?.kind, "video");
+    assert.equal(settings.direct?.toolId, 0);
+    // Existing conversation: a cataloged tool is bound first (a failed bind leaves media mode); bound: the job tool.
     for (const [id, bound, toolId] of [["7", [], undefined], ["8", [9], 9]] as const) {
       const base = response;
       response = (url) => url.endsWith("/bindings") ? { data: { skillIds: [], toolIds: bound, editable: true, revision: "1", principal: "1" } } : base(url);
@@ -508,7 +508,7 @@ const mediaTyped = {
   video: ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"].map(model => ({ providerId: 1, model, type: "video", capabilities: [], available: true })),
 };
 
-test("media pills preselect the first model with a ready job tool; unwired models are greyed with a reason and cannot be picked", async (context) => {
+test("media pills preselect the first model with a ready job tool; models without one stay pickable (Core media API)", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   typed = { chat: [{ providerId: 1, model: "chat-model", type: "chat", capabilities: [] }], ...mediaTyped };
   const view = await fixture();
@@ -535,22 +535,20 @@ test("media pills preselect the first model with a ready job tool; unwired model
 
     const group = (kind: string) => [...view.container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=menuitemradio]`)];
     const names = (kind: string) => group(kind).map(item => item.querySelector(".mc-menu-text")!.firstChild!.textContent);
-    assert.deepEqual(names("image"), ["doubao-seedream-5-0-260128", "doubao-seedream-4-0-250828"], "sendable first, unwired after");
-    assert.deepEqual(names("video"), ["jimeng_v30_1080p", "MiniMax-H3", "viduq3-pro"]);
-    for (const [item, reason] of [[group("image")[1], "unwired"], [group("video")[1], "unwired"], [group("video")[2], "no_prompt"]] as const) {
-      assert.equal(item.getAttribute("aria-disabled"), "true");
-      assert.match(item.textContent!, new RegExp(`chatReact.unavailable_${reason}`));
-      await React.act(async () => item.click());
-    }
-    for (const item of [group("image")[0], group("video")[0]]) assert.equal(item.getAttribute("aria-disabled"), null);
-    assert.match(view.container.querySelector('[data-testid="mc-media-mode"]')!.textContent!, /jimeng_v30_1080p/, "an unwired pick is refused");
+    assert.deepEqual(names("image"), ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"], "catalog order; nothing greyed");
+    assert.deepEqual(names("video"), ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"]);
+    for (const item of [...group("image"), ...group("video")]) assert.equal(item.getAttribute("aria-disabled"), null);
+    assert.doesNotMatch(view.container.textContent!, /unavailable_unwired|unavailable_no_prompt/);
+    await React.act(async () => group("video")[0].click());
+    await settle();
+    assert.match(view.container.querySelector('[data-testid="mc-media-mode"]')!.textContent!, /MiniMax-H3/, "a model without a job tool is picked");
     assert.equal(view.container.querySelector("textarea")!.value, "画一只猫", "draft kept");
     assert.deepEqual(created, []);
     assert.deepEqual(writes, []);
   } finally { typed = null; await view.close(); }
 });
 
-test("with no sendable media model the pill preselects nothing, stays keyboard-reachable and says why", async (context) => {
+test("with no job tool at all the pills still enter media mode on the first available model (Core media API)", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   typed = { chat: [{ providerId: 1, model: "chat-model", type: "chat", capabilities: [] }], ...mediaTyped };
   const view = await fixture();
@@ -564,9 +562,9 @@ test("with no sendable media model the pill preselects nothing, stays keyboard-r
       assert.equal(pill.disabled, false, "focusable");
       await React.act(async () => pill.click());
       await settle();
-      assert.equal(pill.getAttribute("aria-disabled"), "true");
-      assert.match(pill.getAttribute("aria-label")!, /chatReact.mediaNone/);
-      assert.equal(view.container.querySelector('[data-testid="mc-media-mode"]'), null, "nothing preselected");
+      assert.equal(pill.getAttribute("aria-disabled"), "false");
+      assert.equal(pill.getAttribute("aria-label"), null);
+      assert.match(view.container.querySelector('[data-testid="mc-media-mode"]')!.textContent!, kind === "image" ? /doubao-seedream-4-0-250828/ : /MiniMax-H3/);
     }
     assert.equal(view.container.querySelector("textarea")!.value, "草稿");
     assert.deepEqual(writes, []);

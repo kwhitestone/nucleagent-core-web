@@ -24,6 +24,8 @@ import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
 import { directMediaRequest, directMediaTool, directMediaReady, mediaDefaults, mediaFrames, type DirectMedia, type Wired } from "./workflowParams";
 import { listToolCatalogPages } from "@/addons/conversation/api/toolCatalog";
+import { createGeneration } from "@/addons/conversation/api/media";
+import { MEDIA_KINDS, requestParams } from "@/addons/conversation/registry";
 import { getSessionBindings, updateSessionBindings, type SessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
 import { executionBackendCompatibility } from "@/addons/conversation/composables/executionBackendCompatibility";
@@ -147,6 +149,13 @@ export function ChatApp(props: ChatProps) {
     if (frames.missing) { toast.warning(t("chatReact.mediaFrameHint")); throw new Error(t("chatReact.mediaFrameHint")); }
     return { ...directMediaRequest(direct, { ...settings.params, ...frames.params }, input), files: files.filter((file) => !frames.used.includes(file.id)) };
   };
+  // fix-media-365: a model without a usable job tool generates through Core's media API (text prompt + registry choices).
+  const generate = async (input: string, files: readonly unknown[] = []) => {
+    if (files.length) throw new Error(t("chatReact.mediaTextOnly"));
+    const { kind, model } = settings.media!;
+    const created = await createGeneration({ kind, providerId: Number(model.providerId), model: model.model, prompt: input, conversationId: Number(conversationId ?? 0), ...requestParams(kind, settings.params ?? {}) });
+    if (!conversationId && created.conversationId) props.navigate(`/c/${created.conversationId}`);
+  };
   // New conversation with the current model and executor, then open it.
   // withTurn: this turn's effort or profile; never on a media/workflow job, which carries its own parameters.
   const start = async (request: Partial<CreateConversationRequest> & { input: string }, withTurn = false) => {
@@ -166,6 +175,7 @@ export function ChatApp(props: ChatProps) {
       // A paid submission is never parked or replayed: not while a run is active, and an unconfirmed
       // result (no HTTP answer) is reported as unknown instead of reaching the 409 queue.
       if (isRunning(core.state)) throw new Error(t("chatReact.loading"));
+      if (!settings.direct.toolId) return generate(text, files);
       const { toolInvocation, files: rest } = media(settings.direct, text, files);
       await core.controller.send(text, rest, toolInvocation).catch((error) => {
         throw new Error((error as { status?: number }).status ? (error as Error).message : t("chatReact.workflowUnknown"));
@@ -182,8 +192,10 @@ export function ChatApp(props: ChatProps) {
       send: guard(async (input, files) => {
         if (settings.busy) throw new Error(t("chatReact.loading"));
         if (!settings.allowed) throw new Error(t("common.executionBackendSelectionInvalid"));
-        const { files: rest = files, ...direct } = settings.direct ? media(settings.direct, input, files) : {};
+        const viaCore = settings.direct?.toolId === 0;
+        const { files: rest = files, ...direct } = settings.direct && !viaCore ? media(settings.direct, input, files) : {};
         try {
+          if (viaCore) return await generate(input, files);
           await start({
             input,
             ...(grants.ids.length ? { toolIds: grants.ids } : {}),
@@ -825,6 +837,13 @@ export function useSettlement(conversationId: string | undefined, read: Settleme
   return !conversationId || !read ? NO_EVIDENCE : seen.id === conversationId ? seen.rows : LOADING_EVIDENCE;
 }
 
+/** fix-media-365: Core's media API as a job form: the text goes to `input`, each multi-valued registry param is a required choice. */
+function coreJob(kind: "image" | "video", t: Translate): DirectMedia {
+  const params = MEDIA_KINDS[kind].params.filter((param) => param.values.length > 1);
+  return { toolId: 0, prompt: "input", schema: { invocation: { toolId: 0, revision: "0" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", ...params.map((param) => param.key)],
+    properties: { input: { type: "string" }, ...Object.fromEntries(params.map((param) => [param.key, { type: "string", enum: param.values, default: param.default, description: t(`chatGen.param.${param.key}`) }])) } } } };
+}
+
 export function useSettings(conversationId: string | undefined, t: Translate) {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [backends, setBackends] = useState<ExecutionBackendOption[]>([]);
@@ -913,10 +932,12 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     return () => { window.removeEventListener(SESSION_CHANGE_EVENT, refresh); window.removeEventListener(BINDINGS_EVENT, bound); };
   }, [conversationId]);
   const found = wired && wired.key === conversationId ? wired.found : undefined;
-  // A job tool still to be bound to this conversation cannot send yet (Core checks the bound set).
+  // A job tool still to be bound to this conversation cannot send yet (Core checks the bound set). Any other model
+  // (no job tool, no prompt field, not enabled here) sends through Core's media API with the registry's choices.
   const entry = media && found?.[media.model.model];
-  const direct = entry && !entry.bind ? entry : null;
-  useEffect(() => { setParams(direct ? mediaDefaults(direct) : {}); }, [direct && direct.toolId, media?.model.model]);
+  const viaCore = useMemo(() => media && coreJob(media.kind, t), [media?.kind, t]);
+  const direct = !media || !found || mediaPending ? null : entry ? entry.bind ? null : entry : viaCore;
+  useEffect(() => { setParams(direct ? mediaDefaults(direct) : {}); }, [direct && direct.toolId, media?.model.model, media?.kind]);
 
   // Settles a media selection against the read: the preferred model if it can send (else, unless strict, the first
   // of its kind that can), binding its job tool to this conversation first when needed. Nothing = leave and say why.
@@ -924,8 +945,9 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     const read = await loadWired();
     const live = () => run === mediaRun.current;
     if (!live()) return;
-    const name = read[preferred] ? preferred : strict ? undefined : groups.find((group) => group.kind === kind)?.options.find((option) => read[option.label])?.label;
-    let entry = name ? read[name] : undefined;
+    const options = groups.find((group) => group.kind === kind)?.options.filter((option) => !option.unavailable) ?? [];
+    const name = read[preferred] || strict ? preferred : options.find((option) => read[option.label])?.label ?? preferred;
+    let entry = read[name];
     if (entry && entry.bind) {
       const current = wiring.current!;
       try {
@@ -933,7 +955,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
         window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: bound }));
         current.bound = bound;
         const { bind: _, ...ready } = entry;
-        const next = { ...await current.read, [name!]: ready };
+        const next = { ...await current.read, [name]: ready };
         current.read = Promise.resolve(next);
         if (wiring.current === current) setWired({ key: current.key, found: next });
         entry = ready;
@@ -944,8 +966,9 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     }
     if (!live()) return;
     setPending(false);
-    if (entry) setMedia({ kind, model: (groups.find((group) => group.kind === kind)!.options.find((option) => option.label === name)!.choice as { model: ModelChoice }).model });
-    else if (!strict) { setMedia(null); toast.info(noneReason(kind, read) ?? t("chatReact.mediaNone")); }
+    const option = options.find((option) => option.label === name);
+    if (option) setMedia({ kind, model: (option.choice as { model: ModelChoice }).model });
+    else if (!strict) setMedia(null);
   };
   const enter = (kind: "image" | "video") => {
     const run = ++mediaRun.current;
@@ -956,12 +979,10 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     setPending(true);
     void settle(kind, guess.label, false, run);
   };
-  // Why a kind has nothing to send: this conversation has it off, an upstream outage (every option), or no connected model.
-  const noneReason = (kind: string, read = found) => {
-    const options = groups.find((group) => group.kind === kind)?.options.map((option) => read ? wiredOnly(option, read) : option) ?? [];
-    if (!read || options.some((option) => !option.unavailable)) return;
-    const why = options.map((option) => option.unavailable);
-    return t(why.includes("not_enabled") ? "chatReact.mediaNotEnabled" : why.length && why.every((reason) => !["unwired", "no_prompt"].includes(reason!)) ? "chatReact.mediaUpstream" : "chatReact.mediaNone");
+  // Why a kind has nothing to send: every listed model is upstream-unavailable, or none is listed.
+  const noneReason = (kind: string) => {
+    const options = groups.find((group) => group.kind === kind)?.options ?? [];
+    return options.some((option) => !option.unavailable) ? undefined : t(options.length ? "chatReact.mediaUpstream" : "chatReact.mediaNone");
   };
 
   const allowedFor = (m: ModelChoice | null, id: string | null) => {
@@ -1002,12 +1023,10 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     }
   }
 
-  // Image/video: models that can send come first; the rest are greyed with why (no job tool / no prompt field).
-  const wiredOnly = (option: Option, read = found): Option => option.unavailable || !read || read[option.label] ? option
-    : { ...option, unavailable: read[option.label] === null ? "no_prompt" : read[option.label] === false ? "not_enabled" : "unwired" };
+  // Image/video (fix-media-365): only the catalog's availability greys a model; available ones come first.
   const labeledGroups = groups.map((group) => group.kind === "chat" ? !strategy ? group : {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
-  } : group.kind === "executor" ? group : { ...group, options: group.options.map((option) => wiredOnly(option)).sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
+  } : group.kind === "executor" ? group : { ...group, options: [...group.options].sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
   return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
