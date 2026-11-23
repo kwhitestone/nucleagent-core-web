@@ -45,7 +45,7 @@ export function MediaCard({ data, t }: { data: MediaPartData; t: Translate }) {
     } catch { setError(true); }
   };
   return <div className="mc-media-card">
-    <p role="status">{t(label, { reason: t("chatReact.mediaFailed") })}</p>
+    <p role="status">{t(label, { reason: view?.reason || t("chatReact.mediaFailed") })}</p>
     {data.prompt && <p className="mc-media-prompt">{data.prompt}</p>}
     {!failed && view?.url && (data.media.kind === "video"
       ? <video className="mc-media" src={view.url} controls preload="metadata" onError={() => setError(true)} />

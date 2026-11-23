@@ -7,9 +7,9 @@ export function guardMediaSend<Args extends unknown[], Result>(media: { kind: "i
   };
 }
 
-export function mediaTaskView(task: { status: string; downloadUrl?: string }) {
+export function mediaTaskView(task: { status: string; downloadUrl?: string; errorMessage?: string }) {
   const pending = ["queued", "submitting", "running", "ingesting"].includes(task.status);
   const url = task.status === "succeeded" && task.downloadUrl ? assertSafeDownloadUrl(task.downloadUrl) : undefined;
   const status = pending || ["failed", "unknown", "cancelled"].includes(task.status) ? task.status : url ? "succeeded" : "unavailable";
-  return { status, pending, url };
+  return { status, pending, url, reason: task.status === "failed" ? task.errorMessage : undefined };
 }

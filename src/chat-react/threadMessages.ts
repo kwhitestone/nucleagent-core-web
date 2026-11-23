@@ -122,6 +122,10 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
 export function toThreadMessages(state: ConversationState, options: ThreadOptions = { locale: "zh-CN", nowMs: Date.now() }): ThreadMessageLike[] {
   const out: ThreadMessageLike[] = [];
   const visible = selectTurns(state).flatMap((turn) => turn.items);
+  const resultTasks = new Set(visible.flatMap((item) => {
+    const media = item.data?.media as { taskId?: number } | undefined;
+    return item.role !== "user" && media?.taskId ? [media.taskId] : [];
+  }));
   const timings = executionTimings(state.loadedOrder.map((id) => state.items[id]!).filter(Boolean), { nowMs: options.nowMs, status: state.status });
   let group: ConversationItem[] = [];
   let user: ConversationItem | undefined;
@@ -154,6 +158,17 @@ export function toThreadMessages(state: ConversationState, options: ThreadOption
       })) } : {}),
       createdAt: new Date(item.timestamp), metadata: { custom: { pending: item.status === "pending", question: messageQuestion(item) } },
     });
+    // Core persists task IDs on the prompt before a result message exists.
+    const media = item.data?.media as { kind?: string; taskIds?: number[] } | undefined;
+    if ((media?.kind === "image" || media?.kind === "video") && Array.isArray(media.taskIds)) {
+      for (const taskId of new Set(media.taskIds)) {
+        if (!Number.isSafeInteger(taskId) || taskId <= 0 || resultTasks.has(taskId)) continue;
+        out.push({
+          id: `media-task-${taskId}`, role: "assistant", createdAt: new Date(item.timestamp),
+          content: [{ type: "data-media", data: { media: { kind: media.kind, taskId }, prompt: "", failed: false } }],
+        });
+      }
+    }
   }
   flush();
   return out;
