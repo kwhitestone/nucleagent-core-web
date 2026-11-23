@@ -28,7 +28,7 @@ export const EN_STRINGS: IslandStrings = {
     media_queued: "Queued", media_submitting: "Submitting", media_running: "Generating", media_ingesting: "Saving media",
     reasoning: "Thinking process", processing: "Working", callRecord: "Call record",
     attachmentPending: "Attachment verification pending; download unavailable",
-    stop: "Stop", executor: "Executors",  pickerLabel: "Model and executor",
+    stop: "Stop", executor: "Executors",  recent: "Recent", badgeVision: "Vision", modelStale: "The current model is unavailable; choose another (this chat keeps it until you do)", searchModel: "Search models", noResults: "No matching models", pickerLabel: "Model and executor",
     newPlaceholder: "Describe your task", hint: "Enter to send · Shift + Enter for a new line", queueSend: "Queue (sent when the current reply ends)",
     attach: "Add attachment", loading: "Loading conversation…", process: "Process",
     queued: "1 queued", queuedRemove: "Remove queued message", badUpdate: "Malformed message update skipped",

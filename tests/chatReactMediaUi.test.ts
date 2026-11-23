@@ -533,7 +533,7 @@ test("media pills preselect the first model with a ready job tool; models withou
     assert.match(mode.textContent!, /jimeng_v30_1080p/);
     assert.equal(sendKey(view).disabled, false, "the preselected model sends");
 
-    const group = (kind: string) => [...view.container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=menuitemradio]`)];
+    const group = (kind: string) => [...view.container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=option]`)];
     const names = (kind: string) => group(kind).map(item => item.querySelector(".mc-menu-text")!.firstChild!.textContent);
     assert.deepEqual(names("image"), ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"], "catalog order; nothing greyed");
     assert.deepEqual(names("video"), ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"]);

@@ -37,7 +37,7 @@ import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
 import { useSingleSlotQueue } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
-import { choiceValue, modelGroups, type Choice, type Group, type Option } from "./modelGroups";
+import { choiceValue, modelGroups, visibleOptions, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
 import {
   AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
@@ -49,7 +49,7 @@ import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, effortEvidence, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
-import { cap, withRequestEffort, type EffortChoice } from "./requestEffort";
+import { withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { LOADING_EVIDENCE, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
@@ -330,7 +330,7 @@ function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t:
   );
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { compatible?(choice: Choice): boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
@@ -409,7 +409,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
           <MediaPill kind="image" t={t} settings={settings} running={running} />
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
+            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} />
           {profile && !settings.media && <ModelControls t={t} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
@@ -706,60 +706,110 @@ function Effective({ t, conversationId, stepId }: { t: Translate; conversationId
   return text ? <span className="mc-usage" data-testid="mc-effective-selection">{text}</span> : null;
 }
 
+const RECENT_KEY = "mc.recentModels";
+/** 最近使用 (design-1123 P5 A): last 3 model values per executor, local only. */
+function readRecent(): Record<string, string[]> {
+  try { const value = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "{}"); return value && typeof value === "object" ? value : {}; } catch { return {}; }
+}
+/** Family heading for a chat model: the name up to its first "-" (deepseek-v4 → deepseek). */
+const familyOf = (label: string) => label.split(/[-/]/)[0] || label;
+
 /**
- * Model + executor menu over modelGroups.ts (chat / image / video / executor). A popover of
- * menuitemradio buttons: arrows/Home/End move, Enter/Space pick, Escape or an outside click closes.
- * Image/video models fold into one disabled 即将开放 row in the MVP (no paid calls).
+ * design-1123 B/C: one pill 「模型 · 执行器 ▾」 opening a searchable list, after OWUI c38885a Selector.svelte: the trigger
+ * truncates the name (:937-938), the search box is a combobox that keeps focus with ↑↓ / Enter (:958-996), the list
+ * scrolls at 18rem (:1114). Executors are a segmented control on top; 最近使用 first, then chat families, image, video.
+ * Rule C: visibleOptions() drops unavailable / incompatible rows; the current one stays, marked ⚠.
  */
-export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void }) {
+export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void; compatible?(choice: Choice): boolean }) {
   const { t, groups } = props;
-  const { open, setOpen, root, trigger, close: shut, rove } = useMenu(props.defaultOpen);
+  const { open, setOpen, root, trigger, close: shut } = useMenu(props.defaultOpen);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [recent, setRecent] = useState(readRecent);
+  const search = useRef<HTMLInputElement>(null);
+  const listId = useId();
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
-  const options = groups.flatMap((g) => g.options);
-  const current = options.find((o) => o.value === props.value);
+  const all = groups.filter((g) => g.kind !== "executor").flatMap((g) => g.options);
+  const current = all.find((o) => o.value === props.value);
+  const executors = groups.find((g) => g.kind === "executor")?.options ?? [];
+  const executor = executors.find((o) => o.value === backendValue)?.label;
+  const stale = !!current && (!!current.unavailable || (props.compatible ? !props.compatible(current.choice) : false));
   const model = current?.label ?? t("common.modelDefault");
-  const executor = options.find((o) => o.value === backendValue)?.label;
-  const label = (g: Group) => (g.kind === "executor" ? t("chatReact.executor") : t(`model.types.${g.kind}`));
-  const choose = (choice: Choice | null) => { shut(); props.onPick(choice); };
+  const close = () => { shut(); setQuery(""); };
+  useEffect(() => { if (open) { setActive(0); search.current?.focus(); } }, [open]);
+  const needle = query.trim().toLowerCase();
+  const visible = (g: Group) => visibleOptions(g.options.map((o) => props.compatible && g.kind === "chat" && !props.compatible(o.choice) ? { ...o, incompatible: true as const } : o), props.value)
+    .filter((o) => !needle || o.label.toLowerCase().includes(needle));
+  const chats = groups.find((g) => g.kind === "chat");
+  const chatRows = chats ? visible(chats) : [];
+  const mine = recent[props.backend ?? ""] ?? [];
+  const recentRows = needle ? [] : mine.flatMap((v) => chatRows.filter((o) => o.value === v));
+  const sections: { key: string; kind: string; title: string; rows: (Option | null)[] }[] = [];
+  if (!needle) sections.push({ key: "default", kind: "chat", title: t("model.types.chat"), rows: [null] });
+  if (recentRows.length) sections.push({ key: "recent", kind: "chat", title: t("chatReact.recent"), rows: recentRows });
+  const families = new Map<string, Option[]>();
+  for (const o of chatRows) if (!recentRows.includes(o)) families.set(familyOf(o.label), [...(families.get(familyOf(o.label)) ?? []), o]);
+  for (const [family, rows] of families) sections.push({ key: `family:${family}`, kind: "chat", title: family, rows });
+  for (const g of groups) if (g.kind === "image" || g.kind === "video") { const rows = visible(g); if (rows.length) sections.push({ key: g.kind, kind: g.kind, title: t(`model.types.${g.kind}`), rows }); }
+  const flat = sections.flatMap((s) => s.rows);
+  const at = Math.min(active, Math.max(flat.length - 1, 0));
+  const blockedOf = (o: Option | null) => o && props.hasImage && o.vision === "unsupported" ? t("chatReact.visionBlocked") : undefined;
+  const choose = (o: Option | null) => {
+    if (blockedOf(o)) return;
+    if (o?.choice.kind === "chat" && props.backend) {
+      const next = { ...readRecent(), [props.backend]: [o.value, ...mine.filter((v) => v !== o.value)].slice(0, 3) };
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* private mode: 最近使用 stays in memory */ }
+      setRecent(next);
+    }
+    close(); props.onPick(o ? o.choice : null);
+  };
   const onKeyDown = (e: KeyboardEvent) => {
     if (!open) return;
-    if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); shut(); return; }
-    if (rove(e.key)) e.preventDefault();
+    if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); close(); return; }
+    if (e.target !== search.current) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(at + 1, flat.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(Math.max(at - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (flat.length) choose(flat[at] ?? null); }
   };
-  const item = (key: string, text: string, checked: boolean, onSelect: () => void, hint?: string, upstream?: string, o?: Option) => {
-    // MUYU-418: unavailable (reason shown) and, with an image attached, image-incapable models cannot be picked.
-    const blocked = o?.unavailable ? t(`chatReact.unavailable_${o.unavailable}`) : props.hasImage && o?.vision === "unsupported" ? t("chatReact.visionBlocked") : undefined;
-    return <button key={key} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={checked}
-      aria-disabled={blocked ? true : undefined} title={blocked} onClick={blocked ? undefined : onSelect}>
-      <span className="mc-menu-text">{text}{hint && <span className="mc-menu-hint">{hint}</span>}</span>
-      {o?.unavailable && <span className="mc-menu-tag" data-testid="mc-unavailable">{blocked}</span>}
+  let index = -1;
+  const row = (o: Option | null) => {
+    const i = ++index;
+    const value = o ? o.value : "";
+    const blocked = blockedOf(o);
+    return <div key={`${i}:${value}`} id={`${listId}-${i}`} role="option" className="mc-menu-item" aria-selected={value === props.value} data-active={i === at || undefined}
+      aria-disabled={blocked ? true : undefined} title={blocked} onMouseMove={() => i !== at && setActive(i)} onClick={() => choose(o)}>
+      <span className="mc-menu-text">{o ? o.label : t("common.modelDefault")}{o?.hint && <span className="mc-menu-hint">{o.hint}</span>}</span>
+      {o?.stale && <span className="mc-menu-tag mc-tag-warn">⚠</span>}
+      {o?.vision === "supported" && <span className="mc-menu-tag" data-testid="mc-vision">{t("chatReact.badgeVision")}</span>}
       {o?.unprobed && <span className="mc-menu-tag" data-testid="mc-unprobed">{t("chatReact.availabilityUnprobed")}</span>}
-      {o?.vision && <span className="mc-menu-tag" data-testid="mc-vision" data-vision={o.vision}>{t(`chatReact.vision${cap(o.vision)}`)}</span>}
-      {upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{upstream}</span>}{checked && <CheckMark size={14} />}
-    </button>;
+      {o?.upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{o.upstream}</span>}
+      {value === props.value && <CheckMark size={14} />}
+    </div>;
   };
-  const section = (kind: string, title: string, body: ReactNode, bare?: boolean) => (
-    <div key={kind} role="group" aria-label={title} data-kind={kind} className="mc-menu-group">
-      {!bare && <div className="mc-menu-label" aria-hidden="true">{title}</div>}{body}
-    </div>
-  );
+  const name = [model, executor].filter(Boolean).join(" · ");
   return (
     <div className="mc-model mc-model-picker" ref={root} onKeyDown={onKeyDown}>
-      <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="menu" aria-expanded={open}
-        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor].filter(Boolean).join(" · ")}
-        title={current?.upstream ? `${t("chatReact.pickerLabel")} · ${t("chatReact.upstream")}: ${current.upstream}` : t("chatReact.pickerLabel")} disabled={props.disabled} onClick={() => { props.onOpen?.(); setOpen((v) => !v); }}>
-        <span className="mc-model-name">{model}</span><ChevronMark size={12} />
+      <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="listbox" aria-expanded={open} data-stale={stale || undefined}
+        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor, stale && t("chatReact.modelStale")].filter(Boolean).join(" · ")}
+        title={[name, current?.upstream && `${t("chatReact.upstream")}: ${current.upstream}`].filter(Boolean).join(" · ")} disabled={props.disabled}
+        onClick={() => { props.onOpen?.(); if (open) close(); else setOpen(true); }}>
+        {stale && <span aria-hidden="true">⚠</span>}<span className="mc-model-name">{model}</span>{executor && <><span className="mc-model-sep" aria-hidden="true">·</span><span className="mc-model-exec">{executor}</span></>}<ChevronMark size={12} />
       </button>
-      <div className="mc-menu" role="menu" aria-label={t("chatReact.pickerLabel")} data-testid="mc-model-menu" hidden={!open}>
-        {/* 默认模型 is a real radio of the chat group (checked when no model is pinned). */}
-        {section("chat", t("model.types.chat"), <>
-          {item("default", t("common.modelDefault"), props.value === "", () => choose(null))}
-          {groups.find((g) => g.kind === "chat")?.options.map((o) => item(o.value, o.label, o.value === props.value, () => choose(o.choice), o.hint, o.upstream, o))}
-        </>)}
-        {groups.filter((g) => g.kind !== "chat").map((g) => section(g.kind, label(g),
-          g.options.map((o) => item(o.value, o.label, o.value === (g.kind === "executor" ? backendValue : props.value), () => choose(o.choice), o.hint, undefined, o)),
-          // A lone executor named like its group shows once.
-          g.kind === "executor" && g.options.length === 1 && g.options[0]!.label === label(g)))}
+      {open && <div className="mc-scrim" onClick={close} />}
+      <div className="mc-menu" data-testid="mc-model-menu" hidden={!open} aria-label={t("chatReact.pickerLabel")}>
+        <div className="mc-grab" aria-hidden="true" />
+        {stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
+        <div className="mc-search"><input ref={search} data-testid="mc-model-search" value={query} placeholder={t("chatReact.searchModel")} aria-label={t("chatReact.searchModel")}
+          role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={flat.length ? `${listId}-${at}` : undefined} autoComplete="off"
+          onChange={(e) => { setQuery(e.target.value); setActive(0); }} /></div>
+        {executors.length > 1 && <div className="mc-segments" role="radiogroup" aria-label={t("chatReact.executor")} data-testid="mc-executors">
+          {executors.map((o) => <button key={o.value} type="button" role="radio" aria-checked={o.value === backendValue} onClick={() => { if (o.value !== backendValue) props.onPick(o.choice); }}>{o.label}</button>)}
+        </div>}
+        <div id={listId} role="listbox" aria-label={t("chatReact.pickerLabel")} className="mc-list" style={{ maxHeight: "18rem" }}>
+          {flat.length ? sections.map((s) => <div key={s.key} role="group" aria-label={s.title} data-kind={s.kind} className="mc-menu-group" data-testid={s.key === "recent" ? "mc-recent" : undefined}>
+            {s.key !== "default" && <div className="mc-menu-label" aria-hidden="true">{s.title}</div>}{s.rows.map(row)}
+          </div>) : <p className="mc-menu-label">{t("chatReact.noResults")}</p>}
+        </div>
       </div>
     </div>
   );
@@ -1000,7 +1050,8 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const labeledGroups = groups.map((group) => group.kind === "chat" ? !strategy ? group : {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
   } : group.kind === "executor" ? group : { ...group, options: [...group.options].sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
-  return { groups: labeledGroups, model, media, backend, busy, pick, allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
+  // design-1123 C: an executor-incompatible chat model is not listed (was: toast on pick).
+  return { groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }
