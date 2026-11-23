@@ -9,7 +9,8 @@ export type Choice =
   | { kind: "executor"; backend: string };
 /** `label` is the model (or executor) name; `hint` the provider; `upstream` the real gateway upstream, when the catalog says. */
 /** MUYU-418: `vision` (chat only), `unavailable` reason (greyed, not pickable), `unprobed` = no availability evidence yet. */
-export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; choice: Choice }
+/** design-1123 C: `denied` = Core's explicit negative combination code, `incompatible` = not usable with the current executor, `stale` = kept only because it is the current choice. */
+export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; denied?: string; incompatible?: true; stale?: true; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
@@ -50,4 +51,18 @@ export function modelGroups(providers: Provider[], typed: Record<string, TypedMo
     }),
   };
   return [...models, executors].filter((g) => g.options.length > 0);
+}
+
+/** Core machine codes that state a combination will never work (MUYU-418); any other code is not a negative fact. */
+export const DENIED_CODES: readonly string[] = ["upstream_protocol_unsupported", "official_unsupported", "translation_unsupported"];
+
+/**
+ * design-1123 rule C: what a menu lists. Unavailable, explicitly denied and executor-incompatible options are left out;
+ * the current choice stays, marked `stale`, so it is never silently swapped. `unprobed` and vision limits pass through.
+ */
+export function visibleOptions(options: readonly Option[], currentValue: string): Option[] {
+  return options.flatMap((option) => {
+    const hidden = !!option.unavailable || !!option.incompatible || (!!option.denied && DENIED_CODES.includes(option.denied));
+    return !hidden ? [option] : option.value === currentValue ? [{ ...option, stale: true as const }] : [];
+  });
 }
