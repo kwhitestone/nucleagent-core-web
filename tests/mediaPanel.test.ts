@@ -22,6 +22,7 @@ let reads: string[] = [];
 let writes: { url: string; body: unknown }[] = [];
 let put: (url: string, body: unknown) => Promise<unknown>;
 let paged: ((url: string) => Promise<unknown>) | undefined;
+let post: ((url: string, body: unknown) => unknown) | undefined;
 let typed: Record<string, unknown[]>;
 let disposeRuntime: () => void, disposeCatalog: () => void;
 const t = (key: string) => key;
@@ -65,7 +66,7 @@ before(async () => {
     get: async (url: string) => { reads.push(url); return paged ? paged(url) : { data: await response(url) }; },
     put: async (url: string, body: unknown) => { writes.push({ url, body }); return { data: await put(url, body) }; },
     patch: async (url: string, body: unknown) => { writes.push({ url, body }); return { data: { data: body } }; },
-    post: async (url: string, body: unknown) => { writes.push({ url, body }); throw new Error("unexpected write"); },
+    post: async (url: string, body: unknown) => { writes.push({ url, body }); if (!post) throw new Error("unexpected write"); return { data: post(url, body) }; },
   } });
   const { registerModelCatalog } = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = registerModelCatalog({
@@ -81,6 +82,7 @@ const setup = () => {
   reads = []; writes = [];
   typed = { chat: media("chat", "chat-model"), image: media("image", "doubao-seedream-5-0-260128"), video: media("video", "jimeng_v30_1080p") };
   put = async () => { throw new Error("unexpected bindings write"); };
+  post = undefined;
 };
 async function mount(element: import("react").ReactNode) {
   const container = document.createElement("div");
@@ -244,7 +246,8 @@ test("existing conversation: nothing sends while the bind is pending, and a fail
   } finally { await view.close(); }
 });
 
-test("existing conversation that cannot be edited says the model is not enabled here, not 暂无", async (context) => {
+// fix-media-365: a job tool this conversation cannot bind no longer closes the model; it sends through Core's media API.
+test("existing conversation that cannot be edited falls back to Core media generation, never 未启用/暂无", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   setup(); response = base([], false);
   const view = await mount(chat("7"));
@@ -252,14 +255,15 @@ test("existing conversation that cannot be edited says the model is not enabled 
     await settle();
     await React.act(async () => pill(view.container, "video").click());
     await settle();
-    assert.equal(mode(view.container), null);
-    assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaNotEnabled/);
-    assert.doesNotMatch(pill(view.container, "video").getAttribute("aria-label") ?? "", /mediaNone/);
+    const panel = mode(view.container)!;
+    assert.match(panel.textContent!, /jimeng_v30_1080p/);
+    assert.deepEqual([...panel.querySelectorAll("select")].map(select => select.value), ["16:9", "4", "480p"], "Core's registry choices, not the unbound tool's schema");
+    assert.equal(pill(view.container, "video").getAttribute("aria-label"), null);
     assert.deepEqual(writes, []);
   } finally { await view.close(); }
 });
 
-test("nothing sendable: 暂无 only when no job tool exists, and upstream outages are named as such", async (context) => {
+test("nothing sendable: 暂无 only when no model is listed, and upstream outages are named as such", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   setup();
   const plain = base(null);
@@ -268,14 +272,14 @@ test("nothing sendable: 暂无 only when no job tool exists, and upstream outage
   const view = await mount(chat());
   try {
     await settle();
-    assert.match(pill(view.container, "image").getAttribute("aria-label") ?? "", /chatReact.mediaNone/);
+    assert.equal(pill(view.container, "image").getAttribute("aria-label"), null, "an available model without a job tool is sendable");
     assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaUpstream/);
   } finally { await view.close(); }
 });
 
-// exp101 (exp98 REMAINING §1, PRE): one upstream_offline row beside models that are merely not connected is
-// "暂无已接通的模型", not "上游暂不可用"; only when every option is an upstream outage is the upstream named.
-test("one upstream_offline row among unconnected models says 暂无, not 上游暂不可用", async (context) => {
+// exp101 / fix-media-365: one upstream_offline row beside available (unconnected) models closes nothing; only when
+// every option is an upstream outage is the upstream named.
+test("one upstream_offline row among unconnected models leaves the kind sendable; all outages name the upstream", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   setup();
   const plain = base(null);
@@ -287,11 +291,13 @@ test("one upstream_offline row among unconnected models says 暂无, not 上游�
   const view = await mount(chat());
   try {
     await settle();
-    assert.match(pill(view.container, "image").getAttribute("aria-label") ?? "", /chatReact.mediaNone/);
-    assert.doesNotMatch(pill(view.container, "image").getAttribute("aria-label") ?? "", /mediaUpstream/);
+    assert.equal(pill(view.container, "image").getAttribute("aria-label"), null);
     assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaUpstream/, "all upstream outages still name the upstream");
     await React.act(async () => pill(view.container, "image").click());
-    assert.equal(mode(view.container), null);
+    await settle();
+    assert.match(mode(view.container)!.textContent!, /doubao-seedream-5-0-260128/, "the first available model, never the offline one");
+    await React.act(async () => pill(view.container, "video").click());
+    assert.doesNotMatch(mode(view.container)!.textContent!, /veo/);
   } finally { await view.close(); }
 });
 
@@ -320,4 +326,61 @@ test("design: the media panel has its own styled container, not bare inputs on t
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.match(css, /\.mc-media-panel \{[^}]*border-radius/s);
   assert.match(css, /\.mc-media-fields \{[^}]*gap/s);
+});
+
+// fix-media-365: every available image/video model is pickable. A model without a ready job tool is not greyed
+// ("尚未接通" is gone); it sends through Core's media generations with the registry's own parameters. Only an
+// upstream-unavailable row stays greyed with its reason.
+const menuItems = (container: HTMLElement, kind: string) => [...container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=menuitemradio]`)];
+const itemName = (item: HTMLElement) => item.querySelector(".mc-menu-text")!.firstChild!.textContent;
+test("fix-media: only upstream-unavailable media rows are greyed; an unconnected model sends through Core media generations", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  setup(); response = base(null);
+  typed.image = [...media("image", "doubao-seedream-5-0-260128", "gpt-image-2"), { providerId: 1, model: "nano-banana", type: "image", capabilities: [], available: false, unavailableReason: "upstream_offline" }];
+  typed.video = media("video", "jimeng_v30_1080p", "MiniMax-H3");
+  post = () => ({ id: 31, status: "queued", ids: [31], conversationId: 66 });
+  const navigated: string[] = [];
+  const view = await mount(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: (path: string) => { navigated.push(path); }, create: async () => { throw new Error("no create"); } }));
+  try {
+    await settle();
+    const disabled = (kind: string) => menuItems(view.container, kind).filter(item => item.getAttribute("aria-disabled") === "true").map(itemName);
+    assert.deepEqual(disabled("image"), ["nano-banana"]);
+    assert.deepEqual(disabled("video"), []);
+    assert.doesNotMatch(view.container.textContent!, /unavailable_unwired|unavailable_no_prompt/);
+    const gpt = menuItems(view.container, "image").find(item => itemName(item) === "gpt-image-2")!;
+    await React.act(async () => gpt.click());
+    await settle();
+    const panel = mode(view.container)!;
+    assert.match(panel.textContent!, /gpt-image-2/);
+    assert.doesNotMatch(panel.textContent!, /mediaUnavailable/);
+    assert.deepEqual([...panel.querySelectorAll("select")].map(select => select.value), ["1:1", "1"], "aspect and count start at Core's defaults");
+    await type(view.container, "一只橘猫");
+    const send = view.container.querySelector<HTMLButtonElement>('[data-testid="mc-send"]')!;
+    assert.equal(send.disabled, false);
+    await React.act(async () => send.click());
+    await settle();
+    assert.deepEqual(writes, [{ url: "/api/v1/addons/media/generations", body: { kind: "image", providerId: 1, model: "gpt-image-2", prompt: "一只橘猫", conversationId: 0, aspect: "1:1", count: 1 } }]);
+    assert.deepEqual(navigated, ["/c/66"]);
+  } finally { await view.close(); }
+});
+
+test("fix-media: a pill with no job tool for its kind still preselects the first available model; 暂无 only when nothing is listed", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  setup();
+  const plain = base(null);
+  response = (url: string) => /\/catalog(\?|$)/.test(url) ? { data: [] } : plain(url);
+  typed.image = [];
+  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: [], available: false, unavailableReason: "upstream_offline" }, ...media("video", "MiniMax-H3")];
+  const view = await mount(chat());
+  try {
+    await settle();
+    assert.equal(pill(view.container, "video").getAttribute("aria-disabled"), "false");
+    await React.act(async () => pill(view.container, "video").click());
+    await settle();
+    const panel = mode(view.container)!;
+    assert.match(panel.textContent!, /MiniMax-H3/);
+    assert.deepEqual([...panel.querySelectorAll("select")].map(select => select.value), ["16:9", "4", "480p"], "video keeps its required aspect/duration/resolution choices");
+    assert.equal(pill(view.container, "image").disabled, true, "no image models: the image pill is closed");
+    assert.deepEqual(writes, []);
+  } finally { await view.close(); }
 });

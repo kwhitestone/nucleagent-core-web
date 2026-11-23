@@ -9,7 +9,7 @@ export type Choice =
   | { kind: "executor"; backend: string };
 /** `label` is the model (or executor) name; `hint` the provider; `upstream` the real gateway upstream, when the catalog says. */
 /** MUYU-418: `vision` (chat only), `unavailable` reason (greyed, not pickable), `unprobed` = no availability evidence yet. */
-export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason | "unwired" | "no_prompt" | "not_enabled"; unprobed?: true; choice: Choice }
+export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
