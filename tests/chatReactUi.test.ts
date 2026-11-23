@@ -5,7 +5,6 @@ import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import { composerActions, moveFocus } from "../src/chat-react/composerState.ts";
-import { effortView, sentEffort } from "../src/chat-react/requestEffort.ts";
 import type { ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
 
 // MUYU-365 leg 6: composer state machine, model menu, process row, hover action bar (react-dom/server).
@@ -54,33 +53,25 @@ function render(state: ReturnType<typeof stateOf>, child: () => import("react").
 }
 const settings = { groups: [], model: null, backend: null, busy: false, pick: async () => {} };
 
-test("effort capability states disable radio choices and suppress a remembered unsupported level", () => {
-  for (const evidence of [undefined, { levels: [], effective: false, source: "catalog:unsupported" }]) {
-    const view = effortView("codex", evidence);
-    const html = renderToString(React.createElement(app.ModelControls, {
-      t, value: sentEffort("high", view), view, onChange: () => {}, defaultOpen: "effort",
-    }));
-    assert.equal((html.match(/disabled=""/g) ?? []).length, 4);
-    assert.match(html, /aria-checked="true"/);
-    assert.match(html, /chatReact.optionUnavailable/);
-  }
-});
-
-test("model controls opens from an icon, exposes supported radio choices and leaves an extension slot", () => {
-  const view = effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" });
-  // exp104 D1A: the root page lists 「思考强度 · 值 ›」 (and the slot); the radios live on the effort page.
+// design-1123 A: Controls = the 「思考」 pill opening preset radios directly; these stand in for ProfileControls rows.
+const presetPage = (checked: string, pick: (id: string) => void = () => {}, off: string[] = []) => React.createElement("div", { role: "group" },
+  ["", "quick", "deep", "gone"].map((id) => React.createElement("button", { key: id, type: "button", role: "menuitemradio", tabIndex: -1, "aria-checked": checked === id,
+    disabled: off.includes(id), onClick: () => pick(id) }, id || "default")));
+test("model controls opens from an icon straight onto the preset radios and leaves an extension slot", () => {
   const html = renderToString(React.createElement(app.ModelControls, {
-    t, value: "high", view, onChange: () => {}, defaultOpen: true,
+    t, defaultOpen: true, profile: { name: "深度", page: presetPage("deep") },
   }, React.createElement("button", null, "extension")));
-  assert.match(html, /aria-label="chatReact.modelControls"/);
+  assert.match(html, /aria-label="chatReact.profile · 深度"/);
   assert.match(html, /aria-haspopup="menu" aria-expanded="true"/);
-  assert.match(html, /data-testid="mc-ctl-effort"[^]*chatReact.effort<[^]*chatReact.effortHigh/);
+  assert.match(html, /data-testid="mc-profile-value">深度</);
+  assert.equal((html.match(/role="menuitemradio"/g) ?? []).length, 4);
+  assert.doesNotMatch(html, /mc-ctl-|mc-effort-page|chatReact\.protocol|chatReact\.level/);
   assert.match(html, /extension/);
-  const page = renderToString(React.createElement(app.ModelControls, { t, value: "high", view, onChange: () => {}, defaultOpen: "effort" }));
-  assert.equal((page.match(/role="menuitemradio"/g) ?? []).length, 4);
-  assert.match(page, /aria-checked="true"[^>]*>.*chatReact.effortHigh/);
-  assert.match(page, /disabled=""[^>]*>.*chatReact.effortMedium/);
   assert.doesNotMatch(html, /<select/);
+  const stale = renderToString(React.createElement(app.ModelControls, { t, profile: { name: "深度", stale: true, page: presetPage("deep") } }));
+  assert.match(stale, /data-stale="true"/);
+  assert.match(stale, /data-testid="mc-profile-stale"/);
+  assert.match(stale, /aria-label="chatReact.profile · 深度 · ⚠"/);
 });
 
 test("every assistant response has an UNKNOWN usage area; user messages and raw token data cannot invent points", () => {
@@ -370,50 +361,23 @@ test("process timing is not repeated in the header; independent TTFT diagnostic 
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-process-ttft \{[^}]*tabular-nums/);
 });
 
-test("effort radios preserve gates while showing short product language", () => {
-  const html = (value: string, view: object) => renderToString(React.createElement(app.ModelControls, { t, value, view, onChange: () => {}, defaultOpen: "effort" }));
-  const partial = html("low", { disabled: false, off: ["high"], note: "ineffective" });
-  const document = new JSDOM(partial).window.document;
-  const choices = document.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
-  assert.equal(choices[0].textContent, "chatReact.effortDefault");
-  assert.equal(choices[1].getAttribute("aria-checked"), "true");
-  assert.equal(choices[2].disabled, false);
-  assert.equal(choices[3].disabled, true);
-  assert.equal(choices[3].title, "chatReact.optionUnavailable");
-  assert.doesNotMatch(partial, /chatReact.effortIneffective/);
-  const other = html("", { disabled: true, off: ["low", "medium", "high"], note: "backend" });
-  assert.equal((other.match(/disabled=""/g) ?? []).length, 4);
-  assert.match(other, /chatReact.optionUnavailable/);
-  assert.doesNotMatch(html("", { disabled: false, off: [], note: "unverified" }), /chatReact.effortUnverified/);
-  assert.doesNotMatch(html("", { disabled: false, off: [], note: "effective" }), /chatReact.effortEffective/);
-});
-
-test("composer: selected effort stays by its control without engineering footnotes", () => {
-  const base = { choice: "high" as const, set: () => {} };
-  const on = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
-    effort: { ...base, sent: "high", view: { disabled: false, off: [], note: "unverified" } } }));
-  assert.doesNotMatch(on, /mc-effort-note|chatReact.effortUnverified/);
-  assert.match(on, /data-testid="mc-effort-value">chatReact.effortHigh</);
-  const off = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
-    effort: { ...base, sent: "", view: { disabled: true, off: ["low", "medium", "high"], note: "backend" } } }));
-  assert.doesNotMatch(off, /mc-effort-note/);
-  assert.match(off, /aria-label="chatReact.modelControls"/);
+test("composer: the 思考 pill shows the preset name; no pill when the model has no presets", () => {
+  const on = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p", profile: { name: "快速", page: presetPage("quick") } }));
+  assert.match(on, /data-testid="mc-profile-value">快速</);
+  assert.doesNotMatch(on, /mc-effort-value|mc-effort-note/);
+  const none = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p" }));
+  assert.doesNotMatch(none, /mc-controls/);
 });
 
 test("composer: one Controls menu; another issue's content goes into its slot, never a second entry", () => {
-  const html = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p",
-    effort: { choice: "", set: () => {}, sent: "", view: { disabled: false, off: [], note: "effective" } },
+  const html = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p", profile: { page: presetPage("") },
     controls: React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false }, "profile-slot") }));
   assert.equal((html.match(/class="mc-model mc-controls"/g) ?? []).length, 1);
-  assert.equal((html.match(/aria-label="chatReact.modelControls"/g) ?? []).length, 2, "one trigger + its one panel");
-  assert.match(html, /role="menu" aria-label="chatReact.modelControls"[^]*profile-slot/);
-  // Counted inside the Controls container only; the model menu beside it has its own radios. exp104: the closed
-  // root page holds the effort row and the slot; the effort radios render only on their own page.
-  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 1);
-  assert.match(html.split('class="mc-model mc-controls"')[1]!, /data-testid="mc-ctl-effort"/);
+  assert.match(html, /role="menu" aria-label="chatReact.profile"[^]*profile-slot/);
+  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 5, "4 presets + the slot");
 });
 
-test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and disabled evidence", async () => {
+test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and a disabled preset", async () => {
   const document = window.document;
   Object.defineProperty(globalThis, "document", { configurable: true, value: document });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
@@ -422,71 +386,49 @@ test("model controls handles opening, radio selection, arrows, Escape, Tab, outs
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(container);
   const selected: string[] = [];
-  const draw = (view: ReturnType<typeof effortView>, slot?: React.ReactNode) => React.createElement(app.ModelControls, {
-    t, value: "low", view, onChange: (value: string) => selected.push(value),
+  const draw = (slot?: React.ReactNode) => React.createElement(app.ModelControls, {
+    t, profile: { name: "quick", page: presetPage("quick", (id) => selected.push(id), ["deep"]) },
   }, slot);
   const key = async (target: Element, value: string) => {
     await React.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true })));
   };
   try {
-    await React.act(async () => root.render(draw(effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" }))));
+    await React.act(async () => root.render(draw()));
     const trigger = container.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
     const menu = container.querySelector<HTMLElement>("[role=menu]")!;
     assert.equal(menu.hidden, true);
     await React.act(async () => trigger.click());
-    // exp104 D1A: the root row 「思考强度 ›」 opens the effort page; its radios then behave as before.
-    const effortPage = async () => {
-      const row = container.querySelector<HTMLButtonElement>("[data-testid=mc-ctl-effort]")!;
-      assert.equal(document.activeElement, row, "focus lands on the first root row");
-      await React.act(async () => row.click());
-      return container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-effort-page] [role=menuitemradio]");
-    };
-    let radios = await effortPage();
-    assert.equal(document.activeElement, radios[1]);
+    const radios = container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]");
+    assert.equal(document.activeElement, radios[1], "focus lands on the checked preset");
     await key(radios[1], "ArrowDown");
-    assert.equal(document.activeElement, radios[3]);
+    assert.equal(document.activeElement, radios[3], "the disabled preset is skipped");
     await key(radios[3], "Home");
-    assert.equal(document.activeElement, container.querySelector("[data-testid=mc-effort-page] [data-testid=mc-ctl-back]"), "Home reaches 返回 first");
-    await key(document.activeElement!, "ArrowDown");
     assert.equal(document.activeElement, radios[0]);
     await key(radios[0], "End");
     assert.equal(document.activeElement, radios[3]);
     await React.act(async () => radios[3].click());
-    assert.deepEqual(selected, ["high"]);
+    assert.deepEqual(selected, ["gone"]);
     await React.act(async () => radios[2].click());
-    assert.deepEqual(selected, ["high"]);
+    assert.deepEqual(selected, ["gone"], "a disabled preset cannot be chosen");
     await key(radios[3], "Escape");
     assert.equal(menu.hidden, true);
     assert.equal(document.activeElement, trigger);
     await key(trigger, "ArrowDown");
     assert.equal(menu.hidden, false);
-    assert.equal(container.querySelector("[data-testid=mc-effort-page]"), null, "reopens on the root list (S4)");
     await key(document.activeElement!, "Tab");
     assert.equal(menu.hidden, true);
     await React.act(async () => trigger.click());
     await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
     assert.equal(menu.hidden, true);
-    await React.act(async () => root.render(draw(effortView("codex", undefined))));
-    await React.act(async () => trigger.click());
-    assert.equal(menu.hidden, false);
-    radios = await effortPage();
-    for (const radio of radios) assert.equal(radio.disabled, true);
-    await key(trigger, "Escape");
-    assert.equal(menu.hidden, true);
     // Slot contract: content that uses menuitemradio joins the panel's roving focus and close keys.
-    await React.act(async () => root.render(draw(effortView("codex", { levels: ["low", "high"], effective: true, source: "fixture" }),
-      React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false, tabIndex: -1, "data-testid": "slot" }, "slot"))));
+    await React.act(async () => root.render(draw(React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false, tabIndex: -1, "data-testid": "slot" }, "slot"))));
     await React.act(async () => trigger.click());
     const slot = container.querySelector<HTMLButtonElement>("[data-testid=slot]")!;
     assert.equal(menu.contains(slot), true);
     await key(document.activeElement!, "End");
     assert.equal(document.activeElement, slot);
     await key(slot, "Home");
-    assert.equal(document.activeElement, container.querySelector("[data-testid=mc-ctl-effort]"), "root rows and slot share one roving focus");
-    await key(document.activeElement!, "End");
-    await React.act(async () => slot.click());
-    assert.deepEqual(selected, ["high"]);
-    assert.equal(menu.hidden, false);
+    assert.equal(document.activeElement, container.querySelectorAll("[role=menuitemradio]")[0], "presets and slot share one roving focus");
     await key(slot, "Escape");
     assert.equal(menu.hidden, true);
     assert.equal(document.activeElement, trigger);

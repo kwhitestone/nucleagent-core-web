@@ -3,17 +3,17 @@ import { after, before, test } from "node:test";
 import { createServer, type ViteDevServer } from "vite";
 import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
-import { capabilityView, presetFields } from "../src/chat-react/modelSelection.ts";
 
 // design-1123 A: the input area keeps only presets; protocol + level ride inside the preset (phase 1 = P2 "C").
 const declaration = { model: "m", capability_revision: 7, protocols: {
   responses: { selectable: true, thinking_levels: { off: { status: "verified" }, high: { status: "verified" }, low: { status: "unverified" } } },
   messages: { selectable: false, reason: "上游协议不支持" },
 } };
-const visible = capabilityView(declaration, "codex", { model: "m" });
-const hidden = capabilityView(undefined, "codex");
+let sel: typeof import("../src/chat-react/modelSelection.ts");
+const views = () => ({ visible: sel.capabilityView(declaration, "codex", { model: "m" }), hidden: sel.capabilityView(undefined, "codex") });
 
 test("a preset with a selectable protocol + level sends modelSelection only", () => {
+  const { visible } = views(); const presetFields = sel.presetFields;
   assert.deepEqual(presetFields(visible, { callProtocol: "responses", thinkingLevel: "high" }, { profileId: "deep" }),
     { fields: { modelSelection: { callProtocol: "responses", thinkingLevel: "high", capabilityRevision: 7 } }, stale: false });
   assert.deepEqual(presetFields(visible, { callProtocol: "responses" }, { profileId: "deep" }).fields,
@@ -21,12 +21,14 @@ test("a preset with a selectable protocol + level sends modelSelection only", ()
 });
 
 test("a stale preset (combination not selectable, or no declaration) sends only profileId and says so", () => {
-  for (const [view, params] of [[visible, { callProtocol: "messages" }], [visible, { callProtocol: "responses", thinkingLevel: "low" }], [hidden, { callProtocol: "responses" }]] as const) {
+  const { visible, hidden } = views(); const presetFields = sel.presetFields;
+  for (const [view, params] of [[visible, { callProtocol: "messages" }], [visible, { callProtocol: "responses", thinkingLevel: "low" }], [hidden, { callProtocol: "responses" }]] as [ReturnType<typeof views>["visible"], Record<string, string>][]) {
     assert.deepEqual(presetFields(view, params, { profileId: "deep", modelParams: { reasoningEffort: "high" } }), { fields: { profileId: "deep" }, stale: true });
   }
 });
 
 test("a preset without protocol/level and the default keep today's fields", () => {
+  const { visible, hidden } = views(); const presetFields = sel.presetFields;
   assert.deepEqual(presetFields(hidden, { reasoningEffort: "low" }, { profileId: "quick" }), { fields: { profileId: "quick" }, stale: false });
   assert.deepEqual(presetFields(visible, undefined, ""), { fields: "", stale: false });
   assert.deepEqual(presetFields(hidden, undefined, "medium"), { fields: "medium", stale: false });
@@ -48,6 +50,7 @@ before(async () => {
   ({ createRoot } = await import("react-dom/client"));
   app = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof app;
   Profile = (await vite.ssrLoadModule("/src/chat-react/ProfileControls.tsx")).default;
+  sel = await vite.ssrLoadModule("/src/chat-react/modelSelection.ts") as typeof sel;
 });
 after(async () => { await vite?.close(); });
 

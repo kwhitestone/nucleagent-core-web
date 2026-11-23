@@ -49,13 +49,13 @@ import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, effortEvidence, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
-import { cap, effortView, sentEffort, serverEvidence, withRequestEffort, type EffortChoice, type EffortEvidence } from "./requestEffort";
+import { cap, withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { LOADING_EVIDENCE, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
-import { profileEffortView, profileRequest } from "./modelProfile";
+import { profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
-import { effectiveSelectionLabel, readEffectiveSelection, sendWithSelection, turnFields, useModelCapability, type EffectiveSelection, type Fields, type SelectionChoice } from "./modelSelection";
+import { effectiveSelectionLabel, presetFields, readEffectiveSelection, sendWithSelection, useModelCapability, type EffectiveSelection, type Fields } from "./modelSelection";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -96,38 +96,32 @@ export function ChatApp(props: ChatProps) {
   const preference = useModelPreference(profileScope, selectedSettings.backend ?? "", selectedSettings.model?.providerId, selectedSettings.model?.model ?? "");
   const resolved = preference.selection;
   const settings = { ...selectedSettings, model: selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null) };
-  // exp101 (5) / exp104: the stored profile and the one in effect stay apart; with the switch off none takes effect and
-  // an effort change writes the stored one back as is (D7A: effort has priority, the preset only adds the rest).
+  // design-1123 A: presets are the only control; protocol + level ride inside the preset (P2 phase 1 = C). A stored
+  // legacy effort is no longer sent on its own — choosing a preset writes it back empty.
   const storedProfileId = preference.storedProfileId;
   const profile = PROFILE_UI_ENABLED ? preference.profile : null;
-  const measured = useEffort(settings);
-  // 406 §2.1: the levels on offer are the evidence view narrowed by the selected profile's server whitelist.
-  const offered = profileEffortView(measured.view, profile, profileScope);
-  const effort = { choice: preference.choice, view: { ...offered, profileOff: profile ? offered.off.filter((level) => !measured.view.off.includes(level)) : [] }, sent: sentEffort(preference.choice, offered), set: (value: EffortChoice) => { void preference.save(storedProfileId, value); } };
-  // exp113 stage 2: Core's declaration for the actual backend; hidden (selectable=0) keeps the v0.1.44 turn as is.
   const capability = useModelCapability(settings.backend, settings.model?.providerId, settings.model?.model);
-  const [picked, setPicked] = useState<{ key: string; choice: SelectionChoice | null }>();
-  const choice = picked?.key === capability.key ? picked.choice : null;
   const selectable = capability.view.state === "visible";
-  // This turn's one field set: the selected profile (406's effort rides in modelParams) or the legacy effort alone;
-  // with selectable stage-2 controls, the explicit modelSelection only (D-1/D-2).
-  const legacy = profileRequest(profile, profileScope, effort.sent);
-  const turn = turnFields(capability.view, choice, legacy) as Fields;
-  const selectionNow = useRef({ legacy, choice, capability });
-  selectionNow.current = { legacy, choice, capability };
+  const params = profile ? preference.catalog.find((row) => row.id === profile.profileId)?.params : undefined;
+  const legacy = profileRequest(profile, profileScope, "");
+  const preset = presetFields(capability.view, params, legacy);
+  const turn = preset.fields as Fields;
+  const stale = preset.stale && capability.loaded;
+  const selectionNow = useRef({ legacy, params, capability });
+  selectionNow.current = { legacy, params, capability };
   const wrap = <R,>(send: (fields: Fields) => Promise<R>, fields: Fields) => sendWithSelection(send, fields, {
-    t, reset: () => setPicked(undefined),
-    refetch: async () => { const now = selectionNow.current; return turnFields(await now.capability.refetch(), now.choice, now.legacy) as Fields; },
+    t, reset: () => {},
+    refetch: async () => { const now = selectionNow.current; return presetFields(await now.capability.refetch(), now.params, now.legacy).fields as Fields; },
   });
-  // D1A/D6A/S1–S8: the 「预设」 row exists only when this model has presets (or their load failed, S7).
+  // D6A/S1–S8: the 「思考」 pill exists only when this model has presets (or their load failed, S7).
   const pending = preference.pending;
   const shownId = pending ? pending.profileId : storedProfileId;
   const shown = preference.catalog.find((row) => row.id === shownId && shownId);
+  const shownName = shown ? shown.displayName || shown.id : undefined;
   const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.length > 0 || preference.error) ? {
-    summary: shown ? shown.displayName || shown.id : t("chatReact.effortDefault"), name: shown ? shown.displayName || shown.id : undefined,
+    name: shownName, stale,
     page: <ProfileControls t={t} rows={preference.catalog} selected={shownId} saving={!!pending} rolledBack={preference.rolledBack} error={preference.error && !pending}
-      outside={!!profile && !!preference.choice && offered.off.includes(preference.choice)}
-      onChange={(profileId) => { void preference.save(profileId, preference.choice); }} onRetry={preference.reload} />,
+      stale={stale ? shownName : undefined} onChange={(profileId) => { void preference.save(profileId, ""); }} onRetry={preference.reload} />,
   } : undefined;
   const turnNow = useRef(turn);
   turnNow.current = turn;
@@ -228,12 +222,11 @@ export function ChatApp(props: ChatProps) {
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
-            <Composer t={t} settings={settings} effort={effort} grants={grants}
-              selection={{ view: capability.view, choice, onChange: (next) => setPicked({ key: capability.key, choice: next }) }}
+            <Composer t={t} settings={settings} grants={grants}
               workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
-              profile={selectable && choice ? { summary: t("chatReact.selectionProfile"), page: <p className="mc-menu-label">{t("chatReact.selectionProfile")}</p> } : profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
+              profile={profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
               placeholder={conversationId ? t("conversation.inputPlaceholder") : t("chatReact.newPlaceholder")} />
           </div>
       </ThreadPrimitive.Root>
@@ -344,7 +337,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, effort, controls, workflow, grants, profile, selection }: { t: Translate; settings: Settings; placeholder: string; effort?: { choice: EffortChoice; sent: EffortChoice; set(value: EffortChoice): void; view: ComponentProps<typeof ModelControls>["view"] }; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"]; selection?: ComponentProps<typeof ModelControls>["selection"] }) {
+export function Composer({ t, settings, placeholder, controls, workflow, grants, profile }: { t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
   const menu = useMenu();
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
@@ -417,7 +410,7 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
           <MediaPill kind="video" t={t} settings={settings} running={running} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} />
-          {effort && !settings.media && <ModelControls t={t} value={selection?.view.state === "visible" ? "" : effort.sent} view={effort.view} onChange={effort.set} disabled={settings.busy} profile={profile} selection={selection}>{controls}</ModelControls>}
+          {profile && !settings.media && <ModelControls t={t} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}
           <span className="mc-spacer" />
           {actions[0] !== "stop" && (
             <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
@@ -430,30 +423,10 @@ export function Composer({ t, settings, placeholder, effort, controls, workflow,
       </div>
       <p className="mc-hint">{t("chatReact.hint")}</p>
       {!settings.media && settings.modelHint && <p className="mc-hint" role="status">{settings.modelHint}</p>}
+      {!profile && controls}
     </ComposerPrimitive.AttachmentDropzone>
   );
 }
-
-/**
- * The effort levels this model offers (evidence view). The choice itself is the server preference (MUYU-408,
- * /model-preferences); exp104 removed the old per-browser memory, which ChatApp always overrode.
- */
-export function useEffort(settings: { model: ModelChoice | null; backend: string | null; effortEvidence?: ReturnType<typeof effortEvidence> }) {
-  const key = settings.model ? `${settings.model.providerId}:${settings.model.model}` : "default";
-  // MUYU-365 exp3: without measured strategy evidence, Core's per-model whitelist (/model-profiles `efforts`) decides.
-  const [server, setServer] = useState<{ key: string; evidence?: EffortEvidence }>();
-  const ask = settings.backend === "codex" && !!settings.model && !settings.effortEvidence;
-  useEffect(() => {
-    if (!ask) return;
-    let live = true;
-    getPlatformRuntime().http.get<{ data: { efforts?: string[] }[] }>("/api/v1/addons/conversation/model-profiles", {
-      params: { executionBackend: "codex", providerId: settings.model!.providerId, model: settings.model!.model },
-    }).then((response) => { if (live) setServer({ key, evidence: serverEvidence(response.data.data) }); }).catch(() => {});
-    return () => { live = false; };
-  }, [ask, key]);
-  return { view: effortView(settings.backend, settings.effortEvidence ?? (ask && server?.key === key ? server.evidence : undefined)) };
-}
-
 
 function ComposerAttachmentChips({ t }: { t: Translate }) {
   return (

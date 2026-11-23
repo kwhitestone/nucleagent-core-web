@@ -1,6 +1,6 @@
 // MUYU-365 exp104: the confirmed profile design (exp102/profile-design-review.html, user 2026-11-21 01a1fd03: D1A–D8A,
-// pending items take the draft's recommended value). One Controls menu with two rows 「思考强度 ›」「预设 ›」, each
-// opening its own page with 「‹ 返回」; S1–S8 states; bottom drawer on narrow screens. Real ChatApp + useModelPreference,
+// pending items take the draft's recommended value). design-1123 A: the 「思考」 pill opens the preset radios directly;
+// S1–S8 states; bottom drawer on narrow screens. Real ChatApp + useModelPreference,
 // only the HTTP boundary is a fixture. Assertions compare primitives only (exp101 resume-4 memory rule).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -110,8 +110,7 @@ async function mount(conversationId?: string) {
   return {
     container, created, q, all, visible, click, controls, menu, page, items, checked,
     open: async () => { if (menu().hidden) await click(controls()); },
-    openProfile: async () => { if (menu().hidden) await click(controls()); await click(q('[data-testid="mc-ctl-profile"]')); },
-    openEffort: async () => { if (menu().hidden) await click(controls()); await click(q('[data-testid="mc-ctl-effort"]')); },
+    openProfile: async () => { if (menu().hidden) await click(controls()); },
     choose: async (name: string) => click(items("profile").find((item) => item.querySelector(".mc-menu-text")!.textContent!.startsWith(name)) ?? null),
     key: async (value: string) => { await React.act(async () => (document.activeElement ?? menu()).dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true }))); await settle(); },
     send: async (text: string) => {
@@ -127,34 +126,21 @@ async function mount(conversationId?: string) {
   };
 }
 
-test("D1A entry: Controls root lists 「思考强度 ›」 and 「预设 · 当前值 ›」; each opens its own page with 返回", { timeout: 30000 }, async (context) => {
+test("design-1123 A: the 思考 pill opens the preset radios directly (no root list, no effort/protocol/level page, no 返回)", { timeout: 30000 }, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   reset();
   const view = await mount();
   try {
+    assert.match(view.controls().textContent!, /chatReact\.profile/, "default pill text 「预设」");
     await view.open();
-    const effortRow = view.q('[data-testid="mc-ctl-effort"]');
-    const profileRow = view.q('[data-testid="mc-ctl-profile"]');
-    assert.equal(view.visible(effortRow), true, "effort row on the root page");
-    assert.equal(view.visible(profileRow), true, "preset row on the root page");
-    assert.match(effortRow!.textContent!, /chatReact\.effort.*›/);
-    assert.match(profileRow!.textContent!, /chatReact\.profile.*chatReact\.effortDefault.*›/, "row shows its current value (默认)");
-    assert.equal(view.visible(view.page("profile")), false, "second-level page closed until chosen");
+    assert.equal(view.visible(view.page("profile")), true, "radios at once");
+    assert.equal(view.q('[data-testid^="mc-ctl-"]'), null, "no root rows and no 返回");
+    assert.equal(view.page("effort"), null, "no effort page");
     assert.equal(view.all(".mc-controls").length, 1, "still one Controls entry");
-    await view.click(profileRow);
-    assert.equal(view.visible(view.page("profile")), true);
-    assert.equal(view.visible(view.q('[data-testid="mc-ctl-profile"]')), false, "root rows give way to the page");
     assert.equal(view.items("profile").map((item) => `${item.querySelector(".mc-menu-text")!.textContent}${item.disabled ? "-" : "+"}`).join("|"),
-      "chatReact.profileDefault+|思考+|快速+|长上下文（chatReact.optionUnavailable）-", "默认（不使用预设）, Core presets, unavailable one disabled");
-    assert.equal(view.checked("profile"), "chatReact.profileDefault");
+      "chatReact.selectionDefault+|思考+|快速+", "默认（继承） then enabled presets; a disabled one is not listed (rule C)");
+    assert.equal(view.checked("profile"), "chatReact.selectionDefault");
     assert.match(view.page("profile")!.textContent!, /chatReact\.profileNote/);
-    const back = view.q('[data-testid="mc-profile-page"] [data-testid="mc-ctl-back"]');
-    assert.match(back!.textContent!, /common\.back/);
-    await view.click(back);
-    assert.equal(view.visible(view.q('[data-testid="mc-ctl-profile"]')), true, "返回 goes to the root list");
-    await view.click(view.q('[data-testid="mc-ctl-effort"]'));
-    assert.equal(view.items("effort").length, 4, "默认/低/中/高 on the effort page");
-    assert.equal(view.visible(view.q('[data-testid="mc-effort-page"] [data-testid="mc-ctl-back"]')), true);
     assert.equal(puts.length, 0, "browsing saves nothing");
   } finally { await view.close(); }
 });
@@ -179,10 +165,8 @@ test("S1/S2 select is save: group disabled with a spinner while saving, then the
     assert.equal(view.checked("profile"), "思考", "S2: stays on the saved item");
     assert.equal(view.items("profile")[1]!.disabled, false, "group enabled again");
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null, "S2: no message");
-    assert.match(view.q('[data-testid="mc-profile-detail"]')!.textContent!, /chatReact\.effort.*chatReact\.effortHigh/, "D4A: read-only line under the selected preset");
-    assert.match(view.controls().textContent!, /思考/, "summary 「预设 · 名称」 on the trigger");
-    await view.click(view.q('[data-testid="mc-profile-page"] [data-testid="mc-ctl-back"]'));
-    assert.match(view.q('[data-testid="mc-ctl-profile"]')!.textContent!, /思考/);
+    assert.match(view.items("profile")[1]!.querySelector('[data-testid="mc-preset-detail"]')!.textContent!, /chatReact\.effort.*chatReact\.effortHigh/, "D4A: read-only line per preset");
+    assert.match(view.controls().textContent!, /思考/, "the pill shows the preset name");
   } finally { await React.act(async () => release?.()); await view.close(); }
 });
 
@@ -209,7 +193,7 @@ test("S3 save failure rolls back to the original choice, says so, never retries,
   } finally { await view.close(); }
 });
 
-test("S4 cancel: Escape, a press outside and the narrow scrim close without changing; reopening starts at the root", { timeout: 30000 }, async (context) => {
+test("S4 cancel: Escape, a press outside and the narrow scrim close without changing; reopening shows the radios", { timeout: 30000 }, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   reset();
   const view = await mount();
@@ -218,8 +202,7 @@ test("S4 cancel: Escape, a press outside and the narrow scrim close without chan
     await view.key("Escape");
     assert.equal(view.menu().hidden, true);
     await view.open();
-    assert.equal(view.visible(view.q('[data-testid="mc-ctl-profile"]')), true, "reopens on the root list");
-    await view.click(view.q('[data-testid="mc-ctl-profile"]'));
+    assert.equal(view.visible(view.page("profile")), true, "reopens on the radios");
     await React.act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
     await settle();
     assert.equal(view.menu().hidden, true);
@@ -231,39 +214,30 @@ test("S4 cancel: Escape, a press outside and the narrow scrim close without chan
   } finally { await view.close(); }
 });
 
-test("S5 + D7A: levels outside the preset whitelist are greyed with 「当前预设不支持」; effort keeps priority and writes the stored preset back", { timeout: 30000 }, async (context) => {
+test("design-1123 A: a stored legacy effort is not sent on its own; choosing a preset writes it back empty", { timeout: 30000 }, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   reset();
-  saved.set(DEFAULT, { profileId: "quick", effort: "low" });
+  saved.set(DEFAULT, { profileId: "quick", effort: "high" });
   const view = await mount();
   try {
-    await view.openEffort();
-    const effort = view.items("effort").map((item) => `${item.querySelector(".mc-menu-text")!.textContent}${item.disabled ? "-" : "+"}`).join("|");
-    assert.equal(effort, "chatReact.effortDefault+|chatReact.effortLow+|chatReact.effortMedium（chatReact.profileEffortOff）-|chatReact.effortHigh（chatReact.profileEffortOff）-");
-    await view.click(view.items("effort")[0]!);
-    assert.equal(JSON.stringify(puts.at(-1)), JSON.stringify({ model: "gpt-6-astra", profileId: "quick", effort: "" }), "effort change writes the stored preset back");
     await view.send("hi");
     assert.equal(String(view.created[0]!.profileId), "quick", "the preset rides on the turn");
-    assert.equal("reasoningEffort" in view.created[0]!, false, "never both fields");
+    assert.equal("reasoningEffort" in view.created[0]!, false, "no separate strength");
+    assert.equal("modelParams" in view.created[0]!, false, "strength comes from the preset");
+    await view.openProfile();
+    await view.choose("思考");
+    assert.equal(JSON.stringify(puts.at(-1)), JSON.stringify({ model: "gpt-6-astra", profileId: "thinking", effort: "" }));
   } finally { await view.close(); }
-  saved.set(DEFAULT, { profileId: "quick", effort: "high" });
-  const other = await mount();
-  try {
-    await other.openProfile();
-    assert.match(other.page("profile")!.textContent!, /chatReact\.profileEffortNote/, "remembered level outside the preset: 发送时按默认");
-  } finally { await other.close(); }
 });
 
-test("S6 / D6A: a model without presets shows no 预设 row at all", { timeout: 30000 }, async (context) => {
+test("S6 / D6A: a model without presets shows no 思考 pill at all", { timeout: 30000 }, async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   reset();
   profilesFor = () => [];
   const view = await mount();
   try {
-    await view.open();
-    assert.equal(view.q('[data-testid="mc-ctl-profile"]'), null);
-    assert.equal(view.visible(view.q('[data-testid="mc-ctl-effort"]')), true, "the effort row stays");
-    assert.doesNotMatch(view.menu().textContent!, /chatReact\.profile/);
+    assert.equal(view.q(".mc-controls"), null);
+    assert.equal(view.q('[data-testid="mc-effort-value"]'), null);
   } finally { await view.close(); }
 });
 
@@ -282,7 +256,7 @@ test("S7 load failure: the page says 预设加载失败 with 重试, which loads
     profileFailures = 0;
     await view.click(retry);
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null);
-    assert.equal(view.items("profile").length, 4, "presets after retry");
+    assert.equal(view.items("profile").length, 3, "presets after retry (the disabled one is not listed)");
   } finally { await view.close(); }
 });
 
@@ -339,12 +313,11 @@ test("D4A: no temperature/top_p/max output editing anywhere in Controls", { time
 
 test("design copy (draft recommended wording) and the narrow bottom drawer", () => {
   const zh = readFileSync("src/chat-react/islandStringsZh.ts", "utf8");
-  for (const [key, text] of [["profile", "预设"], ["profileDefault", "默认（不使用预设）"], ["profileNote", "自动保存；思考强度优先于预设"],
-    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"], ["profileEffortOff", "当前预设不支持"]]) {
+  for (const [key, text] of [["profile", "预设"], ["selectionDefault", "默认（继承）"], ["profileNote", "自动保存；预设由管理员在「模型与预设」中配置"],
+    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"], ["presetProtocolDefault", "默认协议"]]) {
     assert.match(zh, new RegExp(`\\b${key}: "${text}"`), `${key} = ${text}`);
   }
-  // 返回/重试 reuse the host's common.back/common.retry (zh 返回/重试).
-  assert.match(readFileSync("src/i18n/zh.ts", "utf8"), /back: "返回"[^]*retry: "重试"/);
+  assert.doesNotMatch(zh, /\b(protocol|level|profileEffortOff|selectionPickProtocol): "/, "design-1123 A: 调用协议/思考档位 copy removed");
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   const narrow = css.slice(css.indexOf("@media (max-width: 520px)"));
   assert.match(narrow, /\.mc-controls \.mc-menu \{[^}]*position: fixed;[^}]*bottom: 0;[^}]*max-height: 75vh;/, "full-width bottom drawer, ≤75% viewport");
