@@ -24,7 +24,7 @@ import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
 import { directMediaRequest, directMediaTool, directMediaReady, mediaDefaults, mediaFrames, type DirectMedia, type Wired } from "./workflowParams";
 import { listToolCatalogPages } from "@/addons/conversation/api/toolCatalog";
-import { createGeneration } from "@/addons/conversation/api/media";
+import { createGeneration, listGenerations } from "@/addons/conversation/api/media";
 import { MEDIA_KINDS, requestParams } from "@/addons/conversation/registry";
 import { getSessionBindings, updateSessionBindings, type SessionBindings } from "@/addons/conversation/api/sessionBindings";
 import { conversationModelChoice } from "@/addons/conversation/composables/conversationModelRestore";
@@ -35,7 +35,7 @@ import { openSealedLinkOnClick } from "@/addons/conversation/task-conversation/s
 import { copyRawBody, formatMessageTime } from "@/addons/conversation/components/conversation/messageCopy";
 import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
-import { useSingleSlotQueue } from "./singleSlotQueue";
+import { failureOf, slotReason, useSingleSlotQueue, type SlotFailure } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
 import { choiceValue, modelGroups, visibleOptions, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
@@ -171,15 +171,21 @@ export function ChatApp(props: ChatProps) {
       if (isRunning(core.state)) throw new Error(t("chatReact.loading"));
       if (!settings.direct.toolId) return generate(text, files);
       const { toolInvocation, files: rest } = media(settings.direct, text, files);
+      // fix-video-swallow: an HTTP answer keeps its ApiError (status/code/problem) so the queue can tell busy from bad.
       await core.controller.send(text, rest, toolInvocation).catch((error) => {
-        throw new Error((error as { status?: number }).status ? (error as Error).message : t("chatReact.workflowUnknown"));
+        throw (error as { status?: number }).status ? error : new Error(t("chatReact.workflowUnknown"));
       });
     }),
     stop: () => core?.controller.stop() ?? Promise.resolve(),
     loadOlder: () => core?.controller.loadOlder() ?? Promise.resolve(),
   };
   // Only an existing conversation queues; the new-chat composer is never running.
-  const slot = useSingleSlotQueue(conversationId, !!core && isRunning(core.state), (m) => sendAppend(controller, m));
+  const mediaLimit = settings.media && { kind: settings.media.kind, limit: MEDIA_KINDS[settings.media.kind].busyLimit };
+  const slot = useSingleSlotQueue(conversationId, !!core && isRunning(core.state), (m) => sendAppend(controller, m), (failure) => {
+    toast.show(slotReason(failure, t, mediaLimit || undefined), failure.retry === "auto" ? "warning" : "error", 6000);
+  });
+  // Existing conversations only: the new-chat pill switch stays request-free (mediaPanel), and a 429 there is still toasted.
+  const inFlight = useMediaInFlight(conversationId ? settings.media?.kind : undefined, slot.failure);
   const adapter: ExternalStoreAdapter<ThreadMessageLike> = conversationId
     ? externalStore(core?.state ?? EMPTY, controller, view, attachments, slot)
     : { ...externalStore(EMPTY, {
@@ -197,7 +203,8 @@ export function ChatApp(props: ChatProps) {
             ...(rest?.length ? { attachments: rest.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
           }, !settings.media);
         } catch (error) {
-          toast.error(modelErrorMessage(error, t, t("home.createFailed")));
+          const f = failureOf(error);
+          toast.error(f.status === 429 ? slotReason({ ...f, retry: "manual", attempt: 1 }, t, mediaLimit || undefined) : modelErrorMessage(error, t, t("home.createFailed")));
           throw error;
         }
       }),
@@ -222,7 +229,8 @@ export function ChatApp(props: ChatProps) {
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
-            <Composer t={t} settings={settings} grants={grants}
+            <Composer t={t} settings={settings} grants={grants} inFlight={inFlight}
+              queue={conversationId ? { failure: slot.failure, reason: slot.failure && slotReason(slot.failure, t, mediaLimit || undefined), retry: () => void slot.retryNow() } : undefined}
               workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
@@ -264,6 +272,36 @@ function useSuggestions(active: boolean, locale: string) {
     return () => { live = false; };
   }, [active, locale]);
   return list;
+}
+
+const fillIn = (text: string, values: Record<string, unknown>) => text.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ""));
+
+/** fix-video-swallow: the queued row always says why it waits — reason, auto-retry countdown, 立即重试. */
+function QueueReason({ t, queue }: { t: Translate; queue: { failure: SlotFailure | null; reason: string | null; retry(): void } }) {
+  const at = queue.failure?.at;
+  const now = useClock(!!at);
+  const left = at ? Math.max(0, Math.ceil((at - now) / 1000)) : 0;
+  return <>
+    <span className="mc-queued-reason" role="alert" data-testid="mc-queued-reason">{queue.reason}{at ? ` · ${fillIn(t("chatReact.queueRetryIn"), { s: left })}` : ""}</span>
+    {queue.failure?.status !== 409 && <button type="button" className="mc-pill" data-testid="mc-queued-retry" onClick={queue.retry}>{t("chatReact.queueRetry")}</button>}
+  </>;
+}
+
+/** Media jobs of this kind still running for the user (Core's limit is per user); re-read every 10 s and after a refusal. */
+function useMediaInFlight(kind: "image" | "video" | undefined, failure: unknown) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    setCount(0);
+    if (!kind) return;
+    let live = true;
+    const read = () => listGenerations(kind).then((rows) => {
+      if (live) setCount(Array.isArray(rows) ? rows.filter((row) => ["queued", "submitting", "running", "ingesting"].includes(row?.status)).length : 0);
+    }).catch(() => {});
+    void read();
+    const timer = setInterval(read, 10_000);
+    return () => { live = false; clearInterval(timer); };
+  }, [kind, failure]);
+  return count;
 }
 
 /** Ticks once a second while a run is active so "已用 N 秒" moves, like the Vue view's process clock. */
@@ -317,7 +355,8 @@ function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
  * MUYU-365 exp86c/exp98: switches at once to the first model that can send (read when the conversation mounted);
  * a second click leaves media mode; none = says why (not enabled here / upstream / none connected), never picks.
  */
-function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean }) {
+function MediaPill({ kind, t, settings, running, inFlight = 0 }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean; inFlight?: number }) {
+  const limit = MEDIA_KINDS[kind].busyLimit;
   const options = settings.groups.find((group) => group.kind === kind)?.options ?? [];
   const none = settings.mediaNone?.(kind);
   const on = settings.media?.kind === kind;
@@ -326,6 +365,7 @@ function MediaPill({ kind, t, settings, running }: { kind: "image" | "video"; t:
       aria-busy={on && settings.mediaPending || undefined} disabled={!options.length || settings.busy || running} data-testid={`mc-gen-${kind}`}
       aria-label={none ? `${t(`chatGen.kinds.${kind}`)} · ${none}` : undefined} title={none || undefined} onClick={() => settings.enter?.(kind)}>
       {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(`chatGen.kinds.${kind}`)}</span>
+      {inFlight > 0 && <span className="mc-pill-count" data-testid={`mc-inflight-${kind}`}>{fillIn(t("chatReact.mediaInFlight"), { n: inFlight, m: limit })}</span>}
     </button>
   );
 }
@@ -337,7 +377,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, controls, workflow, grants, profile }: { t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
+export function Composer({ t, settings, placeholder, controls, workflow, grants, profile, queue, inFlight }: { queue?: { failure: SlotFailure | null; reason: string | null; retry(): void }; inFlight?: number; t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
   const menu = useMenu();
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
@@ -359,7 +399,8 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   // MUYU-418: an image never goes to a model the catalog says cannot read it.
   const visionBlocked = hasImage && !settings.media && !!settings.imageGate?.block;
   const imageText = hasImage && !settings.media && settings.imageGate ? imageHint(settings.imageGate, t) : undefined;
-  const blocked = settings.busy || visionBlocked || (!!settings.media && (running || !settings.direct
+  const full = !!settings.media && (inFlight ?? 0) >= MEDIA_KINDS[settings.media.kind].busyLimit;
+  const blocked = settings.busy || visionBlocked || full || (!!settings.media && (running || !settings.direct
     || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
@@ -380,12 +421,14 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
             <div className="mc-queued" data-testid="mc-queued">
               <span className="mc-queued-label">{t("chatReact.queued")}</span>
               <QueueItemPrimitive.Text className="mc-queued-text" />
+              {queue?.failure && <QueueReason t={t} queue={queue} />}
               <QueueItemPrimitive.Remove className="mc-chip-remove" aria-label={t("chatReact.queuedRemove")} title={t("chatReact.queuedRemove")}>×</QueueItemPrimitive.Remove>
             </div>
           )}
         </ComposerPrimitive.Queue>
         {settings.media && <div className="mc-media-panel" role="status" data-testid="mc-media-mode" aria-busy={settings.mediaPending || undefined}>
           <strong>{t(`model.types.${settings.media.kind}`)} · {settings.media.model.model}</strong>
+          {full && <p className="mc-hint" role="alert" data-testid="mc-inflight-full">{fillIn(t("chatReact.mediaInFlightHint"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</p>}
           {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} frame={!hasImage} /> : !settings.mediaPending && <p>{t("chatReact.mediaUnavailable")}</p>}
         </div>}
         <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
@@ -406,8 +449,8 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
               {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); grants.load(); setToolsOpen(true); }}><ToolMark />{t("chatReact.toolGrant")}</button>}
             </div>
           </div>
-          <MediaPill kind="image" t={t} settings={settings} running={running} />
-          <MediaPill kind="video" t={t} settings={settings} running={running} />
+          <MediaPill kind="image" t={t} settings={settings} running={running} inFlight={settings.media?.kind === "image" ? inFlight : undefined} />
+          <MediaPill kind="video" t={t} settings={settings} running={running} inFlight={settings.media?.kind === "video" ? inFlight : undefined} />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} />
           {profile && !settings.media && <ModelControls t={t} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}

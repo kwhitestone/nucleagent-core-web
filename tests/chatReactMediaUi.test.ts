@@ -570,3 +570,53 @@ test("with no job tool at all the pills still enter media mode on the first avai
     assert.deepEqual(writes, []);
   } finally { typed = null; await view.close(); }
 });
+
+test("fix-video-swallow: a refused queued send shows its reason, countdown and 立即重试 (429/409/400/network); video pill shows 进行中 2/2", async () => {
+  const aui = await import("@assistant-ui/react");
+  const { externalStore } = await vite.ssrLoadModule("/src/chat-react/externalStore.ts");
+  const { createConversationState } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/core/reducer.ts");
+  const q = await vite.ssrLoadModule("/src/chat-react/singleSlotQueue.ts");
+  const Viewport = (await vite.ssrLoadModule("/src/chat-react/auiPrimitives.ts")).ThreadPrimitive.Viewport;
+  const tz = (key: string, named?: Record<string, unknown>) => (key.startsWith("chatReact.") ? (ZH_STRINGS as Record<string, string>)[key.slice(10)] ?? key : t(key)) + (named ? "" : "");
+  const view = await fixture();
+  const media = { kind: "video" as const, model: { providerId: 1, model: "MiniMax-H3" } };
+  for (const [status, code, want, retry] of [[429, "media_busy", /已有 2 个视频正在生成，请等其中一个完成后再发送（当前并发上限 2）.*秒后自动重试/, true], [409, "conversation_busy", /上一轮回复仍在进行/, false], [0, "NETWORK_ERROR", /网络异常/, true]] as const) {
+    const errors = [Object.assign(new Error("x"), { status, code })];
+    const toasts: unknown[] = [];
+    const slot = q.createSingleSlot(async () => { const e = errors.shift(); if (e) throw e; }, () => false, () => {}, { onFailure: (f: unknown) => toasts.push(f), setTimer: () => 1, clearTimer: () => {}, retryMs: 10_000 });
+    function Box() {
+      const [, bump] = React.useReducer((x: number) => x + 1, 0);
+      React.useEffect(() => { const id = setInterval(bump, 5); return () => clearInterval(id); }, []);
+      const runtime = aui.useExternalStoreRuntime(externalStore(createConversationState("7"), { send: async () => {}, stop: async () => {} }, undefined, undefined, slot));
+      return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null, React.createElement(app.Composer, { t: tz, placeholder: "p", inFlight: 2,
+        queue: { failure: slot.failure, reason: slot.failure && q.slotReason(slot.failure, tz, { kind: "video", limit: 2 }), retry: () => void slot.retryNow() },
+        settings: { groups: [{ kind: "video", options: [{ value: "v" }] }], model: null, backend: null, busy: false, pick: async () => {}, media, direct: { toolId: 0, schema: imageSchema }, params: {} } as never })));
+    }
+    try {
+      await view.render(React.createElement(Box));
+      slot.adapter.enqueue({ role: "user", content: [{ type: "text", text: "一只猫" }] } as never);
+      await settle();
+      const row = view.container.querySelector('[data-testid="mc-queued"]');
+      assert.ok(row, `${status}: the message stays in 待发送`);
+      assert.match(row!.textContent!, want);
+      assert.equal(!!view.container.querySelector('[data-testid="mc-queued-retry"]'), retry, `${status}: 立即重试`);
+      assert.equal(toasts.length, 1, `${status}: one toast`);
+      assert.equal(view.container.querySelector('[data-testid="mc-inflight-video"]')!.textContent, "进行中 2/2");
+      assert.match(view.container.querySelector('[data-testid="mc-inflight-full"]')!.textContent!, /已有 2 个任务正在生成（上限 2）/);
+      assert.equal(sendKey(view).disabled, true, "full: send waits instead of being refused");
+      if (retry) {
+        await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-queued-retry"]')!.click());
+        await settle();
+        assert.equal(view.container.querySelector('[data-testid="mc-queued"]'), null, `${status}: retry sent it`);
+      }
+    } finally { slot.adapter.remove(""); }
+  }
+  // 400: dropped with a toast; nothing left in 待发送.
+  const toasts: any[] = [];
+  const bad = q.createSingleSlot(async () => { throw Object.assign(new Error("参数错误"), { status: 400, code: "invalid_params" }); }, () => false, () => {}, { onFailure: (f: unknown) => toasts.push(f) });
+  bad.adapter.enqueue({ role: "user", content: [{ type: "text", text: "x" }] } as never);
+  await settle();
+  assert.equal(bad.size, 0);
+  assert.match(q.slotReason(toasts[0], tz), /发送被拒绝，已移除：参数错误/);
+  await view.close();
+});
