@@ -583,10 +583,11 @@ test("fix-video-swallow: a refused queued send shows its reason, countdown and �
   for (const [status, code, want, retry] of [[429, "media_busy", /已有 2 个视频正在生成，请等其中一个完成后再发送（当前并发上限 2）.*秒后自动重试/, true], [409, "conversation_busy", /上一轮回复仍在进行/, false], [0, "NETWORK_ERROR", /网络异常/, true]] as const) {
     const errors = [Object.assign(new Error("x"), { status, code })];
     const toasts: unknown[] = [];
-    const slot = q.createSingleSlot(async () => { const e = errors.shift(); if (e) throw e; }, () => false, () => {}, { onFailure: (f: unknown) => toasts.push(f), setTimer: () => 1, clearTimer: () => {}, retryMs: 10_000 });
+    const changed = { bump: () => {} };
+    const slot = q.createSingleSlot(async () => { const e = errors.shift(); if (e) throw e; }, () => false, () => changed.bump(), { onFailure: (f: unknown) => toasts.push(f), setTimer: () => 1, clearTimer: () => {}, retryMs: 10_000 });
     function Box() {
       const [, bump] = React.useReducer((x: number) => x + 1, 0);
-      React.useEffect(() => { const id = setInterval(bump, 5); return () => clearInterval(id); }, []);
+      changed.bump = bump;
       const runtime = aui.useExternalStoreRuntime(externalStore(createConversationState("7"), { send: async () => {}, stop: async () => {} }, undefined, undefined, slot));
       return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null, React.createElement(app.Composer, { t: tz, placeholder: "p", inFlight: 2,
         queue: { failure: slot.failure, reason: slot.failure && q.slotReason(slot.failure, tz, { kind: "video", limit: 2 }), retry: () => void slot.retryNow() },
