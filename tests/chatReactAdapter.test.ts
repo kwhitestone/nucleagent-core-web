@@ -652,3 +652,12 @@ test("model groups (MUYU-418): options carry vision_in and availability from the
     ["a", "supported", undefined, undefined], ["b", "unverified", "auth_401", undefined], ["c", "unsupported", undefined, true], ["d", "unverified", undefined, undefined],
   ]);
 });
+
+test("restores pending generation cards from the user request and deduplicates arrived results", () => {
+  const ask = item("msg-100", {role:"user", lane:"user", content:"云", data:{media:{kind:"video",taskIds:[21,22]}}});
+  const done = item("msg-101", {role:"assistant", lane:"answer", data:{media:{kind:"video",taskId:21}}});
+  const cards = (rows: ConversationItem[]) => toThreadMessages(stateOf(rows)).flatMap(m =>
+    Array.isArray(m.content) ? m.content.flatMap(p => p.type==="data-media" ? [(p.data as {media:{taskId:number}}).media.taskId] : []) : []);
+  assert.deepEqual(cards([ask]), [21,22]);
+  assert.deepEqual(cards([ask,done]).sort(), [21,22]);
+});
