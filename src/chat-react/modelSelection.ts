@@ -66,6 +66,21 @@ export function turnFields<T extends Legacy>(view: SelectionView, choice: Select
   return typeof legacy === "string" ? "" : legacy.profileId ? { profileId: legacy.profileId } : "";
 }
 
+/**
+ * design-1123 A (P2 phase 1 = C): a preset carries protocol + level in `params`. When the current declaration really
+ * offers that combination the turn sends modelSelection only (D-2). Otherwise the preset is stale: no modelSelection,
+ * only profileId (protocol/level fall back to 默认（继承）), and the caller says so. A preset without a protocol, and no
+ * preset, keep today's fields.
+ */
+export function presetFields<T extends Legacy>(view: SelectionView, params: Record<string, string> | undefined, legacy: T) {
+  const protocol = params?.callProtocol;
+  if (!protocol) return { fields: turnFields(view, null, legacy), stale: false };
+  const level = params.thinkingLevel ?? null;
+  const picked = selectionRequest(view, { protocol, level: level as Level | null });
+  if (picked.modelSelection) return { fields: { modelSelection: picked.modelSelection }, stale: false };
+  return { fields: typeof legacy === "object" && legacy.profileId ? { profileId: legacy.profileId } : "" as const, stale: true };
+}
+
 export type SelectionErrorAction =
   | { action: "default" } | { action: "refetch-retry" } | { action: "reset"; message: string }
   | { action: "show"; message: string; supported: string[]; refetch: boolean };
@@ -144,5 +159,5 @@ export function useModelCapability(backend: string | null, providerId: number | 
   // A failed read leaves the controls hidden (the legacy turn is sent).
   useEffect(() => { void read().catch(() => {}); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const view = capabilityView(state?.key === key ? state.capability : undefined, backend, model ? { model } : undefined);
-  return { view, key, refetch: async () => capabilityView(await read(), backend, model ? { model } : undefined) };
+  return { view, key, loaded: state?.key === key, refetch: async () => capabilityView(await read(), backend, model ? { model } : undefined) };
 }
