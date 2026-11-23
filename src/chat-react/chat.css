@@ -611,3 +611,6 @@
   .mc-model-picker .mc-grab, .mc-controls .mc-grab { display: block; width: 36px; height: 4px; margin: 2px auto 8px; border-radius: 4px; background: var(--border); }
   .mc-model-picker .mc-menu-item { min-height: 44px; }
 }
+.mc-queued { flex-wrap: wrap; }
+.mc-queued-reason { flex-basis: 100%; order: 3; color: var(--amber-600, #b45309); white-space: normal; }
+.mc-pill-count { margin-left: 4px; font-size: 11px; opacity: .8; }

@@ -29,7 +29,7 @@ export const ZH_STRINGS = {
     stop: "停止", executor: "目鱼执行器",  recent: "最近使用", badgeVision: "识图", modelStale: "当前模型已不可用，请换一个（本会话仍保持原选择）", searchModel: "搜索模型", noResults: "没有匹配的模型", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
     attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
-    queued: "待发送 1 条", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
+    queued: "待发送 1 条", queueBusy_video: "已有 {n} 个视频正在生成，请等其中一个完成后再发送（当前并发上限 {n}）", queueBusy_image: "已有 {n} 个图片任务正在生成，请等其中一个完成后再发送（当前并发上限 {n}）", queueBusy: "进行中的生成任务过多，请等当前任务完成后再发送", queueConflict: "上一轮回复仍在进行，结束后自动发送", queueNetwork: "网络异常，未确认是否已提交；请确认后再手动重试", queuePaused: "已停止，消息未发送", queueFailed: "未发送：{reason}", queueDropped: "发送被拒绝，已移除：{reason}", queueRetryIn: "{s} 秒后自动重试", queueRetry: "立即重试", mediaInFlight: "进行中 {n}/{m}", mediaInFlightHint: "已有 {n} 个任务正在生成（上限 {m}），请等其中一个完成后再发送", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",
     reload: "重新生成", edit: "编辑", fork: "分叉对话", good: "好评", bad: "差评", feedbackDetails: "反馈详情", not_helpful: "没有帮助", other: "其他", save: "保存", send: "发送",
     dont_like_the_style: "不喜欢这种风格", too_verbose: "过于冗长", not_factually_correct: "事实不正确", didnt_fully_follow_instructions: "未完全遵循指令", refused_when_it_shouldnt_have: "不该拒绝却拒绝了", being_lazy: "敷衍了事",
     toBottom: "回到底部", earlier: "加载更早消息",
