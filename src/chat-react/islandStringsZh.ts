@@ -27,6 +27,7 @@ export const ZH_STRINGS = {
     media_queued: "等待生成", media_submitting: "正在提交", media_running: "正在生成", media_ingesting: "正在保存媒体",
     reasoning: "思考过程", processing: "处理中", callRecord: "调用记录",
     attachmentPending: "附件待核验，暂不可下载",
+    catalogPinned: "置顶", searchTools: "搜索工具",
     stop: "停止", executor: "目鱼执行器",  recent: "最近使用", badgeVision: "识图", modelStale: "当前模型已不可用，请换一个（本会话仍保持原选择）", searchModel: "搜索模型", noResults: "没有匹配的模型", pickerLabel: "模型与执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
     attach: "添加附件", loading: "正在加载对话…", process: "执行过程",

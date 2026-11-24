@@ -469,12 +469,13 @@ test("model groups: chat/image/video from the typed catalog, executors from Core
 test("model groups: upstream label only from the catalog's real upstream field; known names get house names, absent = no label", () => {
   const providers = [{ id: 1, name: "P1", isActive: true, config: { models: ["a", "b", "c", "d"] } }];
   const typed = { chat: [
-    { providerId: 1, model: "a", type: "chat", capabilities: [], upstream: "aihub-gateway" },
+    { providerId: 1, model: "a", type: "chat", capabilities: [], pinned: true, upstream: "aihub-gateway" },
     { providerId: 1, model: "b", type: "chat", capabilities: [], upstream: "everai-yunyi" },
     { providerId: 1, model: "c", type: "chat", capabilities: [], upstream: "newapi-env" },
     { providerId: 1, model: "d", type: "chat", capabilities: [] },
   ] };
   const [chat] = modelGroups(providers, typed, []);
+  assert.deepEqual(chat!.options.map(o => o.pinned === true), [true, false, false, false]);
   assert.deepEqual(chat!.options.map((o) => o.upstream), ["AIHub", "云一/everai", "newapi-env", undefined]);
   assert.equal(modelGroups(providers, null, [])[0]?.options[0]?.upstream, undefined, "old Core: no guess (MUYU-409 lists no untyped models)");
 });

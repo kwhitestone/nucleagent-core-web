@@ -10,7 +10,7 @@ export type Choice =
 /** `label` is the model (or executor) name; `hint` the provider; `upstream` the real gateway upstream, when the catalog says. */
 /** MUYU-418: `vision` (chat only), `unavailable` reason (greyed, not pickable), `unprobed` = no availability evidence yet. */
 /** design-1123 C: `denied` = Core's explicit negative combination code, `incompatible` = not usable with the current executor, `stale` = kept only because it is the current choice. */
-export interface Option { value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; denied?: string; incompatible?: true; stale?: true; choice: Choice }
+export interface Option { pinned?: boolean; value: string; label: string; hint?: string; upstream?: string; vision?: Vision; unavailable?: UnavailableReason; unprobed?: true; denied?: string; incompatible?: true; stale?: true; choice: Choice }
 export interface Group { kind: GroupKind; options: Option[] }
 
 /** Stable `<option value>` for a choice. */
@@ -36,6 +36,7 @@ export function modelGroups(providers: Provider[], typed: Record<string, TypedMo
       const availability = availabilityOf(entry);
       return [{
         value: choiceValue(choice), label: entry.model, hint: provider.name, choice,
+        ...(entry.pinned ? { pinned: true } : {}),
         ...(entry.upstream ? { upstream: UPSTREAM_NAMES[entry.upstream] ?? entry.upstream } : {}),
         ...(kind === "chat" ? { vision: visionOf(entry) } : {}),
         ...(availability.state === "unavailable" ? { unavailable: availability.reason }

@@ -6,6 +6,52 @@ import { toast } from "@/composables/useToast";
 import { CrossMark } from "./icons";
 import type { Translate } from "./ChatApp";
 
+function useCatalogPages(conversationId: string | undefined, search: string) {
+  const [rows, setRows] = useState<ToolCatalogItem[]>();
+  const generation = useRef(0);
+  const cursor = useRef<CatalogCursor | null>({ page: 1 });
+  const loading = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = async () => {
+    const next = cursor.current;
+    if (!next || loading.current) return;
+    const current = generation.current;
+    loading.current = true;
+    setFailed(false);
+    try {
+      let page = await readToolPage(next, search);
+      if (generation.current !== current) return;
+      const restart = page.changed;
+      if (restart) page = await readToolPage({ page: 1 }, search);
+      if (generation.current !== current) return;
+      cursor.current = page.next;
+      setRows(previous => [...(restart ? [] : previous ?? []), ...page.items]);
+    } catch {
+      if (generation.current === current) setFailed(true);
+    } finally {
+      if (generation.current === current) loading.current = false;
+    }
+  };
+  useEffect(() => {
+    const reset = () => {
+      generation.current++;
+      cursor.current = { page: 1 };
+      loading.current = false;
+      setRows(undefined);
+      setFailed(false);
+    };
+    reset();
+    const timer = search && window.setTimeout(load, 180);
+    window.addEventListener(SESSION_CHANGE_EVENT, reset);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      generation.current++;
+      window.removeEventListener(SESSION_CHANGE_EVENT, reset);
+    };
+  }, [conversationId, search]);
+  return { rows, failed, more: !!cursor.current, load };
+}
+
 /**
  * MUYU-365 exp85: enabling a tool authorizes the agent to call it; the model passes every argument.
  * A new chat keeps the set locally and sends it as POST /conversation `toolIds`; an existing one
@@ -18,36 +64,17 @@ export const BINDINGS_EVENT = "mc-bindings";
 const share = (saved: SessionBindings) => { window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: saved })); return saved; };
 
 export function useToolGrants(conversationId: string | undefined, t: Translate, locale: string) {
-  const [rows, setRows] = useState<ToolCatalogItem[]>();
+  const [search, setSearch] = useState("");
+  const [pickedRows, setPickedRows] = useState<ToolCatalogItem[]>([]);
+  const catalog = useCatalogPages(conversationId, "");
+  const matches = useCatalogPages(conversationId, search.trim());
+  const shown = search.trim() ? matches : catalog;
   const [bound, setBound] = useState<Partial<SessionBindings> & { busy?: boolean }>({ toolIds: [] });
   const generation = useRef(0);
   // Results land only while the conversation/account they were asked for is still current.
   const later = <T,>(run: (value: T) => void) => { const current = generation.current; return (value: T) => current === generation.current && run(value); };
-  const cursor = useRef<CatalogCursor | null>({ page: 1 });
-  const loading = useRef(false);
-  const [failed, setFailed] = useState(false);
-  const load = async () => {
-    const next = cursor.current;
-    if (!next || loading.current) return;
-    const current = generation.current;
-    loading.current = true;
-    setFailed(false);
-    try {
-      let page = await readToolPage(next);
-      if (generation.current !== current) return;
-      const restart = page.changed;
-      if (restart) page = await readToolPage({ page: 1 });
-      if (generation.current !== current) return;
-      cursor.current = page.next;
-      setRows(previous => [...(restart ? [] : previous ?? []), ...page.items]);
-    } catch {
-      if (generation.current === current) setFailed(true);
-    } finally {
-      if (generation.current === current) loading.current = false;
-    }
-  };
   useEffect(() => {
-    const reset = () => { generation.current++; cursor.current = { page: 1 }; loading.current = false; setFailed(false); setBound({ toolIds: [] }); setRows(undefined); };
+    const reset = () => { generation.current++; setSearch(""); setPickedRows([]); setBound({ toolIds: [] }); };
     reset();
     if (conversationId) getSessionBindings(conversationId).then(later(setBound), () => {});
     const saved = (event: Event) => setBound((event as CustomEvent<SessionBindings>).detail);
@@ -56,13 +83,15 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     return () => { generation.current++; window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
   }, [conversationId]);
   const ids = bound.toolIds!, editable = !conversationId || !!bound.editable;
-  useEffect(() => { if (ids.length) load(); }, [ids.length > 0]);
-  const tools = (rows ?? []).filter((row) => !toolUnavailable(row) && !row.nativeCapability).map((row) => ({ ...row, label: toolLabel(row, locale) }));
+  useEffect(() => { if (ids.length) catalog.load(); }, [ids.length > 0]);
+  const project = (rows: ToolCatalogItem[] | undefined) => (rows ?? []).filter((row) => !toolUnavailable(row) && !row.nativeCapability).map((row) => ({ ...row, label: toolLabel(row, locale) }));
   return {
-    ids, tools, editable, loaded: !!rows, failed, more: !!cursor.current, load,
-    enabled: tools.filter((tool) => ids.includes(tool.id)),
+    ids, tools: project(shown.rows), editable, loaded: !!shown.rows, failed: shown.failed, more: shown.more, load: shown.load, search, setSearch,
+    enabled: project(Array.from(new Map([...pickedRows, ...(catalog.rows ?? []), ...(matches.rows ?? [])].map(row => [row.id, row])).values())).filter(tool => ids.includes(tool.id)),
     toggle: (id: number) => {
       if (!editable || bound.busy) return;
+      const selected = shown.rows?.find(row => row.id === id);
+      if (selected) setPickedRows(previous => [...previous.filter(row => row.id !== id), selected]);
       const toolIds = ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id];
       if (!conversationId) return setBound({ toolIds });
       setBound({ ...bound, busy: true });
@@ -74,13 +103,15 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
 export type ToolGrants = ReturnType<typeof useToolGrants>;
 type Props = { grants: ToolGrants; t: Translate };
 
-export const ToolGrantList = ({ grants, t }: Props) => <div className="mc-grants" onScroll={event => {
+export const ToolGrantList = ({ grants, t }: Props) => <>
+  <div className="mc-search"><input type="search" aria-label={t("chatReact.searchTools")} placeholder={t("chatReact.searchTools")} value={grants.search} onChange={event => grants.setSearch(event.target.value)} /></div>
+  <div className="mc-grants" onScroll={event => {
   const list = event.currentTarget;
   if (grants.more && list.scrollTop + list.clientHeight >= list.scrollHeight - 16) void grants.load();
 }}>{grants.loaded && !grants.tools.length && !grants.more && t("chatReact.optionUnavailable")}
-  {grants.tools.map((tool) => <button key={tool.id} type="button" className="mc-menu-item" aria-pressed={grants.ids.includes(tool.id)} disabled={!grants.editable} onClick={() => grants.toggle(tool.id)}>{tool.label}</button>)}
+  {grants.tools.map((tool) => <button key={tool.id} type="button" className="mc-menu-item" aria-pressed={grants.ids.includes(tool.id)} disabled={!grants.editable} onClick={() => grants.toggle(tool.id)}><span>{tool.label}</span>{tool.pinned && <span className="mc-menu-tag" data-testid="mc-pinned">{t("chatReact.catalogPinned")}</span>}</button>)}
   {(grants.failed || grants.more && grants.loaded) && <button type="button" onClick={grants.load}>{t(grants.failed ? "common.retry" : "chatReact.loadMore")}</button>}
-</div>;
+</div></>;
 
 export const ToolGrantChips = ({ grants, t }: Props) => grants.enabled.length > 0 && <div className="mc-chips" data-testid="mc-tool-grants">
   <span className="mc-grants-label">{t("chatReact.toolGrantsEnabled")}</span>

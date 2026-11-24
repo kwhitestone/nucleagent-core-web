@@ -11,6 +11,9 @@ import type { SheetOption } from "../components/OptionSheet.vue";
 export const TOOL_CATALOG_PATH = "/api/v1/addons/tool/catalog";
 
 export interface ToolCatalogItem {
+  pinned?: boolean;
+  weight?: number;
+  onlineAt?: string;
   id: number;
   name: string;
   description?: string;
@@ -85,8 +88,9 @@ const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is
 
 export interface CatalogCursor { page: number; cursor?: string; sortVersion?: string }
 
-export async function readToolPage(position: CatalogCursor) {
+export async function readToolPage(position: CatalogCursor, search = "") {
   const query = new URLSearchParams({ page: String(position.page), pageSize: "32", cursorMode: "true" });
+  if (search) query.set("search", search);
   if (position.cursor && position.sortVersion) {
     query.set("cursor", position.cursor);
     query.set("sortVersion", position.sortVersion);

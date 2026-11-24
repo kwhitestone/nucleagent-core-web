@@ -127,7 +127,7 @@ test("picking a tool only enables it: no schema read, no parameter field, no run
     await view.click(view.grant("飞书读取文档"));
     assert.equal(view.grant("飞书读取文档")!.getAttribute("aria-pressed"), "true");
     assert.equal(reads.slice(before).filter((url) => url.includes("/schema")).length, 0, "enabling never loads a parameter schema");
-    assert.equal(panel.querySelectorAll("input:not([type=checkbox]), textarea").length, 0, "no parameter inputs");
+    assert.equal(panel.querySelectorAll("input:not([type=checkbox]):not([type=search]), textarea").length, 0, "no parameter inputs");
     assert.doesNotMatch(view.container.textContent!, /document_id|workflowHint|workflowExecutionModel/);
     assert.equal(panel.querySelector(".mc-grants form, .mc-grants input, .mc-grants select"), null, "the grant list has no form");
     assert.equal(panel.querySelector<HTMLDetailsElement>("details.mc-workflow")!.open, false, "native audio stays folded under its own entry");

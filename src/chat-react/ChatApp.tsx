@@ -385,7 +385,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
   const tools = useRef<HTMLDivElement>(null);
   const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
-  useEffect(() => { if (toolsOpen) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
+  useEffect(() => { if (toolsOpen && !tools.current?.contains(document.activeElement)) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
   useEffect(() => {
     const reset = () => { setToolsOpen(null); menu.setOpen(false); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
@@ -807,7 +807,10 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
   for (const group of groups) {
     if (group.kind === "executor") continue;
     const options: (Option | null)[] = visible(group);
-    if (group.kind === "chat" && !needle) options.unshift(null);
+    if (group.kind === "chat" && !needle) {
+      const ordinary = options.findIndex(option => !option?.pinned);
+      options.splice(ordinary === -1 ? options.length : ordinary, 0, null);
+    }
     total += options.length;
     const rows = options.slice(0, remaining);
     remaining -= rows.length;
@@ -836,6 +839,7 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
     return <div key={`${i}:${value}`} id={`${listId}-${i}`} role="option" className="mc-menu-item" aria-selected={value === props.value} data-active={i === at || undefined}
       aria-disabled={blocked ? true : undefined} title={blocked} onMouseMove={() => i !== at && setActive(i)} onClick={() => choose(o)}>
       <span className="mc-menu-text">{o ? o.label : t("common.modelDefault")}{o?.hint && <span className="mc-menu-hint">{o.hint}</span>}</span>
+      {o?.pinned && <span className="mc-menu-tag" data-testid="mc-pinned">{t("chatReact.catalogPinned")}</span>}
       {o?.stale && <span className="mc-menu-tag mc-tag-warn">⚠</span>}
       {o?.vision === "supported" && <span className="mc-menu-tag" data-testid="mc-vision">{t("chatReact.badgeVision")}</span>}
       {o?.unprobed && <span className="mc-menu-tag" data-testid="mc-unprobed">{t("chatReact.availabilityUnprobed")}</span>}
