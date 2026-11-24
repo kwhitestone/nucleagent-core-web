@@ -1,9 +1,11 @@
+import { CloudFiles } from "./CloudFiles";
+import { examples } from "./mediaExamples";
 import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { PROFILE_UI_ENABLED } from "./profileFeature";
 import ProfileControls from "./ProfileControls";
 import ToolIO from "./ToolIO";
 import {
-  AssistantRuntimeProvider, AuiIf, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
+  AssistantRuntimeProvider, AuiIf, useAui, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { useActionBarCopy } from "@assistant-ui/core/react";
 import { useMessagePartText, useSmooth } from "@assistant-ui/react";
@@ -355,19 +357,15 @@ function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
  * MUYU-365 exp86c/exp98: switches at once to the first model that can send (read when the conversation mounted);
  * a second click leaves media mode; none = says why (not enabled here / upstream / none connected), never picks.
  */
-function MediaPill({ kind, t, settings, running, inFlight = 0 }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean; inFlight?: number }) {
-  const limit = MEDIA_KINDS[kind].busyLimit;
-  const options = settings.groups.find((group) => group.kind === kind)?.options ?? [];
-  const none = settings.mediaNone?.(kind);
+function MediaPill({ kind, t, settings, running, close }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean; close(): void }) {
   const on = settings.media?.kind === kind;
-  return (
-    <button type="button" className="mc-pill" aria-disabled={!options.length || !!none || settings.busy || running} aria-pressed={on}
-      aria-busy={on && settings.mediaPending || undefined} disabled={!options.length || settings.busy || running} data-testid={`mc-gen-${kind}`}
-      aria-label={none ? `${t(`chatGen.kinds.${kind}`)} · ${none}` : undefined} title={none || undefined} onClick={() => settings.enter?.(kind)}>
-      {kind === "image" ? <ImageMark /> : <VideoMark />}<span className="mc-pill-text">{t(`chatGen.kinds.${kind}`)}</span>
-      {inFlight > 0 && <span className="mc-pill-count" data-testid={`mc-inflight-${kind}`}>{fillIn(t("chatReact.mediaInFlight"), { n: inFlight, m: limit })}</span>}
-    </button>
-  );
+  const options = settings.groups.find(group => group.kind === kind)?.options;
+  if (!on && (!options?.some(option => !option.unavailable) || settings.mediaNone?.(kind))) return null;
+  return <button type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={on} aria-busy={on && settings.mediaPending || undefined}
+    aria-disabled={settings.busy || running} disabled={settings.busy || running} data-testid={`mc-gen-${kind}`}
+    onClick={() => { if (!on) settings.enter?.(kind); close(); }}>
+    {kind === "image" ? <ImageMark /> : <VideoMark />}{t(`chatReact.make_${kind}`)}{on && <CheckMark size={16} />}
+  </button>;
 }
 
 export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { compatible?(choice: Choice): boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
@@ -378,7 +376,11 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
 export function Composer({ t, settings, placeholder, controls, workflow, grants, profile, queue, inFlight }: { queue?: { failure: SlotFailure | null; reason: string | null; retry(): void }; inFlight?: number; t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
-  const menu = useMenu();
+  const [section, setSection] = useState<"home" | "files" | "drive" | "preset">("home");
+  const menu = useMenu(false, section);
+  const aui = useAui();
+  const openMenu = () => { setToolsOpen(false); setSection("home"); menu.setOpen(true); };
+  const item = (key: string, action: () => void) => <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={action}>{t(key)} ›</button>;
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
   const tools = useRef<HTMLDivElement>(null);
@@ -404,6 +406,11 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
     || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
+      {settings.media && <div className="mc-examples">{examples.map(([title, image, video], i) =>
+        <button key={title} type="button" onClick={() => aui.composer().setText([input, settings.media?.kind === "image" ? image : video].filter(Boolean).join("\n"))}>
+          <img src={`${import.meta.env.BASE_URL}composer-examples/${i}.webp`} alt="" />
+          <span>{settings.media?.kind === "video" && "▷ "}{title}</span>
+        </button>)}</div>}
       <div className="mc-composer">
       {grants && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
@@ -426,15 +433,16 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
             </div>
           )}
         </ComposerPrimitive.Queue>
+        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         {settings.media && <div className="mc-media-panel" role="status" data-testid="mc-media-mode" aria-busy={settings.mediaPending || undefined}>
-          <strong>{t(`model.types.${settings.media.kind}`)} · {settings.media.model.model}</strong>
+          <span className="mc-sr-only">{settings.media.model.model}</span>
           {full && <p className="mc-hint" role="alert" data-testid="mc-inflight-full">{fillIn(t("chatReact.mediaInFlightHint"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</p>}
           {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} frame={!hasImage} /> : !settings.mediaPending && <p>{t("chatReact.mediaUnavailable")}</p>}
         </div>}
-        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
+
         <div className="mc-toolbar">
           <div className="mc-model mc-add" ref={menu.root} onBlur={event => {
-            if (!event.currentTarget.contains(event.relatedTarget)) menu.setOpen(false);
+            if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) menu.setOpen(false);
           }} onKeyDown={event => {
             if (event.key === "Escape" && menu.open) { event.preventDefault(); event.stopPropagation(); menu.close(); }
             else if (event.key === "Tab") menu.setOpen(false);
@@ -443,18 +451,36 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
               if (!menu.open) menu.setOpen(true); else menu.rove(event.key);
             }
           }}>
-            <button ref={menu.trigger} type="button" className="mc-round" aria-label={t("chatReact.addTools")} title={t("chatReact.addTools")} aria-haspopup="menu" aria-expanded={menu.open} aria-controls={menuId} onClick={() => menu.open ? menu.close() : menu.setOpen(true)}><PlusMark /></button>
+            <button ref={menu.trigger} type="button" className="mc-round" aria-label={t("chatReact.addTools")} title={t("chatReact.addTools")} aria-haspopup="menu" aria-expanded={menu.open} aria-controls={menuId} onClick={() => menu.open ? menu.close() : openMenu()}><PlusMark /></button>
             <div id={menuId} role="menu" className="mc-menu" hidden={!menu.open} aria-label={t("chatReact.addTools")}>
-              <AttachButton t={t} onClick={menu.close} />
-              {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); grants.load(); setToolsOpen(true); }}><ToolMark />{t("chatReact.toolGrant")}</button>}
+              {section !== "home" && item("common.back", () => setSection("home"))}
+              {section === "drive" && <CloudFiles t={t} close={menu.close} />}
+              {section === "preset" && <div data-testid="mc-profile-page">{profile?.page}{controls}</div>}
+              {(section === "home" || section === "files") && <>
+                <AttachButton t={t} onClick={menu.close} />
+                {item("chatReact.drive", () => setSection("drive"))}
+              </>}
+              {section === "home" && <>
+                {item("chatReact.moreFiles", () => setSection("files"))}
+                <hr />
+                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); if (!grants.loaded) grants.load(); setToolsOpen(true); }}><ToolMark />{t("chatReact.toolGrant")}</button>}
+                {profile && !settings.media && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" disabled={settings.busy} onClick={() => setSection("preset")}>
+                  {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name}</span>{profile.stale && " ⚠"} ›
+                </button>}
+                <MediaPill kind="image" t={t} settings={settings} running={running} close={menu.close} />
+                <MediaPill kind="video" t={t} settings={settings} running={running} close={menu.close} />
+              </>}
             </div>
           </div>
-          <MediaPill kind="image" t={t} settings={settings} running={running} inFlight={settings.media?.kind === "image" ? inFlight : undefined} />
-          <MediaPill kind="video" t={t} settings={settings} running={running} inFlight={settings.media?.kind === "video" ? inFlight : undefined} />
+          {settings.media && <span className="mc-mode-chip">
+            <button type="button" aria-haspopup="menu" onClick={openMenu}>{t(`chatReact.make_${settings.media.kind}`)}
+              {!!inFlight && <small data-testid={`mc-inflight-${settings.media.kind}`}>{fillIn(t("chatReact.mediaInFlight"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</small>}
+            </button>
+            <button type="button" aria-label={t("chatReact.exitMode")} onClick={() => settings.enter?.(settings.media!.kind)}>×</button>
+          </span>}
+          <span className="mc-spacer" />
           <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} />
-          {profile && !settings.media && <ModelControls t={t} disabled={settings.busy} profile={profile}>{controls}</ModelControls>}
-          <span className="mc-spacer" />
           {actions[0] !== "stop" && (
             <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
           )}
@@ -749,14 +775,6 @@ function Effective({ t, conversationId, stepId }: { t: Translate; conversationId
   return text ? <span className="mc-usage" data-testid="mc-effective-selection">{text}</span> : null;
 }
 
-const RECENT_KEY = "mc.recentModels";
-/** 最近使用 (design-1123 P5 A): last 3 model values per executor, local only. */
-function readRecent(): Record<string, string[]> {
-  try { const value = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "{}"); return value && typeof value === "object" ? value : {}; } catch { return {}; }
-}
-/** Family heading for a chat model: the name up to its first "-" (deepseek-v4 → deepseek). */
-const familyOf = (label: string) => label.split(/[-/]/)[0] || label;
-
 /**
  * design-1123 B/C: one pill 「模型 · 执行器 ▾」 opening a searchable list, after OWUI c38885a Selector.svelte: the trigger
  * truncates the name (:937-938), the search box is a combobox that keeps focus with ↑↓ / Enter (:958-996), the list
@@ -768,7 +786,7 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
   const { open, setOpen, root, trigger, close: shut } = useMenu(props.defaultOpen);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [recent, setRecent] = useState(readRecent);
+  const [limit, setLimit] = useState(32);
   const search = useRef<HTMLInputElement>(null);
   const listId = useId();
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
@@ -779,38 +797,34 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
   const stale = !!current && (!!current.unavailable || (props.compatible ? !props.compatible(current.choice) : false));
   const model = current?.label ?? t("common.modelDefault");
   const close = () => { shut(); setQuery(""); };
-  useEffect(() => { if (open) { setActive(0); search.current?.focus(); } }, [open]);
+  useEffect(() => { if (open) { setActive(0); setLimit(32); search.current?.focus(); } }, [open]);
   const needle = query.trim().toLowerCase();
   const visible = (g: Group) => visibleOptions(g.options.map((o) => props.compatible && g.kind === "chat" && !props.compatible(o.choice) ? { ...o, incompatible: true as const } : o), props.value)
     .filter((o) => !needle || o.label.toLowerCase().includes(needle));
-  const chats = groups.find((g) => g.kind === "chat");
-  const chatRows = chats ? visible(chats) : [];
-  const mine = recent[props.backend ?? ""] ?? [];
-  const recentRows = needle ? [] : mine.flatMap((v) => chatRows.filter((o) => o.value === v));
   const sections: { key: string; kind: string; title: string; rows: (Option | null)[] }[] = [];
-  if (!needle) sections.push({ key: "default", kind: "chat", title: t("model.types.chat"), rows: [null] });
-  if (recentRows.length) sections.push({ key: "recent", kind: "chat", title: t("chatReact.recent"), rows: recentRows });
-  const families = new Map<string, Option[]>();
-  for (const o of chatRows) if (!recentRows.includes(o)) families.set(familyOf(o.label), [...(families.get(familyOf(o.label)) ?? []), o]);
-  for (const [family, rows] of families) sections.push({ key: `family:${family}`, kind: "chat", title: family, rows });
-  for (const g of groups) if (g.kind === "image" || g.kind === "video") { const rows = visible(g); if (rows.length) sections.push({ key: g.kind, kind: g.kind, title: t(`model.types.${g.kind}`), rows }); }
-  const flat = sections.flatMap((s) => s.rows);
+  let remaining = Math.max(limit, active + 1);
+  let total = 0;
+  for (const group of groups) {
+    if (group.kind === "executor") continue;
+    const options: (Option | null)[] = visible(group);
+    if (group.kind === "chat" && !needle) options.unshift(null);
+    total += options.length;
+    const rows = options.slice(0, remaining);
+    remaining -= rows.length;
+    if (rows.length) sections.push({ key: group.kind, kind: group.kind, title: t(`model.types.${group.kind}`), rows });
+  }
+  const flat = sections.flatMap(section => section.rows);
   const at = Math.min(active, Math.max(flat.length - 1, 0));
   const blockedOf = (o: Option | null) => o && props.hasImage && o.vision === "unsupported" ? t("chatReact.visionBlocked") : undefined;
   const choose = (o: Option | null) => {
     if (blockedOf(o)) return;
-    if (o?.choice.kind === "chat" && props.backend) {
-      const next = { ...readRecent(), [props.backend]: [o.value, ...mine.filter((v) => v !== o.value)].slice(0, 3) };
-      try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch { /* private mode: 最近使用 stays in memory */ }
-      setRecent(next);
-    }
     close(); props.onPick(o ? o.choice : null);
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (!open) return;
     if (e.key === "Escape" || e.key === "Tab") { if (e.key === "Escape") e.preventDefault(); close(); return; }
     if (e.target !== search.current) return;
-    if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(at + 1, flat.length - 1)); }
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(at + 1, total - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive(Math.max(at - 1, 0)); }
     else if (e.key === "Enter") { e.preventDefault(); if (flat.length) choose(flat[at] ?? null); }
   };
@@ -844,12 +858,15 @@ export function ModelMenu(props: { t: Translate; groups: Group[]; value: string;
         {stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
         <div className="mc-search"><input ref={search} data-testid="mc-model-search" value={query} placeholder={t("chatReact.searchModel")} aria-label={t("chatReact.searchModel")}
           role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={flat.length ? `${listId}-${at}` : undefined} autoComplete="off"
-          onChange={(e) => { setQuery(e.target.value); setActive(0); }} /></div>
+          onChange={(e) => { setQuery(e.target.value); setLimit(32); setActive(0); }} /></div>
         {executors.length > 1 && <div className="mc-segments" role="radiogroup" aria-label={t("chatReact.executor")} data-testid="mc-executors">
           {executors.map((o) => <button key={o.value} type="button" role="radio" aria-checked={o.value === backendValue} onClick={() => { if (o.value !== backendValue) props.onPick(o.choice); }}>{o.label}</button>)}
         </div>}
-        <div id={listId} role="listbox" aria-label={t("chatReact.pickerLabel")} className="mc-list" style={{ maxHeight: "18rem" }}>
-          {flat.length ? sections.map((s) => <div key={s.key} role="group" aria-label={s.title} data-kind={s.kind} className="mc-menu-group" data-testid={s.key === "recent" ? "mc-recent" : undefined}>
+        <div id={listId} role="listbox" aria-label={t("chatReact.pickerLabel")} className="mc-list" onScroll={event => {
+          const list = event.currentTarget;
+          if (list.scrollTop + list.clientHeight >= list.scrollHeight - 32 && flat.length < total) setLimit(flat.length + 32);
+        }} style={{ maxHeight: "18rem" }}>
+          {flat.length ? sections.map((s) => <div key={s.key} role="group" aria-label={s.title} data-kind={s.kind} className="mc-menu-group">
             {s.key !== "default" && <div className="mc-menu-label" aria-hidden="true">{s.title}</div>}{s.rows.map(row)}
           </div>) : <p className="mc-menu-label">{t("chatReact.noResults")}</p>}
         </div>
@@ -1092,7 +1109,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   // Image/video (fix-media-365): only the catalog's availability greys a model; available ones come first.
   const labeledGroups = groups.map((group) => group.kind === "chat" ? !strategy ? group : {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
-  } : group.kind === "executor" ? group : { ...group, options: [...group.options].sort((a, b) => +!!a.unavailable - +!!b.unavailable) });
+  } : group);
   // design-1123 C: an executor-incompatible chat model is not listed (was: toast on pick).
   return { groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),

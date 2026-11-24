@@ -114,7 +114,7 @@ test("a pill switches synchronously from the mount-time read: no catalog or sche
     const before = reads.length;
     await React.act(async () => pill(view.container, "image").click());   // no settle: the switch must not wait
     assert.match(mode(view.container)?.textContent ?? "", /doubao-seedream-5-0-260128/);
-    assert.equal(pill(view.container, "image").getAttribute("aria-pressed"), "true");
+    assert.equal(pill(view.container, "image").getAttribute("aria-checked"), "true");
     await settle();
     assert.deepEqual(reads.slice(before), [], "a click reuses the conversation's read");
   } finally { await view.close(); }
@@ -151,9 +151,9 @@ test("clicking the selected pill again returns to chat with the chat model kept;
     await React.act(async () => pill(view.container, "image").click());
     assert.ok(mode(view.container));
     assert.doesNotMatch(view.container.textContent!, /returnToChat/);
-    await React.act(async () => pill(view.container, "image").click());
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>(".mc-mode-chip button:last-child")!.click());
     assert.equal(mode(view.container), null);
-    assert.equal(pill(view.container, "image").getAttribute("aria-pressed"), "false");
+    assert.equal(pill(view.container, "image").getAttribute("aria-checked"), "false");
     assert.equal(view.container.querySelector('[data-testid="mc-model"]')!.textContent, chatModel, "the chat model is kept");
     assert.equal(view.container.querySelector("textarea")!.value, "草稿");
     assert.deepEqual(writes, []);
@@ -171,7 +171,7 @@ test("text-to-image shows no parameter boxes: optional fields fold away closed a
     await React.act(async () => pill(view.container, "image").click());
     const panel = mode(view.container)!;
     const visible = [...panel.querySelectorAll("input,select")].filter(control => !control.closest("details:not([open])"));
-    assert.deepEqual(visible.map(control => control.outerHTML), [], "no aspect_ratio/count/quality/web_search boxes");
+    assert.deepEqual(visible.map(control => control.closest("label")!.textContent), ["aspect_ratio", "count"]);
     const fold = panel.querySelector("details");
     if (fold) assert.equal((fold as HTMLDetailsElement).open, false, "advanced stays folded by default");
     assert.equal(view.container.querySelector<HTMLButtonElement>('[data-testid="mc-send"]')!.disabled, false);
@@ -189,7 +189,7 @@ test("image-to-video: required enums are prefilled, the first frame is not a pic
     await settle();
     const panel = mode(view.container)!;
     const selects = [...panel.querySelectorAll<HTMLSelectElement>("select")].filter(control => !control.closest("details:not([open])"));
-    assert.deepEqual(selects.map(select => select.value).sort(), ["5", "720p"], "duration and resolution prefilled from the schema");
+    assert.deepEqual(selects.map(select => select.value).sort(), ["", "5", "720p"], "duration and resolution prefilled from the schema");
     assert.equal(panel.querySelector('[aria-label="首帧图片"]'), null, "no owned-file picker");
     assert.match(panel.textContent!, /chatReact.mediaFrameHint/);
     assert.ok(!reads.some(url => url.includes("/api/v1/files")), "no owned file listing");
@@ -273,7 +273,7 @@ test("nothing sendable: 暂无 only when no model is listed, and upstream outage
   try {
     await settle();
     assert.equal(pill(view.container, "image").getAttribute("aria-label"), null, "an available model without a job tool is sendable");
-    assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaUpstream/);
+    assert.equal(pill(view.container, "video"), null, "unavailable mode is hidden");
   } finally { await view.close(); }
 });
 
@@ -292,11 +292,10 @@ test("one upstream_offline row among unconnected models leaves the kind sendable
   try {
     await settle();
     assert.equal(pill(view.container, "image").getAttribute("aria-label"), null);
-    assert.match(pill(view.container, "video").getAttribute("aria-label") ?? "", /chatReact.mediaUpstream/, "all upstream outages still name the upstream");
+    assert.equal(pill(view.container, "video"), null, "unavailable mode is hidden");
     await React.act(async () => pill(view.container, "image").click());
     await settle();
     assert.match(mode(view.container)!.textContent!, /doubao-seedream-5-0-260128/, "the first available model, never the offline one");
-    await React.act(async () => pill(view.container, "video").click());
     assert.doesNotMatch(mode(view.container)!.textContent!, /veo/);
   } finally { await view.close(); }
 });
@@ -380,7 +379,7 @@ test("fix-media: a pill with no job tool for its kind still preselects the first
     const panel = mode(view.container)!;
     assert.match(panel.textContent!, /MiniMax-H3/);
     assert.deepEqual([...panel.querySelectorAll("select")].map(select => select.value), ["16:9", "4", "480p"], "video keeps its required aspect/duration/resolution choices");
-    assert.equal(pill(view.container, "image").disabled, true, "no image models: the image pill is closed");
+    assert.equal(pill(view.container, "image"), null, "unavailable image capability hidden");
     assert.deepEqual(writes, []);
   } finally { await view.close(); }
 });

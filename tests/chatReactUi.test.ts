@@ -140,7 +140,7 @@ test("composer: empty idle send is a disabled aui button; hint, + attach, media 
   assert.match(html, /<textarea[^>]*aria-label="p"/);
   assert.match(html, /chatReact.hint/);
   assert.match(html, /data-testid="mc-attach"[^>]*aria-label="chatReact.attach"|aria-label="chatReact.attach"[^>]*data-testid="mc-attach"/);
-  assert.equal(html.match(/aria-disabled="true"[^>]*data-testid="mc-gen-(image|video)"/g)?.length, 2);
+  assert.doesNotMatch(html, /data-testid="mc-gen-(image|video)"/, "absent capabilities are hidden");
   assert.match(html, /data-testid="mc-model"[^>]*aria-haspopup="listbox"/);  const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.doesNotMatch(css, /\.mc-pill[^{]*\{[^}]*dashed/, "no dashed pills");
   assert.match(css, /\.mc-model-trigger\[aria-expanded="true"\] \{[^}]*border-color/, "open picker has an active state");
@@ -171,7 +171,7 @@ test("model menu: chat families, image and video sections; executors as segments
   assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider");
   assert.match(closed, /mc-model-exec">X</, "and the executor");
   const open = renderToString(React.createElement(app.ModelMenu, { ...props, defaultOpen: true }));
-  assert.deepEqual([...open.matchAll(/role="group" aria-label="([^"]+)" data-kind="(\w+)"/g)].map((m) => `${m[2]}:${m[1]}`), ["chat:model.types.chat", "chat:m1", "chat:m2", "image:model.types.image", "video:model.types.video"]);
+  assert.deepEqual([...open.matchAll(/role="group" aria-label="([^"]+)" data-kind="(\w+)"/g)].map((m) => `${m[2]}:${m[1]}`), ["chat:model.types.chat", "image:model.types.image", "video:model.types.video"]);
   assert.match(open, /role="option"[^>]*aria-selected="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
   assert.match(open, /aria-selected="true"[^>]*><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
   assert.match(open, /role="radiogroup"[^]*aria-checked="true"[^>]*>X<[^]*aria-checked="false"[^>]*>Y</);
@@ -369,9 +369,9 @@ test("composer: the 思考 pill shows the preset name; no pill when the model ha
 test("composer: one Controls menu; another issue's content goes into its slot, never a second entry", () => {
   const html = render(stateOf([]), () => React.createElement(app.Composer, { t, settings, placeholder: "p", profile: { page: presetPage("") },
     controls: React.createElement("button", { type: "button", role: "menuitemradio", "aria-checked": false }, "profile-slot") }));
-  assert.equal((html.match(/class="mc-model mc-controls"/g) ?? []).length, 1);
-  assert.match(html, /role="menu" aria-label="chatReact.profile"[^]*profile-slot/);
-  assert.equal((html.split('class="mc-model mc-controls"')[1]!.match(/role="menuitemradio"/g) ?? []).length, 5, "4 presets + the slot");
+  assert.match(html, /role="menuitem"[^>]*>chatReact.profile/);
+  assert.doesNotMatch(html, /class="mc-model mc-controls"/);
+  assert.doesNotMatch(html, /profile-slot/, "the preset page opens from plus");
 });
 
 test("model controls handles opening, radio selection, arrows, Escape, Tab, outside click and a disabled preset", async () => {

@@ -83,6 +83,24 @@ const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is
   && Number.isSafeInteger((t as ToolCatalogItem).id) && (t as ToolCatalogItem).id > 0 && typeof (t as ToolCatalogItem).name === "string")
   .map((t) => ({ ...t, skillIds: Array.isArray(t.skillIds) ? t.skillIds.filter((id) => Number.isSafeInteger(id)) : [] }));
 
+export interface CatalogCursor { page: number; cursor?: string; sortVersion?: string }
+
+export async function readToolPage(position: CatalogCursor) {
+  const query = new URLSearchParams({ page: String(position.page), pageSize: "32" });
+  if (position.cursor && position.sortVersion) {
+    query.set("cursor", position.cursor);
+    query.set("sortVersion", position.sortVersion);
+  }
+  const response = await getPlatformRuntime().http.get<{
+    data?: unknown[]; hasMore?: boolean; nextCursor?: string; sortVersion?: string;
+  }>(`${TOOL_CATALOG_PATH}?${query}`);
+  const body = response.data;
+  const changed = !!position.sortVersion && position.sortVersion !== body.sortVersion;
+  const next = body.hasMore || body.nextCursor
+    ? { page: position.page + 1, cursor: body.nextCursor, sortVersion: body.sortVersion } : null;
+  return { items: wellFormed(Array.isArray(body.data) ? body.data : []), next, changed };
+}
+
 /** Every catalog page (Core caps pageSize at 100) until hasMore is false, at most `maxPages`; [] on 404/405 like listToolCatalog.
  * MUYU-365 exp98: page 1 tells the total, so the remaining pages are requested together instead of one by one. */
 export async function listToolCatalogPages(maxPages = 50): Promise<ToolCatalogItem[]> {

@@ -1,6 +1,7 @@
 /** zh-CN island strings; both locales share one lazy compressed chunk. */
 export const ZH_STRINGS = {
-    audioPreview: "播放音频",
+    drive: "云盘", moreFiles: "更多上传选项", make_image: "制作图片", make_video: "制作视频", exitMode: "退出创作模式",
+    loadMore: "加载更多", audioPreview: "播放音频",
     modelControls: "模型控件", turnUsage: "本轮用量", points: "积分", usageUnknown: "Toolgate额度未知", usageBilling: "计费中", usagePending: "待结算", usageSettled: "Toolgate额度",
     rateAge: "汇率 {n} 秒前", rateOld: "汇率为旧值", rateUnavailable: "汇率暂不可用", rateReason_rate_refresh_failed: "汇率刷新失败，暂用最近一次的汇率", rateReason_rate_never_fetched: "尚未取到汇率", rateReason_rate_expired: "汇率已过期", rateReason_rate_source_unconfigured: "未配置汇率来源", rateReason_points_unconfigured: "未配置贝壳",
     effort: "思考强度", effortDefault: "默认", effortLow: "低", effortMedium: "中", effortHigh: "高", effortOff: "关闭",

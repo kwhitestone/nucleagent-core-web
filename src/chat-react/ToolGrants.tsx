@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
-import { listToolCatalogPages, toolLabel, toolUnavailable, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
+import { readToolPage, type CatalogCursor, toolLabel, toolUnavailable, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
 import { getSessionBindings, updateSessionBindings, type SessionBindings } from "../addons/conversation/api/sessionBindings";
 import { toast } from "@/composables/useToast";
 import { CrossMark } from "./icons";
@@ -11,7 +11,7 @@ import type { Translate } from "./ChatApp";
  * A new chat keeps the set locally and sends it as POST /conversation `toolIds`; an existing one
  * reads and replaces its set through the session bindings contract (owner-only, revisioned, next
  * turn). Core re-checks every id (Selectable) and every call still passes the gateway checks.
- * Media job tools (direct image/video) and native audio (user-chosen material) are not grants.
+ * Media grants enable model use; native audio still requires user-selected material.
  */
 /** Both writers of this conversation's revisioned bindings (grants, media job tools) share each saved set. */
 export const BINDINGS_EVENT = "mc-bindings";
@@ -23,21 +23,43 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
   const generation = useRef(0);
   // Results land only while the conversation/account they were asked for is still current.
   const later = <T,>(run: (value: T) => void) => { const current = generation.current; return (value: T) => current === generation.current && run(value); };
-  const load = () => { if (!rows) listToolCatalogPages().then(later(setRows), later(() => setRows([]))); };
+  const cursor = useRef<CatalogCursor | null>({ page: 1 });
+  const loading = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = async () => {
+    const next = cursor.current;
+    if (!next || loading.current) return;
+    const current = generation.current;
+    loading.current = true;
+    setFailed(false);
+    try {
+      let page = await readToolPage(next);
+      if (generation.current !== current) return;
+      const restart = page.changed;
+      if (restart) page = await readToolPage({ page: 1 });
+      if (generation.current !== current) return;
+      cursor.current = page.next;
+      setRows(previous => [...(restart ? [] : previous ?? []), ...page.items]);
+    } catch {
+      if (generation.current === current) setFailed(true);
+    } finally {
+      if (generation.current === current) loading.current = false;
+    }
+  };
   useEffect(() => {
-    const reset = () => { generation.current++; setBound({ toolIds: [] }); setRows(undefined); };
+    const reset = () => { generation.current++; cursor.current = { page: 1 }; loading.current = false; setFailed(false); setBound({ toolIds: [] }); setRows(undefined); };
     reset();
     if (conversationId) getSessionBindings(conversationId).then(later(setBound), () => {});
     const saved = (event: Event) => setBound((event as CustomEvent<SessionBindings>).detail);
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
     window.addEventListener(BINDINGS_EVENT, saved);
-    return () => { window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
+    return () => { generation.current++; window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
   }, [conversationId]);
   const ids = bound.toolIds!, editable = !conversationId || !!bound.editable;
   useEffect(() => { if (ids.length) load(); }, [ids.length > 0]);
-  const tools = (rows ?? []).filter((row) => !toolUnavailable(row) && !row.mediaModel && !row.nativeCapability).map((row) => ({ ...row, label: toolLabel(row, locale) }));
+  const tools = (rows ?? []).filter((row) => !toolUnavailable(row) && !row.nativeCapability).map((row) => ({ ...row, label: toolLabel(row, locale) }));
   return {
-    ids, tools, editable, loaded: !!rows, load,
+    ids, tools, editable, loaded: !!rows, failed, more: !!cursor.current, load,
     enabled: tools.filter((tool) => ids.includes(tool.id)),
     toggle: (id: number) => {
       if (!editable || bound.busy) return;
@@ -52,8 +74,12 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
 export type ToolGrants = ReturnType<typeof useToolGrants>;
 type Props = { grants: ToolGrants; t: Translate };
 
-export const ToolGrantList = ({ grants, t }: Props) => grants.loaded && <div className="mc-grants">{grants.tools.length ? null : t("chatReact.optionUnavailable")}
+export const ToolGrantList = ({ grants, t }: Props) => <div className="mc-grants" onScroll={event => {
+  const list = event.currentTarget;
+  if (grants.more && list.scrollTop + list.clientHeight >= list.scrollHeight - 16) void grants.load();
+}}>{grants.loaded && !grants.tools.length && !grants.more && t("chatReact.optionUnavailable")}
   {grants.tools.map((tool) => <button key={tool.id} type="button" className="mc-menu-item" aria-pressed={grants.ids.includes(tool.id)} disabled={!grants.editable} onClick={() => grants.toggle(tool.id)}>{tool.label}</button>)}
+  {(grants.failed || grants.more && grants.loaded) && <button type="button" onClick={grants.load}>{t(grants.failed ? "common.retry" : "chatReact.loadMore")}</button>}
 </div>;
 
 export const ToolGrantChips = ({ grants, t }: Props) => grants.enabled.length > 0 && <div className="mc-chips" data-testid="mc-tool-grants">

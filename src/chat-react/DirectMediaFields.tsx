@@ -14,7 +14,9 @@ export function DirectMediaFields({ direct, params = {}, setParam, t, frame }: {
     ? <p key={name}>{field.description || name}{required.includes(name) ? " *" : ""}: {t("chatReact.mediaUnavailable")}</p>
     : <ParameterField key={name} field={field} name={name} t={t} value={params[name] ?? ""} required={required.includes(name)} onChange={event => setParam?.(name, event.target.value)} />;
   const fields = workflowFields(direct.schema, true).filter(([name, field]) => name !== direct.prompt && !field["x-owned-image"]);
-  const shown = fields.filter(([name]) => required.includes(name)), advanced = fields.filter(([name]) => !required.includes(name));
+  const primary = (name: string) => required.includes(name) || ["aspect_ratio", "aspectRatio", "aspect", "count", "duration", "resolution"].includes(name);
+  const shown = fields.filter(([name]) => primary(name));
+  const advanced = fields.filter(([name]) => !primary(name));
   const frames = frame && required.some(name => direct.schema.inputSchema.properties[name]?.["x-owned-image"]);
   return <>
     {frames && <p className="mc-media-note">{t("chatReact.mediaFrameHint")}</p>}

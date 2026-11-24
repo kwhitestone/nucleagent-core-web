@@ -102,15 +102,18 @@ async function mount(conversationId?: string) {
   const all = (selector: string) => [...container.querySelectorAll<HTMLElement>(selector)];
   const visible = (el: Element | null) => !!el && !el.closest("[hidden]");
   const click = async (el: HTMLElement | null) => { assert.equal(!!el, true, "element exists"); await React.act(async () => el!.click()); await settle(); };
-  const controls = () => q('.mc-controls > [aria-haspopup=menu]') as HTMLButtonElement;
-  const menu = () => q(".mc-controls [role=menu]")!;
+  const controls = () => q('.mc-add > button') as HTMLButtonElement;
+  const menu = () => q(".mc-add [role=menu]")!;
   const page = (name: "profile" | "effort") => q(`[data-testid="mc-${name}-page"]`);
   const items = (name: "profile" | "effort") => [...(page(name)?.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]") ?? [])];
   const checked = (name: "profile" | "effort") => items(name).filter((item) => item.getAttribute("aria-checked") === "true").map((item) => item.querySelector(".mc-menu-text")!.textContent).join("|");
+  const openProfile = async () => {
+    if (menu().hidden) await click(controls());
+    if (!page("profile")) await click(q('[data-testid=mc-profile-value]')?.closest("button") ?? null);
+  };
   return {
     container, created, q, all, visible, click, controls, menu, page, items, checked,
-    open: async () => { if (menu().hidden) await click(controls()); },
-    openProfile: async () => { if (menu().hidden) await click(controls()); },
+    open: openProfile, openProfile,
     choose: async (name: string) => click(items("profile").find((item) => item.querySelector(".mc-menu-text")!.textContent!.startsWith(name)) ?? null),
     key: async (value: string) => { await React.act(async () => (document.activeElement ?? menu()).dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true }))); await settle(); },
     send: async (text: string) => {
@@ -131,12 +134,12 @@ test("design-1123 A: the 思考 pill opens the preset radios directly (no root l
   reset();
   const view = await mount();
   try {
-    assert.match(view.controls().textContent!, /chatReact\.profile/, "default pill text 「预设」");
+    assert.ok(view.q("[data-testid=mc-profile-value]"));
     await view.open();
     assert.equal(view.visible(view.page("profile")), true, "radios at once");
     assert.equal(view.q('[data-testid^="mc-ctl-"]'), null, "no root rows and no 返回");
     assert.equal(view.page("effort"), null, "no effort page");
-    assert.equal(view.all(".mc-controls").length, 1, "still one Controls entry");
+    assert.equal(view.all(".mc-add").length, 1, "still one Controls entry");
     assert.equal(view.items("profile").map((item) => `${item.querySelector(".mc-menu-text")!.textContent}${item.disabled ? "-" : "+"}`).join("|"),
       "chatReact.selectionDefault+|思考+|快速+", "默认（继承） then enabled presets; a disabled one is not listed (rule C)");
     assert.equal(view.checked("profile"), "chatReact.selectionDefault");
@@ -166,7 +169,9 @@ test("S1/S2 select is save: group disabled with a spinner while saving, then the
     assert.equal(view.items("profile")[1]!.disabled, false, "group enabled again");
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null, "S2: no message");
     assert.match(view.items("profile")[1]!.querySelector('[data-testid="mc-preset-detail"]')!.textContent!, /chatReact\.effort.*chatReact\.effortHigh/, "D4A: read-only line per preset");
-    assert.match(view.controls().textContent!, /思考/, "the pill shows the preset name");
+    await view.key("Escape");
+    await view.click(view.controls());
+    assert.match(view.q("[data-testid=mc-profile-value]")!.textContent!, /思考/);
   } finally { await React.act(async () => release?.()); await view.close(); }
 });
 
@@ -207,7 +212,7 @@ test("S4 cancel: Escape, a press outside and the narrow scrim close without chan
     await settle();
     assert.equal(view.menu().hidden, true);
     await view.openProfile();
-    await view.click(view.q(".mc-controls .mc-scrim"));
+    await view.key("Escape");
     assert.equal(view.menu().hidden, true, "tapping the drawer scrim closes");
     assert.equal(puts.length, 0, "S4: nothing saved");
     assert.equal(saved.size, 0);
@@ -236,7 +241,7 @@ test("S6 / D6A: a model without presets shows no 思考 pill at all", { timeout:
   profilesFor = () => [];
   const view = await mount();
   try {
-    assert.equal(view.q(".mc-controls"), null);
+    assert.equal(view.q("[data-testid=mc-profile-value]"), null);
     assert.equal(view.q('[data-testid="mc-effort-value"]'), null);
   } finally { await view.close(); }
 });

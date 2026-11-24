@@ -120,7 +120,7 @@ test("picking a tool only enables it: no schema read, no parameter field, no run
     assert.ok(view.grant("飞书读取文档"));
     assert.ok(view.grant("网页搜索"));
     assert.equal(view.grant("暂停中"), undefined);
-    assert.equal(view.grant("图片"), undefined);
+    assert.ok(view.grant("图片"));
     assert.equal(document.activeElement, view.grant("飞书读取文档"), "focus moves to the first tool");
     // MUYU-365 exp98: media job schemas are prefetched when the conversation mounts; enabling a grant adds none.
     const before = reads.length;
@@ -154,14 +154,14 @@ test("a new chat sends the enabled set as toolIds with the user's words only; no
     assert.equal("toolInvocation" in view.created[0], false);
 
     await view.openTools();
-    await view.click(view.grant("飞书读取文档"));
+    await view.click(view.grant("图片"));
     await view.click(view.grant("网页搜索"));
     await view.click(view.grant("网页搜索"));
     await view.type("总结文档 ABC");
     await React.act(async () => view.q<HTMLButtonElement>('[data-testid="mc-send"]')!.click());
     await settle();
     assert.equal(view.created.length, 2);
-    assert.deepEqual(view.created[1].toolIds, [37]);
+    assert.deepEqual(view.created[1].toolIds, [9]);
     assert.equal(view.created[1].input, "总结文档 ABC");
     assert.equal("toolInvocation" in view.created[1], false, "the model passes the arguments, never the form");
     assert.equal("arguments" in view.created[1], false);

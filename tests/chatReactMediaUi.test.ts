@@ -621,3 +621,28 @@ test("fix-video-swallow: a refused queued send shows its reason, countdown and �
   assert.match(q.slotReason(toasts[0], tz), /发送被拒绝，已移除：参数错误/);
   await view.close();
 });
+
+test("V4 plus menu selects image mode, an example appends to the draft and × exits without sending", async () => {
+  const view = await fixture();
+  response = directResponse([]);
+  try {
+    await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {}, create: async () => { throw new Error("unexpected submit"); } }));
+    await settle();
+    await type(view, "draft");
+    const plus = view.container.querySelector<HTMLButtonElement>(".mc-add > button")!;
+    await React.act(async () => plus.click());
+    const image = view.container.querySelector<HTMLButtonElement>('.mc-add [data-testid="mc-gen-image"]');
+    assert.ok(image, "image mode belongs in the plus menu");
+    await React.act(async () => image.click());
+    await settle();
+    assert.equal(plus.getAttribute("aria-expanded"), "false");
+    const example = view.container.querySelector<HTMLButtonElement>(".mc-examples button")!;
+    assert.doesNotMatch(example.textContent!, /▶/);
+    await React.act(async () => example.click());
+    const draft = view.container.querySelector("textarea")!.value;
+    assert.match(draft, /^draft\s+\S/);
+    await React.act(async () => view.container.querySelector<HTMLButtonElement>(".mc-mode-chip button:last-child")!.click());
+    assert.equal(view.container.querySelector(".mc-mode-chip"), null);
+    assert.equal(view.container.querySelector("textarea")!.value, draft);
+  } finally { await view.close(); }
+});

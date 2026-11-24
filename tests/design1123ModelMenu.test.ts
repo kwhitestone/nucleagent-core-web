@@ -135,32 +135,14 @@ test("executor segmented control switches the executor without closing; a lone e
   } finally { await v.close(); }
 });
 
-test("最近使用: up to 3 per executor, stored locally, listed first and not repeated in the families", async () => {
-  localStorage.clear();
-  const v = await render();
-  try {
-    for (const name of ["qwen3.5-plus", "deepseek-v4-flash"]) {
-      await v.open();
-      await v.type(name);
-      await v.key("Enter");
-    }
-    await v.open();
-    const recent = [...v.container.querySelectorAll("[data-testid=mc-recent] [role=option] .mc-menu-text")].map((x) => x.firstChild!.textContent);
-    assert.deepEqual(recent, ["deepseek-v4-flash", "qwen3.5-plus"]);
-    assert.equal(v.names().filter((n) => n === "qwen3.5-plus").length, 1);
-    assert.equal(v.names()[0], "common.modelDefault", "默认模型 first when not searching");
-    await v.rerender({ backend: "claude-code" });
-    assert.equal(v.container.querySelector("[data-testid=mc-recent]"), null, "another executor has its own list");
-    assert.match(localStorage.getItem("mc.recentModels") ?? "", /codex/);
-  } finally { await v.close(); localStorage.clear(); }
-});
-
-test("families group chat models by name prefix; image keeps its own section", async () => {
-  const v = await render();
+test("scroll reveals the rest of the backend order", async () => {
+  const rows = Array.from({ length: 64 }, (_, i) => chat("choice-" + i));
+  const v = await render({ groups: [{ kind: "chat", options: rows }] });
   try {
     await v.open();
-    const groups = [...v.container.querySelectorAll<HTMLElement>("[data-testid=mc-model-menu] [role=group]")].map((g) => `${g.dataset.kind}:${g.getAttribute("aria-label")}`);
-    assert.deepEqual(groups, ["chat:model.types.chat", "chat:deepseek", "chat:qwen3.5", "image:model.types.image"]);
+    assert.deepEqual(v.names(), ["common.modelDefault", ...rows.slice(0,31).map(row => row.label)]);
+    await React.act(async () => v.q("[role=listbox]")!.dispatchEvent(new window.Event("scroll")));
+    assert.equal(v.names()[63], "choice-62");
   } finally { await v.close(); }
 });
 

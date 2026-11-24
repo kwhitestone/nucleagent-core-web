@@ -2,7 +2,8 @@ import type { IslandStrings } from "./islandStringsZh";
 
 /** en-US island strings; both locales share one lazy compressed chunk. */
 export const EN_STRINGS: IslandStrings = {
-    audioPreview: "Play audio",
+    drive: "Cloud files", moreFiles: "More upload options", make_image: "Create image", make_video: "Create video", exitMode: "Exit creation mode",
+    loadMore: "Load more", audioPreview: "Play audio",
     modelControls: "Model controls", turnUsage: "Turn usage", points: "Points", usageUnknown: "Settlement unknown", usageBilling: "Billing…", usagePending: "Settlement pending", usageSettled: "Turn settled",
     rateAge: "rate {n}s old", rateOld: "rate is stale", rateUnavailable: "rate unavailable", rateReason_rate_refresh_failed: "Rate refresh failed; using the last rate", rateReason_rate_never_fetched: "Rate not fetched yet", rateReason_rate_expired: "Rate expired", rateReason_rate_source_unconfigured: "No rate source configured", rateReason_points_unconfigured: "Points unit not configured",
     effort: "Reasoning effort", effortDefault: "Default", effortLow: "Low", effortMedium: "Medium", effortHigh: "High", effortOff: "Off",
