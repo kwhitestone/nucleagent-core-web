@@ -1,3 +1,4 @@
+import { catalogText } from "./catalogText";
 import { SESSION_CHANGE_EVENT } from "../contracts/platform-runtime";
 import { useEffect, useRef, useState } from "react";
 import { readToolPage, type CatalogCursor, toolLabel, toolUnavailable, coveredBySkills, effectiveToolIds, TOOL_CATALOG_PATH, type ToolCatalogItem } from "../addons/conversation/api/toolCatalog";
@@ -111,10 +112,10 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
   }, [conversationId]);
   const ids = bound.toolIds!, skillIds = bound.skillIds!, editable = !conversationId || !!bound.editable;
   useEffect(() => { if (ids.length) tools.load(); }, [ids.length > 0]);
-  const label = (row: Row) => toolLabel(row as ToolCatalogItem, locale);
-  const save = (next: { skillIds?: number[]; toolIds: number[] }) => {
+  const label = (row: Row) => catalogText(toolLabel(row as ToolCatalogItem, locale));
+  const save = (next: { skillIds?: number[]; toolIds?: number[] }) => {
     if (!editable || bound.busy) return;
-    if (!conversationId) return setBound({ skillIds, ...next });
+    if (!conversationId) return setBound({ skillIds, toolIds: ids, ...next });
     setBound({ ...bound, busy: true });
     updateSessionBindings(conversationId, { ...next, revision: bound.revision! })
       .then(later((saved: SessionBindings) => setBound(share(saved))), later((error: { status?: number; message?: string }) => {
@@ -133,7 +134,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
         note: locked ? `${t("common.toolCoveredBySkill")} · ${t("chatReact.bySkills").replace("{n}", String(by))}` : toolUnavailable(row) ? t("chatReact.optionUnavailable") : undefined };
     }) },
     skills: { ...skills, rows: (skills.rows ?? []).map(row => ({ id: row.id, label: label(row), on: skillIds.includes(row.id), off: false,
-      note: [row.config?.description, countLabel(row)].filter(Boolean).join(" · ") })) },
+      note: [catalogText(row.config?.description ?? ""), countLabel(row)].filter(Boolean).join(" · ") })) },
     editable, skillIds, picked: pickedSkills.map(row => ({ ...row, label: label(row) })),
     /** Hand-picked tools still sent (a picked skill does not already bring them). */
     ids: effectiveToolIds(ids, tools.known, skillIds),
@@ -146,7 +147,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
       const seen = skills.remember(id);
       const nextSkills = skillIds.includes(id) ? skillIds.filter(value => value !== id) : [...skillIds, id];
       const toolIds = conversationId ? effectiveToolIds(ids, tools.known, nextSkills).filter(tool => !seen?.linkedTools?.some(link => nextSkills.includes(id) && link.id === tool)) : ids;
-      save({ toolIds, skillIds: nextSkills });
+      save(toolIds.length === ids.length ? { skillIds: nextSkills } : { skillIds: nextSkills, toolIds });
     },
   };
 }
@@ -180,7 +181,7 @@ export const ToolGrantChips = ({ grants, t, skills = true }: Props & { skills?: 
     <span className="mc-grants-label">{t("chatReact.skillsAllowed")}</span>
     {grants.picked.map(skill => <Chip key={skill.id} {...skill} action={`${t("chatReact.remove")} ${skill.label}`} remove={grants.editable ? grants.toggleSkill : undefined}>
       <details><summary><span className="mc-chip-name" title={skill.label}>{skill.label}</span> · {grants.countLabel(skill)}</summary>
-        {skill.linkedTools?.map(tool => <div key={tool.id}>{tool.name} · {t(tool.ready ? "common.toolCoveredBySkill" : "chatReact.optionUnavailable")}</div>)}
+        {skill.linkedTools?.map(tool => <div key={tool.id}>{catalogText(tool.name)} · {t(tool.ready ? "common.toolCoveredBySkill" : "chatReact.optionUnavailable")}</div>)}
         {!!skill.hiddenTools && <div>{t("chatReact.hiddenTools").replace("{n}", String(skill.hiddenTools))}</div>}
       </details></Chip>)}
   </div>}

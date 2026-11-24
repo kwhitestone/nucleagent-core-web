@@ -24,7 +24,7 @@ const t = (key: string) => MAIN[key] ?? key;
 const skills = [
   { id: 1, name: "图像创作", toolCount: 2, linkedTools: [{id:10,name:"图生图",ready:true},{id:11,name:"文生图",ready:true}], hiddenTools:1, config: { description: "画图" } },
   { id: 2, name: "智能扩图", toolCount: 1 },
-  { id: 3, name: "写作助手", toolCount: 0 },
+  { id: 3, name: "写作助手", toolCount: 0, config: { description: "语音合成协议" } },
 ];
 const tools = [
   { id: 10, name: "图生图", status: "ready", skillIds: [1, 2] },
@@ -32,6 +32,7 @@ const tools = [
   { id: 12, name: "组图生成", status: "unavailable", reason: "held", skillIds: [1] },
   { id: 13, name: "飞书读取文档", status: "ready", skillIds: [] },
   { id: 14, name: "停用的", status: "disabled", reason: "manual_disabled", skillIds: [] },
+  { id: 16, name: "search_users · GitHub", status: "ready", skillIds: [] },
   { id: 15, name: "同步冲突的", status: "unavailable", reason: "conflict", skillIds: [] },
 ];
 let bindings = { skillIds: [] as number[], toolIds: [] as number[], editable: true, revision: "1", principal: "11" };
@@ -66,10 +67,10 @@ before(async () => {
   const runtime = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
   disposeRuntime = runtime.registerPlatformRuntime({ getAccessToken: () => "fixture", getSessionVersion: () => 1, http: {
     get: async (url: string) => { reads.push(url); return { data: response(url) }; },
-    put: async (url: string, body: { skillIds?: number[]; toolIds: number[] }) => {
+    put: async (url: string, body: { skillIds?: number[]; toolIds?: number[] }) => {
       writes.push({ method: "PUT", url, body });
       if (putError) throw putError;
-      bindings = { ...bindings, skillIds: body.skillIds ?? bindings.skillIds, toolIds: body.toolIds, revision: String(Number(bindings.revision) + 1) };
+      bindings = { ...bindings, skillIds: body.skillIds ?? bindings.skillIds, toolIds: body.toolIds ?? bindings.toolIds, revision: String(Number(bindings.revision) + 1) };
       return { data: { data: bindings } };
     },
     post: async (url: string, body: unknown) => {
@@ -231,7 +232,7 @@ test("an existing conversation saves skills with its tools; the conflict answer 
     assert.equal(view.row("智能扩图")!.getAttribute("aria-pressed"), "true");
     await view.click(view.row("图像创作"));
     const puts = writes.filter((w) => w.method === "PUT");
-    assert.deepEqual(puts[0].body, { skillIds: [2, 1], toolIds: [13], revision: "1" });
+    assert.deepEqual(puts[0].body, { skillIds: [2, 1], revision: "1" }, "a skill-only edit preserves even previously bound tools that are no longer selectable");
     putError = Object.assign(new Error("tool_covered_by_skill"), { status: 422 });
     await view.click(view.row("写作助手"));
     assert.ok(document.body.textContent!.includes("该工具已随所选技能提供，请取消其一"));
