@@ -89,7 +89,7 @@ test("MUYU-418 catalog: the React selector can ask for unavailable models too (i
   try {
     await catalog.modelCatalog.listTypedModels("chat");
     await catalog.modelCatalog.listTypedModels("chat", { includeUnavailable: true });
-    assert.deepEqual(params, [{ type: "chat" }, { type: "chat", includeUnavailable: 1 }]);
+    assert.deepEqual(params, [{ type: "chat", pageSize: 100 }, { type: "chat", pageSize: 100, includeUnavailable: 1 }]);
   } finally {
     unregister();
   }
@@ -266,4 +266,19 @@ test("W5 Providers page shows the type label on each chip and stays read-only", 
   assert.match(view, /typedChips\(/);
   assert.match(view, /model\.types\.\$\{chip\.type\}/);
   assert.match(view, /data-testid="provider-model-type"/);
+});
+
+test("typed catalog restarts a stale cursor and preserves gateway order", async () => {
+  const { registerPlatformRuntime } = await vite.ssrLoadModule("/src/contracts/platform-runtime.ts");
+  const calls: any[] = [];
+  const unregister = registerPlatformRuntime({ http: { get: async (_url: string, cfg: any) => {
+    calls.push(cfg.params);
+    if (calls.length === 2) throw new ViteApiError("catalog changed", "conflict", 409);
+    const version = calls.length === 1 ? "old" : "current";
+    return { data: { typesAvailable: true, data: [{ model: calls.length === 1 ? "obsolete" : calls.length === 3 ? "z" : "a" }], sortVersion: version, nextCursor: calls.length < 4 ? "1" : undefined } };
+  } } });
+  try {
+    assert.deepEqual((await catalog.modelCatalog.listTypedModels("image")).map((row: any) => row.model), ["z", "a"]);
+    assert.deepEqual(calls.map(params => [params.cursor, params.sortVersion]), [[undefined, undefined], ["1","old"], [undefined, undefined], ["1","current"]]);
+  } finally { unregister(); }
 });

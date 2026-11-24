@@ -42,6 +42,7 @@ export type ModelType = (typeof MODEL_TYPES)[number];
 
 /** One entry of `GET /api/v1/addons/provider/models?type=` (MT2-core). */
 export interface TypedModel {
+  onlineAt?: string;
   providerId: number;
   model: string;
   type: string;

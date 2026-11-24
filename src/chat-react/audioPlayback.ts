@@ -2,7 +2,7 @@ import type { FileChip } from "./attachments.ts";
 import { sha256Hex } from "../addons/conversation/api/fileDigest.ts";
 
 export async function readAudioBlob(file: FileChip, signal: AbortSignal, resolve: (id: string) => Promise<string>, read: (url: string, options: RequestInit) => Promise<Response> = fetch): Promise<Blob> {
-  if (!file.verified || file.mimeType !== "audio/wav" || !file.size || file.size < 44 || file.size > 65536 || !file.sha256 || !/^[a-f0-9]{64}$/.test(file.sha256)) throw new Error("Audio unavailable");
+  if (!file.verified || file.mimeType !== "audio/wav" || !file.size || file.size < 44 || !Number.isSafeInteger(file.size) || file.size > 8 * 1024 * 1024 || !file.sha256 || !/^[a-f0-9]{64}$/.test(file.sha256)) throw new Error("Audio unavailable");
   signal.throwIfAborted();
   const url = await resolve(file.id);
   signal.throwIfAborted();

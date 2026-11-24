@@ -86,7 +86,7 @@ const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is
 export interface CatalogCursor { page: number; cursor?: string; sortVersion?: string }
 
 export async function readToolPage(position: CatalogCursor) {
-  const query = new URLSearchParams({ page: String(position.page), pageSize: "32" });
+  const query = new URLSearchParams({ page: String(position.page), pageSize: "32", cursorMode: "true" });
   if (position.cursor && position.sortVersion) {
     query.set("cursor", position.cursor);
     query.set("sortVersion", position.sortVersion);

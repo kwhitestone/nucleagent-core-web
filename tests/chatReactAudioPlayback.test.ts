@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readAudioBlob } from "../src/chat-react/audioPlayback.ts";
 
-const wav = new Uint8Array(48);
+const wav = new Uint8Array(136572);
 wav.set(new TextEncoder().encode("RIFF"));
-new DataView(wav.buffer).setUint32(4, 40, true);
+new DataView(wav.buffer).setUint32(4, wav.length - 8, true);
 wav.set(new TextEncoder().encode("WAVEfmt "), 8);
 const hash = Buffer.from(await crypto.subtle.digest("SHA-256", wav)).toString("hex");
-const file = { id: "owned-file", name: "sample.wav", verified: true, mimeType: "audio/wav", size: 48, sha256: hash };
+const file = { id: "owned-file", name: "sample.wav", verified: true, mimeType: "audio/wav", size: wav.length, sha256: hash };
 
 test("audio playback reads only bounded verified owner storage bytes and verifies the hash", async () => {
   const calls: string[] = [];
@@ -18,8 +18,8 @@ test("audio playback reads only bounded verified owner storage bytes and verifie
     return new Response(wav, { headers: { "content-type": "audio/wav" } });
   };
   const resolve = async (id: string) => { assert.equal(id, "owned-file"); return "https://storage.example/file"; };
-  assert.equal((await readAudioBlob(file, new AbortController().signal, resolve, read)).size, 48);
-  for (const change of [{ verified: false }, { size: 65537 }, { sha256: undefined }, { mimeType: "text/html" }]) {
+  assert.equal((await readAudioBlob(file, new AbortController().signal, resolve, read)).size, wav.length);
+  for (const change of [{ verified: false }, { size: (8 << 20) + 1 }, { sha256: undefined }, { mimeType: "text/html" }]) {
     await assert.rejects(readAudioBlob({ ...file, ...change }, new AbortController().signal, resolve, read));
   }
   assert.equal(calls.length, 1);
