@@ -49,7 +49,7 @@ import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type File
 import { toSuggestions } from "./suggestions";
 import { fetchHomeSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
-import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, effortEvidence, type ChatStrategy } from "./chatStrategy";
+import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
 import { withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
@@ -419,9 +419,10 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
       }}>
         <div className="mc-tools-heading"><strong>{t(list === "skills" ? "chatReact.skills" : "chatReact.toolGrant")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
-        {list === "skills"
-          ? <PagedList key="skills" list={grants.skills} editable={grants.editable} toggle={grants.toggleSkill} t={t} search={t("chatReact.searchSkills")} />
-          : <><PagedList key="tools" list={grants.tools} editable={grants.editable} toggle={grants.toggle} t={t} search={t("chatReact.searchTools")} />{workflow}</>}
+        <PagedList key={list} list={grants[list]} editable={grants.editable} t={t}
+          toggle={list === "skills" ? grants.toggleSkill : grants.toggle}
+          search={t(list === "skills" ? "chatReact.searchSkills" : "chatReact.searchTools")} />
+        {list === "tools" && workflow}
       </div>}
       <ComposerPrimitive.Root>
         <ComposerAttachmentChips t={t} />
@@ -1120,7 +1121,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
   } : group);
   // design-1123 C: an executor-incompatible chat model is not listed (was: toast on pick).
-  return { groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), effortEvidence: effortEvidence(strategy, model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
+  return { groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

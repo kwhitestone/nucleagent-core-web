@@ -318,11 +318,11 @@ test("D4A: no temperature/top_p/max output editing anywhere in Controls", { time
 
 test("design copy (draft recommended wording) and the narrow bottom drawer", () => {
   const zh = readFileSync("src/chat-react/islandStringsZh.ts", "utf8");
-  for (const [key, text] of [["profile", "预设"], ["selectionDefault", "默认（继承）"], ["profileNote", "自动保存；预设由管理员在「模型与预设」中配置"],
-    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"], ["presetProtocolDefault", "默认协议"]]) {
+  for (const [key, text] of [["profile", "预设"], ["selectionDefault", "默认（继承）"], ["profileNote", "选择后自动保存"],
+    ["profileRolledBack", "未保存，已恢复原选择"], ["profileError", "预设加载失败"]]) {
     assert.match(zh, new RegExp(`\\b${key}: "${text}"`), `${key} = ${text}`);
   }
-  assert.doesNotMatch(zh, /\b(protocol|level|profileEffortOff|selectionPickProtocol): "/, "design-1123 A: 调用协议/思考档位 copy removed");
+  assert.doesNotMatch(zh, /\b(presetProtocolDefault|protocol|level|profileEffortOff|selectionPickProtocol): "/, "design-1123 A: 调用协议/思考档位 copy removed");
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   const narrow = css.slice(css.indexOf("@media (max-width: 520px)"));
   assert.match(narrow, /\.mc-controls \.mc-menu \{[^}]*position: fixed;[^}]*bottom: 0;[^}]*max-height: 75vh;/, "full-width bottom drawer, ≤75% viewport");

@@ -17,6 +17,12 @@ export default defineConfig(({ mode }) => {
   return {
     // React only for the MUYU-365 chat island; every .vue file stays on plugin-vue.
     plugins: [vue(), react({ include: /src\/chat-react\/.*\.tsx$/ }), {
+      // The chat input has a fixed one-to-eight-line layout. Keep the composer handlers
+      // and let its CSS grid size the textarea as text wraps.
+      name: "chat-composer-textarea", enforce: "pre",
+      resolveId: (id, importer) => id === "react-textarea-autosize" && importer?.endsWith("/@assistant-ui/react/dist/primitives/composer/ComposerInput.js")
+        ? resolve(process.cwd(), "src/chat-react/ComposerTextarea.tsx") : null,
+    }, {
       // MUYU-365 exp86c: aui's message conversion is the island's one user of assistant-stream/utils; every island
       // tool-call part carries `args`, so it never repairs partial JSON (tests/auiSessionStubs.test.ts pins this).
       name: "aui-partial-json-stand-in", enforce: "pre",

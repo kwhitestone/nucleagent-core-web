@@ -339,7 +339,12 @@
 .mc-composer:focus-within {
   border-color: var(--border-strong);
 }
+.mc-input-wrap { display: grid; grid-template-columns: minmax(0, 1fr); }
+.mc-input-wrap > .mc-input { grid-area: 1 / 1; }
+.mc-input-wrap > span { visibility: hidden; white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden; }
 .mc-input {
+  min-height: calc(1.6em + 8px);
+  max-height: calc(12.8em + 8px);
   display: block;
   width: 100%;
   box-sizing: border-box;

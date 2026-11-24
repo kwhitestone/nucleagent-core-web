@@ -136,11 +136,12 @@ test("composer tools keep draft and audio parameters across menu, keyboard and c
     invocation: { toolId: 37, revision: "7" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "voice"], properties: { input: { type: "string", maxLength: 256 }, voice: { type: "string", maxLength: 64 } } },
   } });
   const submitted: unknown[] = [];
+  const list = { rows: [], loaded: true, search: "", load: () => {}, setSearch: () => {} };
   function Harness({ existing = false }: { existing?: boolean }) {
     const runtime = aui.useExternalStoreRuntime(externalStore(createConversationState("7"), { send: async () => {}, stop: async () => {} }));
     return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null,
       React.createElement(app.Composer, { t, placeholder: "p", settings: { groups: [], model: null, backend: null, busy: false, pick: async () => {} } as never,
-        grants: !existing && { tools: [], ids: [], enabled: [], editable: true, loaded: true, load: () => {}, toggle: () => {} },
+        grants: existing ? undefined : { tools: list, skills: list, ids: [], picked: [], enabled: [], editable: true, toggle: () => {}, toggleSkill: () => {} } as never,
         workflow: !existing && React.createElement(WorkflowForm, { t, submit: async request => { submitted.push(request); } }),
       })));
   }

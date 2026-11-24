@@ -73,9 +73,7 @@ export async function listToolCatalog(): Promise<ToolCatalogItem[]> {
   try {
     const r = await getPlatformRuntime().http.get<{ data?: unknown }>(TOOL_CATALOG_PATH);
     const rows: unknown[] = Array.isArray(r.data?.data) ? r.data.data : [];
-    return rows.filter((t): t is ToolCatalogItem => !!t && typeof t === "object"
-      && Number.isSafeInteger((t as ToolCatalogItem).id) && (t as ToolCatalogItem).id > 0 && typeof (t as ToolCatalogItem).name === "string")
-      .map((t) => ({ ...t, skillIds: Array.isArray(t.skillIds) ? t.skillIds.filter((id) => Number.isSafeInteger(id)) : [] }));
+    return wellFormed(rows);
   } catch (e) {
     if ([404, 405].includes((e as { status?: number } | null)?.status as number)) return [];
     throw e;

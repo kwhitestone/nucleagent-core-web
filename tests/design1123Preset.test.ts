@@ -87,12 +87,12 @@ test("the 思考 pill opens the preset radios directly: no root rows, no protoco
   } finally { await React.act(async () => view.root.unmount()); }
 });
 
-test("each preset shows one line: level · protocol (默认协议 when none)", async () => {
+test("each preset describes the thinking level in ordinary words", async () => {
   const view = await render({});
   try {
     await view.open();
     const details = [...view.container.querySelectorAll("[data-testid=mc-preset-detail]")].map((d) => d.textContent);
-    assert.deepEqual(details, ["chatReact.effort chatReact.effortMedium · chatReact.presetProtocolDefault", "chatReact.effort chatReact.effortHigh · responses"]);
+    assert.deepEqual(details, ["chatReact.effort chatReact.effortMedium", "chatReact.effort chatReact.effortHigh"]);
   } finally { await React.act(async () => view.root.unmount()); }
 });
 

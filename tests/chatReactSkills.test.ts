@@ -22,7 +22,7 @@ const MAIN: Record<string, string> = { "agents.mine.errToolCovered": "该工具�
 const t = (key: string) => MAIN[key] ?? key;
 
 const skills = [
-  { id: 1, name: "图像创作", toolCount: 2, config: { description: "画图" } },
+  { id: 1, name: "图像创作", toolCount: 2, linkedTools: [{id:10,name:"图生图",ready:true},{id:11,name:"文生图",ready:true}], hiddenTools:1, config: { description: "画图" } },
   { id: 2, name: "智能扩图", toolCount: 1 },
   { id: 3, name: "写作助手", toolCount: 0 },
 ];
@@ -144,6 +144,12 @@ test("skills and tools are two equal + menu entries; each skill row says how man
     assert.deepEqual(view.skillChips(), ["图像创作"]);
     assert.equal(panel.contains(view.q('[data-testid="mc-skill-picks"]')), false, "picked chips are not under the panel");
     assert.ok(composerRoot.contains(view.q('[data-testid="mc-skill-picks"]')));
+    const detail = view.q<HTMLDetailsElement>('[data-testid="mc-skill-picks"] details')!;
+    assert.ok(detail);
+    await view.click(detail.querySelector("summary"));
+    assert.match(detail.textContent!, /图生图/);
+    assert.match(detail.textContent!, /另有 1 个暂不可用/);
+    assert.equal(detail.querySelector("input,select,textarea"),null);
     assert.equal(panel.hidden, false, "the panel stays open for more picks");
   } finally { await view.close(); }
 });
