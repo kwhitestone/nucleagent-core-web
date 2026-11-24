@@ -82,7 +82,7 @@ export const messages = {
   addSkill: ["添加技能", "Add skill"], searchSkills: ["搜索技能", "Search skills"], removeSkill: ["移除", "Remove"],
   noSkills: ["还没有绑定技能", "No skills bound yet"],
   selectedTools: ["选用工具", "Selected tools"], selectedToolsNote: ["只列出已启用、可选的工具；已随所选技能提供的工具无需再选。", "Only enabled, selectable tools; tools a selected skill brings need not be picked."],
-  toolCovered: ["已随技能提供", "Comes with a skill"], toolUnavailable: ["不可用", "Unavailable"], toolCatalogError: ["工具目录加载失败", "Tool catalog failed to load"], skillDisabled: ["已停用，不可新增", "Disabled; cannot be added"],
+  toolCovered: ["已随所选技能提供", "Already provided by a selected skill"], toolUnavailable: ["不可用", "Unavailable"], toolCatalogError: ["工具目录加载失败", "Tool catalog failed to load"], skillDisabled: ["已停用，不可新增", "Disabled; cannot be added"],
   preview: ["预览", "Preview"], previewIm: ["IM 中的样子", "How it looks in IM"],
   previewNote: ["预览不调用模型，仅示意名片与语气位置。", "Preview does not call the model; it only shows the card and reply placement."],
   previewUser: ["你好，介绍一下你自己？", "Hi, could you introduce yourself?"],
@@ -110,6 +110,8 @@ export const messages = {
   genInherit: ["不指定（用平台默认）", "Not set (platform default)"], genVerified: ["已实测", "Verified"], genUnverified: ["未验证", "Unverified"],
   genDelisted: ["不可用（目录已下架）", "Unavailable (removed from catalog)"],
   model_not_supported: ["该生成模型不可用", "This generation model is not available"],
+  // Same wording as the user wizard (i18n agents.mine.errToolCovered).
+  toolCoveredBySkill: ["该工具已随所选技能提供，请取消其一", "That tool comes with a selected skill; untick one of them"],
 } as const;
 export type MessageKey = keyof typeof messages;
 export function text(key: MessageKey, locale: string): string {
@@ -122,7 +124,7 @@ const errorKeys: Record<string, MessageKey> = {
   agent_identity_unavailable: "identityFailed", agent_identity_binding_conflict: "identityFailed",
   agent_identity_update_failed: "identityFailed", agent_definition_active: "mustDisable",
   agent_definition_deleted: "deletedLocked", invalid_definition_patch: "invalidPatch", model_type_mismatch: "modelMismatch",
-  model_not_supported: "model_not_supported",
+  model_not_supported: "model_not_supported", tool_covered_by_skill: "toolCoveredBySkill",
 };
 /** Maps a failed request to a user-facing reason; unknown failures keep the generic message. */
 export function errorKey(error: unknown): MessageKey {

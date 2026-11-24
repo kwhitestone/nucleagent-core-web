@@ -15,6 +15,7 @@ import { DefinitionError, type Catalog, type DefinitionApi, type Detail, type Im
 import { DefinitionEditor, sameImpact } from "./state";
 import { definitionFields, readPath, reconcileBindings, validateChanges } from "./draft";
 import { errorKey, text, type MessageKey } from "./messages";
+import { effectiveToolIds, type ToolCatalogItem } from "../../../conversation/api/toolCatalog";
 
 const props = defineProps<{ api: DefinitionApi; detail: Detail; catalog?: Catalog }>();
 const emit = defineEmits<{ close: []; changed: [detail: Detail] }>();
@@ -79,9 +80,13 @@ function editTool(id: number) {
 async function toolChanged() {
   await Promise.all([refresh(), toolBindings.value?.refresh()]);
 }
+// Wizard semantics: a tool a selected skill brings is never kept as a pick (server: 422 tool_covered_by_skill);
+// a legacy covered pair is stripped on the first binding edit, field-only saves leave it alone.
+const toolMetadata = ref<ToolCatalogItem[]>([]);
 function selectTool(id: number, checked: boolean) {
   if (!canPickTools.value) return;
-  editor.tools = checked ? [...new Set([...selectedTools.value, id])] : selectedTools.value.filter(x => x !== id);
+  const next = checked ? [...new Set([...selectedTools.value, id])] : selectedTools.value.filter(x => x !== id);
+  editor.tools = effectiveToolIds(next, toolMetadata.value, selectedSkills.value);
 }
 const impactKeys = ["instances", "conversations", "conversations_7d", "skill_bindings", "im_groups", "deliverables"] as const;
 
@@ -126,6 +131,8 @@ function selectSkill(skillId: number, checked: boolean) {
   if (checked) selected.push(skillId);
   editor.bindings = reconcileBindings(editor.bindings ?? record.value.skillBindings, selected,
     [...(props.catalog?.skills ?? []), ...skillMetadata.value].map(skill => ({ skillId: skill.id, installPath: skill.defaultInstallPath ?? "" })));
+  const kept = effectiveToolIds(selectedTools.value, toolMetadata.value, selectedSkills.value);
+  if (canPickTools.value && kept.length !== selectedTools.value.length) editor.tools = kept;
 }
 function resolve(choices: Record<string, "mine" | "current">) {
   try { editor.resolve(choices, bindingChoice.value, toolChoice.value); bindingChoice.value = undefined; toolChoice.value = undefined; }
@@ -332,10 +339,10 @@ onUnmounted(() => clearTimeout(toastTimer));
           <SkillPicker v-else :skills="availableSkills" :selected="selectedSkills" :editable="writable && record.capabilities.writeSkillBindings" :install-path="installPath" @metadata="skillMetadata = $event" @toggle="selectSkill" />
           <h4>{{ label('tools') }}</h4>
           <p class="notice warn small"><TriangleAlert :size="14" aria-hidden="true" />{{ label('sharedNote') }}</p>
-          <ToolBindings v-if="record.capabilities.readTools" ref="toolBindings" :rows="[]" :selected="selectedTools" :editable="canPickTools"
+          <ToolBindings v-if="record.capabilities.readTools" ref="toolBindings" :rows="[]" :selected="selectedTools" :editable="canPickTools" omit-covered
             :skill-ids="selectedSkills" :covered-label="label('toolCovered')" :unavailable-label="label('toolUnavailable')"
             :manageable="!locked && record.capabilities.readTools" :edit-label="label('edit')"
-            data-testid="admin-tool-bindings" @toggle="selectTool" @edit="editTool" />
+            data-testid="admin-tool-bindings" @toggle="selectTool" @edit="editTool" @metadata="toolMetadata = $event" />
         </template>
       </template>
       <template #lifecycle="{ groupId }">
