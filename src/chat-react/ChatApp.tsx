@@ -385,7 +385,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
   const tools = useRef<HTMLDivElement>(null);
   const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
-  useEffect(() => { if (toolsOpen && !tools.current?.contains(document.activeElement)) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
+  useEffect(() => { if (toolsOpen && document.activeElement !== tools.current?.querySelector("input[type=search]")) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
   useEffect(() => {
     const reset = () => { setToolsOpen(null); menu.setOpen(false); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
