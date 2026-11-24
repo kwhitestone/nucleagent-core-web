@@ -10,5 +10,7 @@ const wording: Record<string, string> = {
 };
 const terms = new RegExp(Object.keys(wording).join("|"), "gi");
 export function catalogText(value: string): string {
-  return value.replace(terms, term => wording[term.toLowerCase()]!).replace(/(?<=[a-z0-9])_(?=[a-z])/gi, " ");
+  return value.replace(terms, term => wording[term.toLowerCase()]!)
+    .replaceAll("_", " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2");
 }

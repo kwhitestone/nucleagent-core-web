@@ -12,7 +12,7 @@ import { useMessagePartText, useSmooth } from "@assistant-ui/react";
 import { renderMarkdown } from "@/addons/conversation/task-conversation/markdown";
 import { formatReadout } from "./ttft";
 import {
-  ActionBarPrimitive, AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, SuggestionPrimitive, ThreadPrimitive,
+  AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, QueueItemPrimitive, ThreadPrimitive,
 } from "./auiPrimitives";
 import { listProviders, listAllTypedModels, type Provider, type TypedModel } from "@/contracts/model-catalog";
 import { getConversation, listExecutionBackends, updateConversationSettings } from "@/addons/conversation/api/conversation";
@@ -46,8 +46,7 @@ import {
 } from "./icons";
 import { useCoreConversation } from "./useCoreConversation";
 import { downloadFile, fileKind, formatSize, storageAttachmentAdapter, type FileChip } from "./attachments";
-import { toSuggestions } from "./suggestions";
-import { fetchHomeSuggestions } from "./suggestions";
+import { fetchHomeSuggestions, toSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
@@ -221,13 +220,13 @@ export function ChatApp(props: ChatProps) {
       <ThreadPrimitive.Root className="mc-root" data-conversation-key={conversationId ?? ""}>
         <ScrollViewport conversationId={conversationId} ready={!conversationId || (core?.state.conversationKey === conversationId && core.controller.authoritativeReady.value)} className="mc-viewport">
           <AuiIf condition={(s) => s.thread.hasEarlier}>
-            <ThreadPrimitive.LoadEarlier className="mc-earlier">{t("chatReact.earlier")}</ThreadPrimitive.LoadEarlier>
+            <button type="button" className="mc-earlier" onClick={() => runtime.thread.loadEarlier()}>{t("chatReact.earlier")}</button>
           </AuiIf>
-          <ThreadPrimitive.Empty>
+          <AuiIf condition={state => state.thread.isEmpty}>
             {conversationId
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
-          </ThreadPrimitive.Empty>
+          </AuiIf>
           <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} selection={selectable} />}</ThreadPrimitive.Messages>
         </ScrollViewport>
           <div className="mc-footer">
@@ -248,18 +247,18 @@ export function ChatApp(props: ChatProps) {
 
 /** New-chat empty state: greeting + the home suggestion cards (they only fill the composer, never send). */
 export function Welcome({ t }: { t: Translate }) {
+  const aui = useAui();
+  const suggestions = useAuiState(s => s.suggestions.suggestions);
+  const disabled = useAuiState(s => s.thread.isDisabled);
   return (
     <div className="mc-welcome">
       <h2 className="mc-welcome-title">{t("chatReact.greeting")}</h2>
       <div className="mc-suggestions">
-        <ThreadPrimitive.Suggestions>
-          {() => (
-            <SuggestionPrimitive.Trigger className="mc-suggestion" send={false}>
-              <SuggestionPrimitive.Title className="mc-suggestion-title" />
-              <SuggestionPrimitive.Description className="mc-suggestion-desc" />
-            </SuggestionPrimitive.Trigger>
-          )}
-        </ThreadPrimitive.Suggestions>
+        {suggestions.map((card, index) => <button type="button" key={index} className="mc-suggestion"
+          disabled={disabled} onClick={() => aui.composer().setText(card.prompt)}>
+          <span className="mc-suggestion-title">{card.title}</span>
+          <span className="mc-suggestion-desc">{card.label}</span>
+        </button>)}
       </div>
     </div>
   );
@@ -365,11 +364,11 @@ function MediaPill({ kind, t, settings, running, close }: { kind: "image" | "vid
   return <button type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={on} aria-busy={on && settings.mediaPending || undefined}
     aria-disabled={settings.busy || running} disabled={settings.busy || running} data-testid={`mc-gen-${kind}`}
     onClick={() => { if (!on) settings.enter?.(kind); close(); }}>
-    {kind === "image" ? <ImageMark /> : <VideoMark />}{t(`chatReact.make_${kind}`)}{on && <CheckMark size={16} />}
+    {kind === "image" ? <ImageMark /> : <VideoMark />}{t(`chatReact.make_${kind}`)}<small className="mc-entry-tail">{t("chatReact.directAction")}</small>{on && <CheckMark size={16} />}
   </button>;
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { compatible?(choice: Choice): boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { independentTools?: number; compatible?(choice: Choice): boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
@@ -380,7 +379,12 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const [section, setSection] = useState<"home" | "files" | "drive" | "preset">("home");
   const menu = useMenu(false, section);
   const aui = useAui();
-  const openMenu = () => { setToolsOpen(false); setSection("home"); menu.setOpen(true); };
+  const openMenu = () => {
+    setToolsOpen(false);
+    setSection("home");
+    menu.setOpen(true);
+    if (grants && !grants.skills.loaded && !settings.media) void grants.skills.load();
+  };
   const item = (key: string, action: () => void) => <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={action}>{t(key)} ›</button>;
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
@@ -388,12 +392,25 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const openList = (which: "skills" | "tools") => { menu.setOpen(false); setList(which); if (!grants![which].loaded) void grants![which].load(); setToolsOpen(true); };
   const tools = useRef<HTMLDivElement>(null);
   const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
-  useEffect(() => { if (toolsOpen && document.activeElement !== tools.current?.querySelector("input[type=search]")) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, list, grants?.[list].loaded]);
+  useEffect(() => {
+    const panel = tools.current;
+    if (toolsOpen && grants?.[list].loaded && panel && !panel.contains(document.activeElement)) {
+      (panel.querySelector<HTMLElement>(".mc-grants button:not(:disabled)") ?? panel.querySelector("input"))?.focus();
+    }
+  }, [toolsOpen, list, grants?.[list].loaded]);
   useEffect(() => {
     const reset = () => { setToolsOpen(null); menu.setOpen(false); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
     return () => window.removeEventListener(SESSION_CHANGE_EVENT, reset);
   }, []);
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (!tools.current?.parentElement?.contains(event.target as Node)) setToolsOpen(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [toolsOpen]);
   const hasImage = useAuiState((s) => s.composer.attachments.some((attachment) => attachment.type === "image" || attachment.contentType?.startsWith("image/")));
   const running = useAuiState((s) => s.thread.isRunning);
   const empty = useAuiState((s) => s.composer.isEmpty);
@@ -415,11 +432,12 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
           <span>{settings.media?.kind === "video" && "▷ "}{title}</span>
         </button>)}</div>}
       <div className="mc-composer">
-      {grants && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
+      {grants && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" role="region" aria-label={t(list === "skills" ? "chatReact.skills" : "chatReact.toolGrant")} hidden={!toolsOpen} onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
       }}>
+        <button type="button" className="mc-list-back" onClick={openMenu}>‹ {t("common.back")}</button>
         <div className="mc-tools-heading"><strong>{t(list === "skills" ? "chatReact.skills" : "chatReact.toolGrant")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
-        <PagedList key={list} list={grants[list]} editable={grants.editable} t={t}
+        <PagedList key={list} toolList={list === "tools"} list={grants[list]} editable={grants.editable} t={t}
           toggle={list === "skills" ? grants.toggleSkill : grants.toggle}
           search={t(list === "skills" ? "chatReact.searchSkills" : "chatReact.searchTools")} />
         {list === "tools" && workflow}
@@ -468,11 +486,19 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
               {section === "home" && <>
                 {item("chatReact.moreFiles", () => setSection("files"))}
                 <hr />
-                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => openList("skills")}><AssistantMark />{t("chatReact.skills")}</button>}
-                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => openList("tools")}><ToolMark />{t("chatReact.toolGrant")}</button>}
+                {grants && !settings.media && (["skills", "tools"] as const).map(kind => {
+                  const name = t(kind === "skills" ? "chatReact.skills" : "chatReact.toolGrant");
+                  const count = kind === "skills" ? grants.skills.catalogTotal : settings.independentTools;
+                  const picked = kind === "skills" ? grants.skillIds.length : grants.ids.length;
+                  return <button key={kind} type="button" role="menuitem" tabIndex={-1} className="mc-menu-item mc-catalog-entry" aria-label={name} onClick={() => openList(kind)}>
+                    {kind === "skills" ? <AssistantMark /> : <ToolMark />}{name}
+                    <small className="mc-entry-tail">{picked > 0 && `${t("chatReact.picked")} ${picked} `}{count !== undefined && t("chatReact.items").replace("{n}", String(count))}</small>
+                  </button>;
+                })}
                 {profile && !settings.media && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" disabled={settings.busy} onClick={() => setSection("preset")}>
-                  {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name}</span>{profile.stale && " ⚠"} ›
+                  {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name || t("chatReact.effortDefault")}</span>{profile.stale && " ⚠"} ›
                 </button>}
+                {(settings.groups.some(group => group.kind === "image" || group.kind === "video")) && <hr />}
                 <MediaPill kind="image" t={t} settings={settings} running={running} close={menu.close} />
                 <MediaPill kind="video" t={t} settings={settings} running={running} close={menu.close} />
               </>}
@@ -757,10 +783,12 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
         <Parts t={t} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
-      <ActionBarPrimitive.Root className="mc-actions" aria-busy={actions?.busy} hideWhenRunning autohide="never">
-        <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
-        {isUser && stamp}
-      </ActionBarPrimitive.Root>
+      <AuiIf condition={state => !state.thread.isRunning && state.message.runState !== "in-progress"}>
+        <div className="mc-actions" aria-busy={actions?.busy}>
+          <MessageActions actions={actions} t={t} isUser={isUser} copy={<CopyAction t={t} />} />
+          {isUser && stamp}
+        </div>
+      </AuiIf>
       {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence, activity !== null)} />}
       {!isUser && selection && conversationId && turnId && <Effective t={t} conversationId={conversationId} stepId={turnId} />}
     </MessagePrimitive.Root>
@@ -992,16 +1020,17 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   // conversation's tools): a cataloged job tool is bound on selection when the owner may edit (`bind`), else it is
   // `false` (not enabled here). MUYU-365 exp98: read once when the conversation mounts (and after a session change),
   // so a pill switches at once; only the newest read is shown. A failed read closes all.
-  const [wired, setWired] = useState<{ key?: string; found: Wired }>();
+  const [wired, setWired] = useState<{ key?: string; independentTools?: number; found: Wired }>();
   const [params, setParams] = useState<Record<string, string>>({});
   const [mediaPending, setPending] = useState(false);
   const mediaRun = useRef(0);
-  const wiring = useRef<{ key?: string; read: Promise<Wired>; bound?: SessionBindings | null }>(undefined);
+  const wiring = useRef<{ key?: string; independentTools?: number; read: Promise<Wired>; bound?: SessionBindings | null }>(undefined);
   const loadWired = (fresh?: unknown) => {
     if (fresh || !wiring.current || wiring.current.key !== conversationId) {
       const key = conversationId;
       const current: NonNullable<typeof wiring.current> = { key, read: Promise.all([listToolCatalogPages(), key ? getSessionBindings(key) : null]).then(([rows, bound]) => {
         current.bound = bound;
+        current.independentTools = rows.filter(row => !row.nativeCapability && !row.skillIds?.length && (!row.status || row.status === "ready")).length;
         const names = [...new Set(rows.flatMap((row) => row.imported && row.status === "ready" && row.mediaModel ? [row.mediaModel] : []))];
         const mine = bound ? rows.filter((row) => bound.toolIds.includes(row.id)) : rows;
         return Promise.all(names.map(async (name) => {
@@ -1011,7 +1040,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
         }));
       }).then(Object.fromEntries, () => ({})) };
       wiring.current = current;
-      void current.read.then((found) => { if (wiring.current === current) setWired({ key, found }); });
+      void current.read.then((found) => { if (wiring.current === current) setWired({ key, found, independentTools: current.independentTools }); });
     }
     return wiring.current!.read;
   };
@@ -1121,7 +1150,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
   } : group);
   // design-1123 C: an executor-incompatible chat model is not listed (was: toast on pick).
-  return { groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
+  return { independentTools: wired?.key === conversationId ? wired?.independentTools : undefined, groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

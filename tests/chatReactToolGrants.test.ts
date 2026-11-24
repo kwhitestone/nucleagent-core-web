@@ -90,7 +90,7 @@ async function mount(conversationId?: string) {
     container, created, q, more, grant, render,
     openTools: async () => {
       await React.act(async () => more().click());
-      const item = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent === "chatReact.toolGrant");
+      const item = [...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.getAttribute("aria-label") === "chatReact.toolGrant");
       assert.ok(item, "tool entry in the + menu");
       await React.act(async () => item.click());
       await settle();

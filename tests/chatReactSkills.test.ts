@@ -23,7 +23,7 @@ const t = (key: string) => MAIN[key] ?? key;
 
 const skills = [
   { id: 1, name: "图像创作", toolCount: 2, linkedTools: [{id:10,name:"图生图",ready:true},{id:11,name:"文生图",ready:true}], hiddenTools:1, config: { description: "画图" } },
-  { id: 2, name: "智能扩图", toolCount: 1 },
+  { id: 2, name: "智能扩图", toolCount: 1, linkedTools: [{ id: 10, name: "图生图", ready: true }] },
   { id: 3, name: "写作助手", toolCount: 0, config: { description: "语音合成协议" } },
 ];
 const tools = [
@@ -104,13 +104,17 @@ async function mount(conversationId?: string) {
   const click = async (button: HTMLElement | null | undefined) => { assert.ok(button); await React.act(async () => button.click()); await settle(); };
   const open = async (label: string) => {
     await click(q<HTMLButtonElement>(`[aria-label="${ZH_STRINGS.addTools}"]`));
-    await click([...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent?.trim() === label));
+    await click([...container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.getAttribute("aria-label") === label));
   };
   const row = (name: string) => [...container.querySelectorAll<HTMLButtonElement>(".mc-tools-panel [aria-pressed]")].find((b) => b.querySelector(".mc-row-name")?.textContent === name);
   return {
     container, created, q, click, row,
     openSkills: () => open(ZH_STRINGS.skills),
-    openTools: () => open(ZH_STRINGS.toolGrant),
+    openTools: async () => {
+      await open(ZH_STRINGS.toolGrant);
+      const scope = q<HTMLInputElement>(".mc-grant-scope input");
+      if (scope?.checked) await click(scope);
+    },
     skillChips: () => [...container.querySelectorAll<HTMLElement>('[data-testid="mc-skill-picks"] .mc-chip-name')].map((chip) => chip.textContent),
     send: async (text: string) => {
       const input = q<HTMLTextAreaElement>("textarea")!;
@@ -145,9 +149,9 @@ test("skills and tools are two equal + menu entries; each skill row says how man
     assert.deepEqual(view.skillChips(), ["图像创作"]);
     assert.equal(panel.contains(view.q('[data-testid="mc-skill-picks"]')), false, "picked chips are not under the panel");
     assert.ok(composerRoot.contains(view.q('[data-testid="mc-skill-picks"]')));
-    const detail = view.q<HTMLDetailsElement>('[data-testid="mc-skill-picks"] details')!;
+    await view.click(view.q(".mc-grant-tag"));
+    const detail = view.q(".mc-grant-detail")!;
     assert.ok(detail);
-    await view.click(detail.querySelector("summary"));
     assert.match(detail.textContent!, /图生图/);
     assert.match(detail.textContent!, /另有 1 个暂不可用/);
     assert.equal(detail.querySelector("input,select,textarea"),null);
@@ -176,10 +180,10 @@ test("a picked skill locks the tools it brings; a shared tool unlocks only when 
     assert.equal(view.row("飞书读取文档")!.disabled, false, "a tool no skill brings is pickable");
 
     const chip = (name: string) => [...view.container.querySelectorAll('[data-testid="mc-skill-picks"] .mc-chip')].find((c) => c.querySelector(".mc-chip-name")?.textContent === name);
-    await view.click(chip("图像创作")!.querySelector<HTMLElement>("button"));
+    await view.click(chip("图像创作")!.querySelector<HTMLElement>(".mc-chip-remove"));
     assert.equal(view.row("图生图")!.disabled, true, "still brought by 智能扩图");
     assert.equal(view.row("文生图")!.disabled, false, "only 图像创作 brought it");
-    await view.click(chip("智能扩图")!.querySelector<HTMLElement>("button"));
+    await view.click(chip("智能扩图")!.querySelector<HTMLElement>(".mc-chip-remove"));
     assert.equal(view.row("图生图")!.disabled, false);
     assert.equal(view.row("图生图")!.getAttribute("aria-pressed"), "false");
   } finally { await view.close(); }
@@ -268,4 +272,35 @@ test("no technical words in the new skill and tool UI (text, aria-label, title, 
     assert.doesNotMatch(scan(view.q(".mc-tools-panel")!), banned);
     assert.doesNotMatch(scan(view.q('[data-testid="mc-skill-picks"]')!), banned);
   } finally { await view.close(); }
+});
+
+test("counts stay separate from long descriptions and shared tool details identify both providers", async (context) => {
+  mock(context);
+  const view = await mount();
+  try {
+    await view.openSkills();
+    assert.equal(view.row("图像创作")!.querySelector(".mc-grant-count")?.textContent, "带 2 个工具");
+    await view.click(view.row("图像创作"));
+    await view.click(view.row("智能扩图"));
+    await view.click(view.q('[data-testid="mc-skill-picks"] .mc-grant-tag'));
+    const detail = view.q('[role="region"].mc-grant-detail');
+    assert.ok(detail);
+    assert.match(detail.textContent!, /图生图.*已随所选技能提供.*智能扩图/);
+    await view.openTools();
+    assert.match(view.row("图生图")!.textContent!, /图像创作.*智能扩图/);
+  } finally { await view.close(); }
+});
+
+test("a read-only conversation can inspect skills and shared tools without writing", async (context) => {
+  mock(context);
+  bindings = { skillIds: [1, 2], toolIds: [], editable: false, revision: "3", principal: "11" };
+  const view = await mount("7");
+  try {
+    await view.openTools();
+    assert.equal(view.row("飞书读取文档")!.disabled, true);
+    await view.click(view.q('[data-testid="mc-skill-picks"] .mc-grant-tag'));
+    assert.ok(view.q(".mc-grant-detail"));
+    assert.equal(view.q('[data-testid="mc-skill-picks"] .mc-chip-remove'), null);
+    assert.equal(writes.filter(write => write.method === "PUT").length, 0);
+  } finally { await view.close(); bindings = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "11" }; }
 });

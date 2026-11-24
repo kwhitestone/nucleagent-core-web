@@ -96,13 +96,13 @@ export async function readToolPage(position: CatalogCursor, search = "", path = 
     query.set("sortVersion", position.sortVersion);
   }
   const response = await getPlatformRuntime().http.get<{
-    data?: unknown[]; hasMore?: boolean; nextCursor?: string; sortVersion?: string;
+    data?: unknown[]; total?: number; hasMore?: boolean; nextCursor?: string; sortVersion?: string;
   }>(`${path}?${query}`);
   const body = response.data;
   const changed = !!position.sortVersion && position.sortVersion !== body.sortVersion;
   const next = body.hasMore || body.nextCursor
     ? { page: position.page + 1, cursor: body.nextCursor, sortVersion: body.sortVersion } : null;
-  return { items: wellFormed(Array.isArray(body.data) ? body.data : []), next, changed };
+  return { items: wellFormed(Array.isArray(body.data) ? body.data : []), next, changed, total: body.total };
 }
 
 /** Every catalog page (Core caps pageSize at 100) until hasMore is false, at most `maxPages`; [] on 404/405 like listToolCatalog.

@@ -7,12 +7,6 @@ import { ThreadPrimitiveRoot } from "@aui-dist/primitives/thread/ThreadRoot.js";
 import { ThreadPrimitiveViewport } from "@aui-dist/primitives/thread/ThreadViewport.js";
 import { ThreadPrimitiveViewportProvider } from "@aui-dist/context/providers/ThreadViewportProvider.js";
 import { ThreadPrimitiveMessages } from "@aui-dist/primitives/thread/ThreadMessages.js";
-import { ThreadPrimitiveEmpty } from "@aui-dist/primitives/thread/ThreadEmpty.js";
-import { ThreadPrimitiveLoadEarlier } from "@aui-dist/primitives/thread/ThreadLoadEarlier.js";
-import { ThreadPrimitiveSuggestions } from "@aui-dist/primitives/thread/ThreadSuggestions.js";
-import { SuggestionPrimitiveTitle } from "@aui-dist/primitives/suggestion/SuggestionTitle.js";
-import { SuggestionPrimitiveDescription } from "@aui-dist/primitives/suggestion/SuggestionDescription.js";
-import { SuggestionPrimitiveTrigger } from "@aui-dist/primitives/suggestion/SuggestionTrigger.js";
 import { ComposerPrimitiveRoot } from "@aui-dist/primitives/composer/ComposerRoot.js";
 import { ComposerPrimitiveInput } from "@aui-dist/primitives/composer/ComposerInput.js";
 import { ComposerPrimitiveSend } from "@aui-dist/primitives/composer/ComposerSend.js";
@@ -28,16 +22,13 @@ import { AttachmentPrimitiveName } from "@aui-dist/primitives/attachment/Attachm
 import { AttachmentPrimitiveRemove } from "@aui-dist/primitives/attachment/AttachmentRemove.js";
 import { MessagePrimitiveRoot } from "@aui-dist/primitives/message/MessageRoot.js";
 import { MessagePrimitiveAttachments } from "@aui-dist/primitives/message/MessageAttachments.js";
-import { ActionBarPrimitiveRoot } from "@aui-dist/primitives/actionBar/ActionBarRoot.js";
 import { MessagePrimitiveGroupedParts } from "@assistant-ui/core/react";
 
 export const ThreadPrimitive = {
   ViewportProvider: ThreadPrimitiveViewportProvider,
   Root: ThreadPrimitiveRoot, Viewport: ThreadPrimitiveViewport,
-  Messages: ThreadPrimitiveMessages, Empty: ThreadPrimitiveEmpty,
-  LoadEarlier: ThreadPrimitiveLoadEarlier, Suggestions: ThreadPrimitiveSuggestions,
+  Messages: ThreadPrimitiveMessages,
 };
-export const SuggestionPrimitive = { Title: SuggestionPrimitiveTitle, Description: SuggestionPrimitiveDescription, Trigger: SuggestionPrimitiveTrigger };
 export const ComposerPrimitive = {
   Root: ComposerPrimitiveRoot, Input: ComposerPrimitiveInput, Send: ComposerPrimitiveSend, Cancel: ComposerPrimitiveCancel,
   AddAttachment: ComposerPrimitiveAddAttachment, Attachments: ComposerPrimitiveAttachments,
@@ -45,5 +36,4 @@ export const ComposerPrimitive = {
 };
 export const AttachmentPrimitive = { Root: AttachmentPrimitiveRoot, Name: AttachmentPrimitiveName, Remove: AttachmentPrimitiveRemove };
 export const MessagePrimitive = { Root: MessagePrimitiveRoot, GroupedParts: MessagePrimitiveGroupedParts, Attachments: MessagePrimitiveAttachments };
-export const ActionBarPrimitive = { Root: ActionBarPrimitiveRoot };
 export const QueueItemPrimitive = { Text: QueueItemPrimitiveText, Remove: QueueItemPrimitiveRemove };
