@@ -1,5 +1,6 @@
 import { DefinitionError, type DefinitionApi, type Detail, type Impact } from "./api.ts";
 import { buildChanges, newerRevision, rebaseChanges, type Binding, type Changes } from "./draft.ts";
+import { errorKey } from "./messages.ts";
 
 const bindingKey = (bindings: Binding[]) => JSON.stringify([...bindings].sort((a, b) => a.skillId - b.skillId));
 const toolKey = (ids: number[] = []) => JSON.stringify([...ids].sort((a, b) => a - b));
@@ -135,7 +136,9 @@ export class DefinitionEditor {
         }
       } else {
         this.verificationRequired = !(error instanceof DefinitionError) || error.status >= 500;
-        this.error = this.verificationRequired ? "uncertain" : "error";
+        // MUYU-342 fix1102c: the wizard's coverage refusal keeps its product text; other refusals stay generic.
+        this.error = this.verificationRequired ? "uncertain"
+          : error instanceof DefinitionError && error.code === "tool_covered_by_skill" ? errorKey(error) : "error";
       }
       return null;
     } finally {

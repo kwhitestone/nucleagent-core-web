@@ -5,7 +5,8 @@ import { createRenderer, h, ssrContextKey, type Component, type ComponentInterna
 import { createI18n } from "vue-i18n";
 import { createServer, type ViteDevServer } from "vite";
 import vue from "@vitejs/plugin-vue";
-import type { DefinitionEditor } from "../src/addons/administration/agents/definition/state.ts";
+import { DefinitionEditor } from "../src/addons/administration/agents/definition/state.ts";
+import type { DefinitionApi } from "../src/addons/administration/agents/definition/api.ts";
 import { DefinitionError, type Detail } from "../src/addons/administration/agents/definition/api.ts";
 import { errorKey, text } from "../src/addons/administration/agents/definition/messages.ts";
 
@@ -82,4 +83,15 @@ test("legacy covered pair loads; any binding edit strips the covered tool, as th
     state.selectTool(9, true);
     assert.deepEqual(state.editor.tools, [8, 9], "after the skill is removed the tool is pickable");
   } finally { app.unmount(); }
+});
+
+test("a refused save (422 tool_covered_by_skill) surfaces the product text, not the generic failure", async () => {
+  const editor = new DefinitionEditor();
+  editor.open(legacy());
+  editor.tools = [7];
+  const api = { patch: async () => { throw new DefinitionError(422, "tool_covered_by_skill"); } } as unknown as DefinitionApi;
+  assert.equal(await editor.save(api), null);
+  assert.equal(editor.verificationRequired, false);
+  assert.equal(text(editor.error as Parameters<typeof text>[0], "zh-CN"), "该工具已随所选技能提供，请取消其一");
+  assert.deepEqual(editor.tools, [7], "draft kept");
 });
