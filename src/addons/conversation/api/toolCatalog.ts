@@ -88,16 +88,18 @@ const wellFormed = (rows: unknown[]): ToolCatalogItem[] => rows.filter((t): t is
 
 export interface CatalogCursor { page: number; cursor?: string; sortVersion?: string }
 
-export async function readToolPage(position: CatalogCursor, search = "") {
+/** One ranked cursor page of the tool catalog, or of another list with the same contract (GET /skill); `ids` narrows to those rows. */
+export async function readToolPage(position: CatalogCursor, search = "", path = TOOL_CATALOG_PATH, ids?: number[]) {
   const query = new URLSearchParams({ page: String(position.page), pageSize: "32", cursorMode: "true" });
   if (search) query.set("search", search);
+  if (ids) query.set("ids", ids.join(","));
   if (position.cursor && position.sortVersion) {
     query.set("cursor", position.cursor);
     query.set("sortVersion", position.sortVersion);
   }
   const response = await getPlatformRuntime().http.get<{
     data?: unknown[]; hasMore?: boolean; nextCursor?: string; sortVersion?: string;
-  }>(`${TOOL_CATALOG_PATH}?${query}`);
+  }>(`${path}?${query}`);
   const body = response.data;
   const changed = !!position.sortVersion && position.sortVersion !== body.sortVersion;
   const next = body.hasMore || body.nextCursor

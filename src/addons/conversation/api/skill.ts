@@ -3,7 +3,8 @@ import type { Skill } from "./types";
 
 const http = () => getPlatformRuntime().http;
 
-const BASE = "/api/v1/addons/skill";
+export const SKILL_PATH = "/api/v1/addons/skill";
+const BASE = SKILL_PATH;
 
 /** 后端返回 { code, message, data } 信封；data 才是业务载荷。 */
 interface Envelope<T> {
@@ -27,3 +28,7 @@ export async function listSkills(): Promise<Skill[]> {
   const response = await http().get<Envelope<Skill[]>>(BASE);
   return response.data?.data ?? [];
 }
+
+/** Chat skill picker row: the safe skill fields plus rank and toolCount (its tools the catalog lists as ready). */
+export type SkillCatalogItem = Skill & { pinned?: boolean; toolCount?: number };
+

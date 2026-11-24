@@ -20,7 +20,7 @@ import type { Conversation, CreateConversationRequest, ExecutionBackendOption, M
 import type { ConversationAttachment } from "@/addons/conversation/task-conversation/core";
 import { MediaCard } from "./MediaCard";
 import { toolSchema, WorkflowForm } from "./WorkflowForm";
-import { BINDINGS_EVENT, ToolGrantChips, ToolGrantList, useToolGrants, type ToolGrants } from "./ToolGrants";
+import { BINDINGS_EVENT, ToolGrantChips, PagedList, useToolGrants, type ToolGrants } from "./ToolGrants";
 import { DirectMediaFields } from "./DirectMediaFields";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
@@ -201,6 +201,7 @@ export function ChatApp(props: ChatProps) {
           await start({
             input,
             ...(grants.ids.length ? { toolIds: grants.ids } : {}),
+            ...(grants.skillIds.length && !settings.media ? { skillIds: grants.skillIds } : {}),
             ...direct,
             ...(rest?.length ? { attachments: rest.map((f) => ({ fileId: f.id, name: f.name })) } : {}),
           }, !settings.media);
@@ -383,9 +384,11 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const item = (key: string, action: () => void) => <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={action}>{t(key)} ›</button>;
   const menuId = useId();
   const [toolsOpen, setToolsOpen] = useState<boolean | null>(null);
+  const [list, setList] = useState<"skills" | "tools">("tools");
+  const openList = (which: "skills" | "tools") => { menu.setOpen(false); setList(which); if (!grants![which].loaded) void grants![which].load(); setToolsOpen(true); };
   const tools = useRef<HTMLDivElement>(null);
   const closeTools = () => { setToolsOpen(false); menu.trigger.current?.focus(); };
-  useEffect(() => { if (toolsOpen && document.activeElement !== tools.current?.querySelector("input[type=search]")) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, grants?.loaded]);
+  useEffect(() => { if (toolsOpen && document.activeElement !== tools.current?.querySelector("input[type=search]")) tools.current?.querySelector<HTMLElement>(".mc-grants button,select")?.focus(); }, [toolsOpen, list, grants?.[list].loaded]);
   useEffect(() => {
     const reset = () => { setToolsOpen(null); menu.setOpen(false); };
     window.addEventListener(SESSION_CHANGE_EVENT, reset);
@@ -415,13 +418,14 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
       {grants && toolsOpen !== null && <div ref={tools} className="mc-tools-panel" hidden={!toolsOpen} onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeTools(); }
       }}>
-        <div className="mc-tools-heading"><strong>{t("chatReact.toolGrant")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
-        <ToolGrantList grants={grants} t={t} />
-        {workflow}
+        <div className="mc-tools-heading"><strong>{t(list === "skills" ? "chatReact.skills" : "chatReact.toolGrant")}</strong><button type="button" className="mc-icon-btn" aria-label={t("chatReact.closeTools")} onClick={closeTools}><CrossMark /></button></div>
+        {list === "skills"
+          ? <PagedList key="skills" list={grants.skills} editable={grants.editable} toggle={grants.toggleSkill} t={t} search={t("chatReact.searchSkills")} />
+          : <><PagedList key="tools" list={grants.tools} editable={grants.editable} toggle={grants.toggle} t={t} search={t("chatReact.searchTools")} />{workflow}</>}
       </div>}
       <ComposerPrimitive.Root>
         <ComposerAttachmentChips t={t} />
-        {grants && <ToolGrantChips grants={grants} t={t} />}
+        {grants && <ToolGrantChips grants={grants} t={t} skills={!settings.media} />}
         {imageText && <p className="mc-hint" role="status" data-testid="mc-image-hint" data-vision={settings.imageGate!.state}>{imageText}</p>}
         <ComposerPrimitive.Queue>
           {() => (
@@ -463,7 +467,8 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
               {section === "home" && <>
                 {item("chatReact.moreFiles", () => setSection("files"))}
                 <hr />
-                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => { menu.setOpen(false); if (!grants.loaded) grants.load(); setToolsOpen(true); }}><ToolMark />{t("chatReact.toolGrant")}</button>}
+                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => openList("skills")}><AssistantMark />{t("chatReact.skills")}</button>}
+                {grants && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" onClick={() => openList("tools")}><ToolMark />{t("chatReact.toolGrant")}</button>}
                 {profile && !settings.media && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" disabled={settings.busy} onClick={() => setSection("preset")}>
                   {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name}</span>{profile.stale && " ⚠"} ›
                 </button>}
