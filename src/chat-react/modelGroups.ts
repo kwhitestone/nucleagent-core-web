@@ -1,6 +1,6 @@
 import type { Provider, TypedModel } from "../contracts/model-catalog.ts";
 import type { ExecutionBackendOption, ModelChoice } from "../addons/conversation/api/types.ts";
-import { pickerOptions } from "../addons/conversation/components/modelPickerOptions.ts";
+import { modelsOf } from "../addons/conversation/components/modelPickerOptions.ts";
 import { availabilityOf, visionOf, type UnavailableReason, type Vision } from "./modelCaps.ts";
 
 export type GroupKind = "chat" | "image" | "video" | "executor";
@@ -26,23 +26,23 @@ const UPSTREAM_NAMES: Record<string, string> = { "aihub-gateway": "AIHub", "ever
  * Empty groups are dropped.
  */
 export function modelGroups(providers: Provider[], typed: Record<string, TypedModel[]> | null, backends: ExecutionBackendOption[]): Group[] {
-  const models = (["chat", "image", "video"] as const).map((kind): Group => {
-    const entries = typed?.[kind] ?? [];
-    const upstreams = new Map(entries.filter((m) => m.upstream).map((m) => [`${m.providerId}:${m.model}`, m.upstream!]));
-    const byKey = new Map(entries.map((m) => [`${m.providerId}:${m.model}`, m]));
-    return {
-      kind,
-      options: pickerOptions(providers, typed?.[kind] ?? [], kind).flatMap((g) => g.models.map((model) => {
-        const choice: Choice = { kind, model: { providerId: g.id, model } };
-        const upstream = upstreams.get(`${g.id}:${model}`);
-        const entry = byKey.get(`${g.id}:${model}`);
-        const availability = entry ? availabilityOf(entry) : undefined;
-        return { value: choiceValue(choice), label: model, hint: g.name, ...(upstream ? { upstream: UPSTREAM_NAMES[upstream] ?? upstream } : {}),
-          ...(kind === "chat" && entry ? { vision: visionOf(entry) } : {}),
-          ...(availability?.state === "unavailable" ? { unavailable: availability.reason } : availability?.state === "unprobed" ? { unprobed: true as const } : {}), choice };
-      })),
-    };
-  });
+  const active = new Map(providers.filter(provider => provider.isActive).map(provider => [provider.id, provider]));
+  const models = (["chat", "image", "video"] as const).map((kind): Group => ({
+    kind,
+    options: (typed?.[kind] ?? []).flatMap(entry => {
+      const provider = active.get(entry.providerId);
+      if (!provider || entry.type !== kind || (kind === "chat" && !modelsOf(provider).includes(entry.model))) return [];
+      const choice: Choice = { kind, model: { providerId: provider.id, model: entry.model } };
+      const availability = availabilityOf(entry);
+      return [{
+        value: choiceValue(choice), label: entry.model, hint: provider.name, choice,
+        ...(entry.upstream ? { upstream: UPSTREAM_NAMES[entry.upstream] ?? entry.upstream } : {}),
+        ...(kind === "chat" ? { vision: visionOf(entry) } : {}),
+        ...(availability.state === "unavailable" ? { unavailable: availability.reason }
+          : availability.state === "unprobed" ? { unprobed: true as const } : {}),
+      }];
+    }),
+  }));
   const executors: Group = {
     kind: "executor",
     options: backends.map((b) => {

@@ -638,3 +638,5 @@
   .mc-mode-chip { flex: none; font-size: 12px; }
 }
 .mc-grants { max-height: min(30dvh, 18rem); overflow-y: auto; }
+
+.mc-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
