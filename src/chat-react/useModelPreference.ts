@@ -36,7 +36,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       const initial = { executionBackend: backend, providerId, model };
       const selection = model ? Promise.resolve(initial) : runtime.http.get<{ data: Selection & { resolved: boolean } }>("/api/v1/addons/conversation/model-selection", { params: { executionBackend: backend }, signal: controller.signal }).then((response) => {
         const value = response.data.data;
-        if (value?.executionBackend !== backend || typeof value.model !== "string" || typeof value.resolved !== "boolean" || (value.resolved && (!value.model.trim() || !Number.isSafeInteger(value.providerId) || value.providerId! <= 0)) || (!value.resolved && (value.model || value.providerId))) throw new Error("Invalid default selection");
+        if (value?.executionBackend !== backend || typeof value.model !== "string" || typeof value.resolved !== "boolean" || (value.resolved && (!value.model.trim() || !Number.isSafeInteger(value.providerId) || value.providerId! <= 0)) || (!value.resolved && (value.model || value.providerId))) throw 0;
         return { executionBackend: value.executionBackend, providerId: value.providerId || undefined, model: value.model };
       });
       selection.then(async (params) => {
@@ -46,7 +46,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
           runtime.http.get<{ data: Catalog }>("/api/v1/addons/conversation/model-profiles", { params, signal: controller.signal }),
         ]);
         const value = preference.data.data;
-        if (!value || typeof value.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || !Array.isArray(catalog.data.data)) throw new Error("Invalid preference response");
+        if (!value || typeof value.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || !Array.isArray(catalog.data.data)) throw 0;
         if (live()) {
           confirmed.current = true;
           setState({ ...identity, selection: params, preference: value, catalog: catalog.data.data, ready: true, error: false });
@@ -83,7 +83,7 @@ export function useModelPreference(scope: string, backend: string, providerId: n
       const value = response.data.data;
       if (!live()) return;
       const kept = value?.profileId === profileId && value.effort === effort;
-      if (typeof value?.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || (!failed && !kept)) throw new Error("Preference readback mismatch");
+      if (typeof value?.profileId !== "string" || (value.effort !== "" && !EFFORT_LEVELS.includes(value.effort)) || (!failed && !kept)) throw 0;
       confirmed.current = true;
       setState({ ...current, preference: value, ready: true, error: false, pending: undefined, rolledBack: !kept });
     } catch {

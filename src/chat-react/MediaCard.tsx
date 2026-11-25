@@ -38,7 +38,7 @@ export function MediaCard({ data, t }: { data: MediaPartData; t: Translate }) {
   const download = async () => {
     try {
       const { url } = await readTask();
-      if (!url) throw new Error("media unavailable");
+      if (!url) throw 0;
       const anchor = document.createElement("a");
       anchor.href = url; anchor.download = ""; anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
       anchor.click();

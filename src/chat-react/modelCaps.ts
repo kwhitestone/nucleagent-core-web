@@ -1,5 +1,6 @@
 import type { ModelChoice } from "../addons/conversation/api/types.ts";
 import type { TypedModel } from "../contracts/model-catalog.ts";
+import { fill } from "./singleSlotQueue.ts";
 
 /**
  * MUYU-418 contract v1 (toolgate docs/muyu418-model-catalog-contract.md): per-model availability and
@@ -45,6 +46,6 @@ export function imageGate(selected: ModelChoice | null, models: TypedModel[]): I
 export function imageHint(gate: ImageGate, t: (key: string) => string): string | undefined {
   if (gate.state === "supported") return undefined;
   const name = gate.model ?? t("common.modelDefault");
-  const others = gate.alternatives.length ? t("chatReact.visionSwitchTo").replace("{models}", gate.alternatives.join("、")) : t("chatReact.visionNoAlternative");
+  const others = gate.alternatives.length ? fill(t("chatReact.visionSwitchTo"), { models: gate.alternatives.join("、") }) : t("chatReact.visionNoAlternative");
   return `${name} ${t(gate.state === "unsupported" ? "chatReact.visionBlockedHint" : "chatReact.visionUnverifiedHint")}${others}`;
 }

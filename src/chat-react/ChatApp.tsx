@@ -20,7 +20,7 @@ import type { Conversation, CreateConversationRequest, ExecutionBackendOption, M
 import type { ConversationAttachment } from "@/addons/conversation/task-conversation/core";
 import { MediaCard } from "./MediaCard";
 import { toolSchema, WorkflowForm } from "./WorkflowForm";
-import { BINDINGS_EVENT, ToolGrantChips, PagedList, useToolGrants, type ToolGrants } from "./ToolGrants";
+import { BINDINGS_EVENT, offered, ToolGrantChips, PagedList, useToolGrants, type ToolGrants } from "./ToolGrants";
 import { DirectMediaFields } from "./DirectMediaFields";
 import { StoredMediaPreview } from "./StoredMediaPreview";
 import { guardMediaSend } from "./mediaPolicy";
@@ -1072,7 +1072,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     if (entry && entry.bind) {
       const current = wiring.current!;
       try {
-        const bound = await updateSessionBindings(conversationId!, { toolIds: [...current.bound!.toolIds, entry.toolId], revision: current.bound!.revision });
+        const bound = await updateSessionBindings(conversationId!, { toolIds: [...offered(current.bound!).toolIds, entry.toolId], revision: current.bound!.revision });
         window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: bound }));
         current.bound = bound;
         const { bind: _, ...ready } = entry;

@@ -77,6 +77,8 @@ before(async () => {
     put: async (url: string, body: { skillIds?: number[]; toolIds?: number[] }) => {
       writes.push({ method: "PUT", url, body });
       if (putError) throw putError;
+      // Core refuses any id that is gone or not selectable (svc/tool_binding.go, skill_binding.go), never loosened.
+      if (body.toolIds?.some((id) => !tools.some((tool) => tool.id === id && tool.status === "ready")) || body.skillIds?.some((id) => !skills.some((skill) => skill.id === id))) throw Object.assign(new Error("invalid"), { status: 400 });
       bindings = { ...bindings, skillIds: body.skillIds ?? bindings.skillIds, toolIds: body.toolIds ?? bindings.toolIds, revision: String(Number(bindings.revision) + 1) };
       return { data: { data: bindings } };
     },
@@ -263,6 +265,32 @@ test("a conversation whose bound skill was switched off saves only the skills st
     assert.deepEqual(writes.filter((w) => w.method === "PUT")[0].body, { skillIds: [2, 1], revision: "1" });
     assert.match(document.body.textContent!, /有 1 个已失效的技能或工具已自动移除/);
   } finally { await view.close(); bindings = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "11" }; }
+});
+
+// MUYU-365 TEST v0.1.61 conversation 1530: a skills-only save answered with the stale tool 790 again; the next tool save resent it → 400.
+test("a conversation with a gone bound tool saves a skill and then a tool; both land, one note, and the pick survives a reload", async (context) => {
+  mock(context);
+  bindings = { skillIds: [2], toolIds: [16, 99], editable: true, revision: "1", principal: "11" };
+  const notes = () => document.body.textContent!.split("有 1 个已失效的技能或工具已自动移除").length;
+  const view = await mount("7");
+  const before = notes();
+  try {
+    await view.openSkills();
+    await view.click(view.row("写作助手"));
+    const puts = () => writes.filter((w) => w.method === "PUT");
+    assert.deepEqual(puts()[0].body, { skillIds: [2, 3], revision: "1" }, "skills only; Core still holds 99 and answers with it");
+    assert.equal(notes(), before, "nothing was left out of this save");
+    await view.openTools();
+    await view.click(view.row("飞书读取文档"));
+    assert.deepEqual(puts()[1].body, { toolIds: [16, 13], revision: "2" }, "the gone 99 from the answer is not resent; the valid 16 is kept");
+    assert.equal(notes(), before + 1, "said once, when the gone tool was actually left out");
+  } finally { await view.close(); }
+  const again = await mount("7");
+  try {
+    assert.deepEqual(bindings, { ...bindings, skillIds: [2, 3], toolIds: [16, 13] });
+    await again.openTools();
+    assert.equal(again.row("飞书读取文档")!.getAttribute("aria-pressed"), "true", "kept on reload");
+  } finally { await again.close(); bindings = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "11" }; }
 });
 
 test("standalone-only tools keep loading until the list fills its box; scrolling and 加载更多 both read the next page", async (context) => {

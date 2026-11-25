@@ -92,6 +92,10 @@ function usePagedList<T extends Row>(path: string, conversationId: string | unde
 /** Both writers of this conversation's revisioned bindings (grants, media job tools) share each saved set. */
 export const BINDINGS_EVENT = "mc-bindings";
 const share = (saved: SessionBindings) => { window.dispatchEvent(new window.CustomEvent(BINDINGS_EVENT, { detail: saved })); return saved; };
+// Bound ids the catalog no longer offers (switched off, paused, deleted): Core refuses them on save yet still answers with them.
+const gone = { skillIds: [] as number[], toolIds: [] as number[] };
+/** Every server answer (load, either writer's save) as the set a save may send. */
+export const offered = <T extends Partial<SessionBindings>>(saved: T) => ({ ...saved, toolIds: saved.toolIds!.filter(id => !gone.toolIds.includes(id)), skillIds: saved.skillIds!.filter(id => !gone.skillIds.includes(id)) });
 // Confirmed unavailable: not shown at all. Any other non-ready state stays listed, not pickable.
 const hidden = (tool: ToolCatalogItem) => [tool.reason, tool.status].some(state => state === "held" || state === "manual_disabled");
 
@@ -100,12 +104,10 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
   const skills = usePagedList<SkillRow>(SKILL_PATH, conversationId);
   const [bound, setBound] = useState<Partial<SessionBindings> & { busy?: boolean }>({ skillIds: [], toolIds: [] });
   const generation = useRef(0);
-  // How many bound ids the catalog no longer offers (switched off, paused, deleted); Core refuses them on save.
-  const stale = useRef(0);
   // Results land only while the conversation/account they were asked for is still current.
   const later = <T,>(run: (value: T) => void) => { const current = generation.current; return (value: T) => current === generation.current && run(value); };
   useEffect(() => {
-    const reset = () => { generation.current++; stale.current = 0; skills.setPicks([]); tools.setPicks([]); setBound({ skillIds: [], toolIds: [] }); };
+    const reset = () => { generation.current++; gone.skillIds = []; gone.toolIds = []; skills.setPicks([]); tools.setPicks([]); setBound({ skillIds: [], toolIds: [] }); };
     reset();
     if (conversationId) getSessionBindings(conversationId).then(later((saved: SessionBindings) => {
       setBound(saved);
@@ -113,9 +115,8 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
       for (const key of ["skillIds", "toolIds"] as const) if (saved[key].length) void readToolPage({ page: 1 }, "", key < "t" ? SKILL_PATH : TOOL_CATALOG_PATH, saved[key]).then(later((page: { items: ToolCatalogItem[]; next: unknown }) => {
         if (key < "t") skills.setPicks(page.items);
         // Every save then sends only what is offered. shortcut: past one page (32) of bound ids none is dropped; read on if that is refused.
-        const kept = saved[key].filter(id => page.next || page.items.some(row => row.id === id && !toolUnavailable(row)));
-        stale.current += saved[key].length - kept.length;
-        setBound(now => ({ ...now, [key]: kept }));
+        gone[key] = saved[key].filter(id => !page.next && !page.items.some(row => row.id === id && !toolUnavailable(row)));
+        setBound(now => ({ ...now }));
       }), () => {});
     }), () => {});
     const saved = (event: Event) => setBound((event as CustomEvent<SessionBindings>).detail);
@@ -123,7 +124,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     window.addEventListener(BINDINGS_EVENT, saved);
     return () => { generation.current++; window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
   }, [conversationId]);
-  const ids = bound.toolIds!, skillIds = bound.skillIds!, editable = !bound.busy && (!conversationId || !!bound.editable);
+  const { toolIds: ids, skillIds } = offered(bound), editable = !bound.busy && (!conversationId || !!bound.editable);
   useEffect(() => { if (ids.length) tools.load(); }, [ids.length > 0]);
   const label = (row: Row) => catalogText(toolLabel(row as ToolCatalogItem, locale));
   const save = (next: { skillIds?: number[]; toolIds?: number[] }) => {
@@ -133,7 +134,9 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     updateSessionBindings(conversationId, { ...next, revision: bound.revision! })
       .then(later((saved: SessionBindings) => {
         setBound(share(saved));
-        if (stale.current) toast.info(fill(t("chatReact.staleRemoved"), { n: stale.current })), stale.current = 0;
+        // Said only when this save left out ids the server still held.
+        const n = (Object.keys(next) as (keyof typeof gone)[]).reduce((n, key) => n + bound[key]!.filter(id => gone[key].includes(id)).length, 0);
+        if (n) toast.info(fill(t("chatReact.staleRemoved"), { n }));
       }), later((error: { status?: number; message?: string }) => {
         setBound(bound);
         toast.error(t(error?.status === 422 && error.message === "tool_covered_by_skill" ? "agents.mine.errToolCovered" : "common.bindingsSaveFailed"));

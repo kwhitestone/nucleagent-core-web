@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getPlatformRuntime } from "@/contracts/platform-runtime";
 import { cap } from "./requestEffort";
+import { fill } from "./singleSlotQueue";
 
 /**
  * MUYU-365 exp113 (design exp109/WEB-STAGE2-DESIGN.md, MUYU-418 WEB-CONTRACT): stage-2 call protocol / thinking level.
@@ -93,14 +94,14 @@ export function classifySelectionError(error: unknown, attempt: number): Selecti
   if (typeof code !== "string" || !code) return { action: "default" };
   if (e?.status === 409 && code === "stale_capability_revision") return attempt < 1 ? { action: "refetch-retry" } : { action: "reset", message: "chatReact.selectionStale" };
   if (e?.status !== 422) return { action: "default" };
-  if (code === "ambiguous_thinking_parameters") return { action: "show", message: "common.operationFailed", supported: [], refetch: false };
+  if (code === "ambiguous_thinking_parameters") return console.warn(code), { action: "show", message: "common.operationFailed", supported: [], refetch: false };
   const supported = Array.isArray(body.supported_values) ? body.supported_values.filter((v): v is string => typeof v === "string") : [];
   return { action: "show", message: typeof body.detail === "string" && body.detail ? body.detail : e.message ?? "", supported, refetch: true };
 }
 
 /** Values exactly as Core named them, joined; "" when there are none. */
 export const supportedHint = (values: readonly string[], t: Translate) =>
-  values.length ? t("chatReact.selectionSupported").replace("{values}", values.join("、")) : "";
+  values.length ? fill(t("chatReact.selectionSupported"), { values: values.join("、") }) : "";
 
 export interface EffectiveSelection { source?: string; effective_protocol?: string | null; effective_level?: string | null }
 /** 「responses · 高」: what this turn was dispatched with. null (legacy) shows nothing — it is neither off nor verified. */
@@ -134,7 +135,6 @@ export async function sendWithSelection<R>(send: (fields: Fields) => Promise<R>,
       }
       if (verdict.action === "reset") ctl.reset();
       else if (verdict.refetch) void ctl.refetch().catch(() => {});
-      if (verdict.action === "show" && verdict.message === "common.operationFailed") console.warn("modelSelection: ambiguous_thinking_parameters");
       const text = [ctl.t(verdict.message), verdict.action === "show" ? supportedHint(verdict.supported, ctl.t) : ""].filter(Boolean).join(" ");
       throw new ApiError(text, "model_selection", 0);
     }

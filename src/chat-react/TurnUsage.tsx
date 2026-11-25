@@ -1,5 +1,6 @@
 import type { Translate } from "./ChatApp";
 import { cap } from "./requestEffort";
+import { fill } from "./singleSlotQueue";
 import { UNKNOWN_USAGE, type TurnUsageView } from "./turnUsage";
 
 /**
@@ -9,7 +10,7 @@ import { UNKNOWN_USAGE, type TurnUsageView } from "./turnUsage";
 export function TurnUsage({ t, usage = UNKNOWN_USAGE, locale = "zh-CN" }: { t: Translate; usage?: TurnUsageView; locale?: string }) {
   const name = usage.name?.[locale] ?? usage.name?.[locale.slice(0, 2)];
   // exp116: the note is small print after the amount; the reason is only a translated hint in the title (unknown code: the note itself).
-  const note = usage.note && t(usage.note === "off" ? "chatReact.rateUnavailable" : usage.age === undefined ? "chatReact.rateOld" : "chatReact.rateAge").replace("{n}", String(usage.age));
+  const note = usage.note && fill(t(usage.note === "off" ? "chatReact.rateUnavailable" : usage.age === undefined ? "chatReact.rateOld" : "chatReact.rateAge"), { n: usage.age });
   const key = `chatReact.rateReason_${usage.reason}`, hint = usage.reason && t(key);
   // exp117: loading keeps the line's height (nbsp) and says nothing until the first read answers.
   if (usage.loading) return <span className="mc-usage" data-testid="mc-turn-usage" data-settlement="unknown" aria-label={t("chatReact.turnUsage")} aria-busy="true">{"\u00a0"}</span>;
