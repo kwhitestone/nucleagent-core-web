@@ -638,6 +638,10 @@ test("assistant turn identity is Core's step_id, never a message id; absent or a
   assert.equal(turnOf([user, item("9001", { data: data(9001) })]), undefined);
   assert.equal(turnOf([user, item("9001")]), undefined);
   assert.equal(turnOf([item("9001", { data: data(9001, "step-a") }), user]), undefined, "user rows carry no turn identity");
+  const media = (taskId: number, step: string) => item("9001", { data: { ...data(9001, step, "media"), media: { kind: "video", taskId } } });
+  assert.equal(turnOf([user, media(33, "media-33")]), "media-33");
+  assert.equal(turnOf([user, media(33, "media-34")]), undefined);
+  assert.equal(turnOf([user, media(33, "media-33"), item("9002", { data: data(9002, "step-a") })]), undefined);
 });
 
 test("model groups (MUYU-418): options carry vision_in and availability from the catalog fields only", () => {
