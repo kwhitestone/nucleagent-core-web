@@ -209,3 +209,20 @@ test("AVAILABILITY P-1: a thinking level Core declares status \"supported\" is s
   assert.equal(preset.stale, false);
   assert.deepEqual(preset.fields, { modelSelection: { callProtocol: "responses", thinkingLevel: "high", capabilityRevision: 7 } });
 });
+
+test("V5 regression (real-browser find): an executor switch keeps the model the pill shows, also when it is the server-resolved default of a new chat", () => {
+  const src = readFileSync("src/chat-react/ChatApp.tsx", "utf8");
+  assert.match(src, /async function pick\(choice: Choice \| null, shown\?: ModelChoice \| null\)/);
+  assert.match(src, /choice\.kind === "chat" \? choice\.model : model \?\? shown \?\? null/, "executor picks are judged against the shown model");
+  assert.match(src, /if \(plan === "local"\) \{ setModel\(nextModel\); setBackend\(nextBackend\); return; \}/, "kept explicitly, not re-resolved");
+  assert.match(src, /pick: \(choice: Choice \| null\) => selectedSettings\.pick\(choice, shownModel\)/);
+});
+
+test("V5 narrow (real-browser find): the tail follows the closest look-alike so it fits the 150px pill; the send-off reason stays visible on narrow screens", () => {
+  const { splitName } = groupsMod;
+  const prod = ["deepseek-v4-1-flash-260910", "deepseek-v4-1-flash-261017", "deepseek-v4-flash-ga-260731", "deepseek-flash", "deepseek-v4-pro"];
+  assert.deepEqual(splitName("deepseek-v4-1-flash-260910", prod), ["deepseek-v4-1-", "flash-260910"], "not v4-1-flash-260910 (earliest divergence from deepseek-flash)");
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  const narrow = css.slice(css.indexOf("@media (max-width: 520px)"));
+  assert.match(narrow, /\.mc-hint\[data-testid="mc-engine-blocked"\] \{ display: block; \}/);
+});

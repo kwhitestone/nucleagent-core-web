@@ -96,7 +96,9 @@ export function ChatApp(props: ChatProps) {
   const profileScope = `${conversationId ?? "new"}:${selectedSettings.backend}:${selectedSettings.model?.providerId}:${selectedSettings.model?.model}`;
   const preference = useModelPreference(profileScope, selectedSettings.backend ?? "", selectedSettings.model?.providerId, selectedSettings.model?.model ?? "");
   const resolved = preference.selection;
-  const settings = { ...selectedSettings, model: selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null) };
+  const shownModel = selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null);
+  // MUYU-365 V5: an executor switch is judged against (and keeps) the model the pill shows, never re-resolved silently.
+  const settings = { ...selectedSettings, model: shownModel, pick: (choice: Choice | null) => selectedSettings.pick(choice, shownModel) };
   // design-1123 A: presets are the only control; protocol + level ride inside the preset (P2 phase 1 = C). A stored
   // legacy effort is no longer sent on its own — choosing a preset writes it back empty.
   const storedProfileId = preference.storedProfileId;
@@ -1171,7 +1173,8 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     return !option || executionBackendCompatibility(option, m, providers).allowed;
   };
 
-  async function pick(choice: Choice | null) {
+  // `shown`: the model the pill shows when this hook holds none (a new chat's server-resolved default, useModelPreference).
+  async function pick(choice: Choice | null, shown?: ModelChoice | null) {
     if (choice?.kind === "image" || choice?.kind === "video") {
       const listed = groups.find((group) => group.kind === choice.kind)?.options.find((option) => option.value === choiceValue(choice) && !option.unavailable);
       if (!listed) return void toast.warning(t("chatReact.mediaReselect"));
@@ -1190,14 +1193,14 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     }
     const entry = choice?.kind === "chat" ? models.find((m) => String(m.providerId) === String(choice.model.providerId) && m.model === choice.model.model) : undefined;
     if (entry && availabilityOf(entry).state === "unavailable") return;
-    const nextModel = choice === null ? null : choice.kind === "chat" ? choice.model : model;
+    const nextModel = choice === null ? null : choice.kind === "chat" ? choice.model : model ?? shown ?? null;
     const nextBackend = choice?.kind === "executor" ? choice.backend : backend;
     const plan = pickPlan(choice, allowedFor(nextModel, nextBackend));
     if (plan === "refuse") { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
     selectionRevision.current += 1;
     // V5 「不静默换模型」: the executor is taken here only; the model stays (flagged, send off) and nothing is saved that
     // Core would refuse. The next fitting model pick (or 切回) saves both.
-    if (plan === "local") { setBackend(nextBackend); return; }
+    if (plan === "local") { setModel(nextModel); setBackend(nextBackend); return; }
     if (!conversationId || !nextBackend) { setModel(nextModel); setBackend(nextBackend); if (choice?.kind !== "executor") setMedia(null); return; }
     setBusy(true);
     try {

@@ -76,19 +76,22 @@ export function visibleOptions(options: readonly Option[], currentValue: string)
 }
 
 /**
- * MUYU-365 V5 (protomedia-v5 split()): the button's middle ellipsis. The tail starts where `name` first differs from a
- * look-alike sibling (shared prefix ≥ 8), aligned back to a `-`, so the part that tells two models apart is never cut.
- * Without a look-alike the last 8 characters (aligned the same way) are kept.
+ * MUYU-365 V5 (protomedia-v5 split()): the button's middle ellipsis. The tail starts where `name` departs from its closest
+ * look-alike (longest shared prefix ≥ 8), aligned back to a `-`, so the part that tells two models apart is never cut and
+ * still fits a narrow pill. Without a look-alike the last 8 characters (aligned the same way) are kept; a tail shorter
+ * than 8 gains one more segment so it stays readable (`flash-260910`, not `260910`).
  */
 export function splitName(name: string, siblings: readonly string[]): [string, string] {
-  let cut = Math.max(0, name.length - 8);
+  let shared = -1;
   for (const other of siblings) {
     if (other === name) continue;
     let i = 0;
     while (i < name.length && name[i] === other[i]) i++;
-    if (i >= 8) cut = Math.min(cut, i);
+    if (i >= 8) shared = Math.max(shared, i);
   }
+  let cut = shared >= 0 ? shared : Math.max(0, name.length - 8);
   cut = name.lastIndexOf("-", cut - 1) + 1 || cut;
+  if (cut > 1 && name.length - cut < 8) cut = name.lastIndexOf("-", cut - 2) + 1 || cut;
   return [name.slice(0, cut), name.slice(cut)];
 }
 
