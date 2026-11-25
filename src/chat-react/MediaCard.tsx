@@ -39,9 +39,16 @@ export function MediaCard({ data, t }: { data: MediaPartData; t: Translate }) {
     try {
       const { url } = await readTask();
       if (!url) throw 0;
+      const response = await fetch(url, { credentials: "omit" });
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      if (!blob.size || !blob.type.startsWith(`${data.media.kind}/`)) throw new Error("invalid media content");
+      const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      anchor.href = url; anchor.download = ""; anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
-      anchor.click();
+      anchor.href = objectUrl;
+      anchor.download = `media-${taskId}.${blob.type.split("/")[1].split(";")[0].replace("jpeg", "jpg")}`;
+      document.body.append(anchor);
+      try { anchor.click(); } finally { anchor.remove(); setTimeout(() => URL.revokeObjectURL(objectUrl), 1000); }
     } catch { setError(true); }
   };
   return <div className="mc-media-card">

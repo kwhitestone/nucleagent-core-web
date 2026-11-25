@@ -211,6 +211,9 @@ test("audio selector finds later-page native tools without admitting held or gen
 
 test("history remount fetches fresh token; download validates current task state and never writes", async () => {
   const view = await fixture();
+  const originalFetch = globalThis.fetch;
+  const fetched: string[] = [];
+  globalThis.fetch = async (url) => { fetched.push(String(url)); return { ok: true, blob: async () => new Blob(["image-bytes"], { type: "image/png" }) } as Response; };
   let current = task(7, "succeeded", "https://cdn.example/media?token=first");
   response = () => current;
   try {
@@ -218,7 +221,9 @@ test("history remount fetches fresh token; download validates current task state
     assert.match(view.container.querySelector("img")!.src, /token=first/);
     current = task(7, "succeeded", "https://cdn.example/media?token=fresh");
     await view.click("common.attachmentDownload");
-    assert.deepEqual(downloads, [current.downloadUrl]);
+    assert.deepEqual(fetched, [current.downloadUrl]);
+    assert.equal(downloads.length, 1);
+    assert.match(downloads[0], /^blob:/);
     current = task(7, "failed", "https://cdn.example/media?token=must-not-open");
     await view.click("common.attachmentDownload");
     assert.equal(downloads.length, 1);
@@ -229,7 +234,24 @@ test("history remount fetches fresh token; download validates current task state
     await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
     assert.match(view.container.querySelector("img")!.src, /token=remount/);
     assert.deepEqual(writes, []);
-  } finally { await view.close(); }
+  } finally { globalThis.fetch = originalFetch; await view.close(); }
+});
+
+test("media download rejects denied or non-media responses without opening a tab", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const result of [new Response("denied", { status: 403 }), new Response("login", { headers: { "Content-Type": "text/html" } })]) {
+      const view = await fixture();
+      response = () => task(7, "succeeded", "https://cdn.example/media");
+      globalThis.fetch = async () => result;
+      try {
+        await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
+        await view.click("common.attachmentDownload");
+        assert.deepEqual(downloads, []);
+        assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
+      } finally { await view.close(); }
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("history refresh handles unknown/cancelled, GET errors, unsafe URLs and expired image without spinning forever", async () => {
