@@ -186,7 +186,7 @@ test("a picked skill locks the tools it brings; a shared tool unlocks only when 
     assert.equal(view.row("组图生成"), undefined, "held is hidden");
     assert.equal(view.row("停用的"), undefined, "manually disabled is hidden");
     assert.equal(view.row("同步冲突的")!.disabled, true, "other states stay listed, not pickable");
-    assert.match(view.row("同步冲突的")!.textContent!, /同步冲突/, "MUYU-365 GAP G-6: the catalog reason is named, not a bare 暂未开放");
+    assert.equal(view.row("同步冲突的")!.querySelector("small")?.textContent, "同步冲突", "MUYU-365 GAP G-6: the catalog reason is named, not a bare 暂未开放");
     assert.equal(view.row("飞书读取文档")!.disabled, false, "a tool no skill brings is pickable");
 
     const chip = (name: string) => [...view.container.querySelectorAll('[data-testid="mc-skill-picks"] .mc-chip')].find((c) => c.querySelector(".mc-chip-name")?.textContent === name);
