@@ -10,7 +10,7 @@ export const EN_STRINGS: IslandStrings = {
     selectionDefault: "Default (inherit)", selectionStale: "Model capabilities changed; choose again", selectionSupported: "Available: {values}",
     presetStale: "“{name}” is unavailable. This turn uses the default settings.", profile: "Preset", profileNote: "Your choice is saved automatically.", profileError: "Presets failed to load", profileRolledBack: "Not saved; the previous choice is restored",  saving: "Saving", preferenceError: "Settings are not confirmed. Reload and check before sending",
     defaultModelUnresolved: "Using the default model. Select a model to see available settings.",
-    tier_off: "Thinking off", tier_quick: "Quick", tier_thinking: "Deep thinking", tierOffMissing: "Server has no off tier yet", optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",
+    tier_off: "Off", tier_quick: "Quick", tier_thinking: "Deep", tierOffMissing: "no off yet", optionUnavailable: "Not available yet", addTools: "Add attachments or tools", closeTools: "Close tools",
     ioToggle: "Full tool input and output", ioInput: "Input", ioOutput: "Output", ioMore: "Load more: ", ioEmpty: "(empty)", ioMissing: "Not captured", ioErr: "Error", ioCut: "Truncated", ioNone: "No details yet", ioError: "Could not load; expand again.",
     recTitle: "Call record details", recSource: "Source", recUnknown: "Source unknown", recTransport: "Transport", recRejected: "Rejected by gateway, not sent", recBusiness: "Business result", recHttp: "Upstream HTTP", recDuration: "Duration", recTurn: "Turn total", recUnknownState: "Unknown", recNone: "No data",
     upstream: "Upstream",

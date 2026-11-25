@@ -179,7 +179,7 @@ test("a stale preset (unverified level / hidden declaration) sends only profileI
     const ui = await mount(context);
     try {
       assert.equal(composer.profile?.stale, true);
-      assert.equal(composer.profile?.name, "chatReact.tier_quick", "the choice stays");
+      assert.equal(composer.profile?.name, "chatReact.tier_quick（chatReact.effortOff）", "the choice stays, named with the level it actually carries");
       await ui.send();
       assert.deepEqual(Object.keys(creates[0]!).filter((k) => /effort|profile|modelParams|modelSelection/i.test(k)), ["profileId"]);
     } finally { await ui.unmount(); }

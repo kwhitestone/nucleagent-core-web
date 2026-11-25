@@ -8,7 +8,7 @@ export const ZH_STRINGS = {
     selectionDefault: "默认（继承）", selectionStale: "模型能力已更新，请重新选择", selectionSupported: "可选：{values}",
     presetStale: "「{name}」暂时不能使用，本轮使用默认设置。", profile: "预设", profileNote: "选择后自动保存", profileError: "预设加载失败", profileRolledBack: "未保存，已恢复原选择",  saving: "保存中", preferenceError: "设置尚未确认保存，请刷新后核对再发送",
     defaultModelUnresolved: "使用默认模型。选择具体模型可查看可用设置。",
-    tier_off: "关闭思考", tier_quick: "快速", tier_thinking: "深度思考", tierOffMissing: "服务端暂未提供关闭档", optionUnavailable: "暂未开放", addTools: "添加附件、技能或工具", closeTools: "收起工具",
+    tier_off: "关闭思考", tier_quick: "快速", tier_thinking: "深度思考", tierOffMissing: "服务端暂无关闭档", optionUnavailable: "暂未开放", addTools: "添加附件、技能或工具", closeTools: "收起工具",
     ioToggle: "完整工具输入输出", ioInput: "输入", ioOutput: "输出", ioMore: "加载更多", ioEmpty: "（空）", ioMissing: "未采集", ioErr: "错误", ioCut: "已截断", ioNone: "暂无详情", ioError: "无法读取，请重新展开。",
     recTitle: "调用记录详情", recSource: "来源", recUnknown: "来源未知", recTransport: "传输", recRejected: "网关拒绝，未外发", recBusiness: "业务结果", recHttp: "上游 HTTP", recDuration: "耗时", recTurn: "本轮合计", recUnknownState: "未知", recNone: "暂无数据",
     upstream: "上游",

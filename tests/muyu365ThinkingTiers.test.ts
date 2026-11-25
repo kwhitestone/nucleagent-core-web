@@ -54,7 +54,7 @@ async function render(rows: unknown[], selected = "") {
 test("three tiers in fixed order with the user's wording; Core's 默认 row stays first under its own name and is not called 关闭", async () => {
   const v = await render(core(true));
   try {
-    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂未提供关闭档）", "快速（低）", "深度思考（高）"]);
+    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂无关闭档）", "快速（低）", "深度思考（高）"]);
     assert.deepEqual(v.radios().map((r) => r.disabled), [false, true, false, false]);
     await React.act(async () => v.radios()[3]!.click());
     assert.deepEqual(v.picked, ["thinking"], "深度思考 saves Core's own id");
@@ -64,7 +64,7 @@ test("three tiers in fixed order with the user's wording; Core's 默认 row stay
 test("disabled tiers stay listed with Core's reason (non-codex executors); none is pickable", async () => {
   const v = await render(core(false));
   try {
-    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂未提供关闭档）", "快速（低）（暂未开放）", "深度思考（高）（暂未开放）"]);
+    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂无关闭档）", "快速（低）（暂未开放）", "深度思考（高）（暂未开放）"]);
     assert.deepEqual(v.radios().map((r) => r.disabled), [false, true, true, true]);
     assert.equal(v.radios()[2]!.title, "暂未开放");
   } finally { await v.close(); }

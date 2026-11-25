@@ -11,11 +11,12 @@ import type { Translate } from "./ChatApp";
  * row yet, so 关闭思考 is listed disabled saying so (默认 is never shown as 关闭). Other disabled rows are listed only when
  * current (kept, never silently swapped). `stale` = the current preset's protocol/level no longer fits the model.
  */
-const TIERS = ["off", "quick", "thinking"];
+/** 0 off, 1 quick, 2 thinking, 3 anything else. */
+const rank = (row: ProfileRow) => (["off", "quick", "thinking"].indexOf(row.id) + 4) % 4;
 /** Tier label with the row's real level, e.g. 深度思考（中） when Core maps it to medium; other ids keep Core's name. */
 export const tierName = (row: ProfileRow, t: Translate) => {
   const level = row.params?.thinkingLevel || row.params?.reasoningEffort;
-  return TIERS.includes(row.id) ? t(`chatReact.tier_${row.id}`) + (level && level !== "off" ? `（${t(`chatReact.effort${cap(level)}`)}）` : "") : row.displayName || row.id;
+  return rank(row) < 3 ? t(`chatReact.tier_${row.id}`) + (rank(row) && level ? `（${t(`chatReact.effort${cap(level)}`)}）` : "") : row.displayName || row.id;
 };
 export default function ProfileControls({ t, rows, selected, saving, rolledBack, error, stale, staleReason, onChange, onRetry }: {
   t: Translate; rows: ProfileRow[]; selected: string; saving: boolean; rolledBack: boolean; error: boolean; stale?: string; staleReason?: string;
@@ -27,10 +28,8 @@ export default function ProfileControls({ t, rows, selected, saving, rolledBack,
   };
   // MUYU-365 GAP G-3: a disabled row says Core's own reason (model_profile.go `reason`), else 暂未开放.
   const why = (row: ProfileRow) => row.reason || t("chatReact.optionUnavailable");
-  const chat = rows.some((row) => TIERS.includes(row.id));
-  const off = rows.find((row) => row.id === "off") ?? { id: "off", enabled: false, reason: t("chatReact.tierOffMissing") } as ProfileRow;
-  const listed = [...(chat ? [off] : []), ...rows.filter((row) => row.id !== "default" && row.id !== "off" && (row.enabled || row.id === selected || TIERS.includes(row.id)))]
-    .sort((a, b) => TIERS.indexOf(a.id) + 9 * +!TIERS.includes(a.id) - TIERS.indexOf(b.id) - 9 * +!TIERS.includes(b.id));
+  const listed = [...rows.some((row) => rank(row) < 3) && !rows.some((row) => !rank(row)) ? [{ id: "off", enabled: false, reason: t("chatReact.tierOffMissing") } as ProfileRow] : [],
+    ...rows.filter((row) => row.id !== "default" && (row.enabled || row.id === selected || rank(row) < 3))].sort((a, b) => rank(a) - rank(b));
   const fallback = rows.find(row => row.id === "default") ?? { id: "", enabled: true } as ProfileRow;
   const checked = selected || fallback.id;
   return <div role="group" aria-label={t("chatReact.profile")} aria-busy={saving} className="mc-preset">
@@ -45,7 +44,7 @@ export default function ProfileControls({ t, rows, selected, saving, rolledBack,
         onClick={() => { if (row.id !== checked) onChange(row.id); }}>
         <span className="mc-menu-text">{row.id ? tierName(row, t) : t("chatReact.selectionDefault")}{row.enabled ? "" : `（${why(row)}）`}</span>
         {checked === row.id && <CheckMark size={14} />}
-        {row.id && !TIERS.includes(row.id) && <span className="mc-menu-sub" data-testid="mc-preset-detail">{detail(row)}</span>}
+        {row.id && rank(row) > 2 && row.id !== "default" && <span className="mc-menu-sub" data-testid="mc-preset-detail">{detail(row)}</span>}
       </button>)}
     {rolledBack && <p className="mc-menu-label mc-error" role="alert">{t("chatReact.profileRolledBack")}</p>}
     <p className="mc-menu-label">{t("chatReact.profileNote")}</p>
