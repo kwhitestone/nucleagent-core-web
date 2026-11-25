@@ -27,6 +27,7 @@ let getGate: Promise<void> | undefined;
 let defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
 let preferenceQuery: unknown;
 const puts: { profileId: string; effort: string }[] = [];
+let defaultVision: string | undefined;
 
 before(async () => {
   dom = new JSDOM("<div id='root'></div>", { url: "https://test.example/" });
@@ -74,7 +75,7 @@ before(async () => {
   const catalog = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = catalog.registerModelCatalog({
     listProviders: async () => [{ id: 7, name: "fixture", isActive: true, config: { models: ["gpt-6-astra"] } }],
-    listTypedModels: async (type: string) => type === "chat" ? [{ providerId: 7, model: "gpt-6-astra", type, capabilities: [] }] : [],
+    listTypedModels: async (type: string) => type === "chat" ? [{ providerId: 7, model: "gpt-6-astra", type, capabilities: [], ...(defaultVision ? { vision_in: defaultVision } : {}) }] : [],
     fetchVisibleModels: async () => [],
   });
   app = await vite.ssrLoadModule("/src/chat-react/ChatApp.tsx") as typeof app;
@@ -215,4 +216,27 @@ test("profile UI switch is on (D8A code switch) and ChatApp honours it", async (
   const chat = readFileSync(new URL("../src/chat-react/ChatApp.tsx", import.meta.url), "utf8");
   assert.match(chat, /const profile = PROFILE_UI_ENABLED \? preference\.profile : null;/);
   assert.match(chat, /const profilePanel = PROFILE_UI_ENABLED &&/);
+});
+
+// MUYU-365 matrix: a fresh chat with no manual pick sends to the server default the pill shows, so the image gate judges
+// that model (catalog vision_in), not "null = 默认模型 未验证"; an unsupported default blocks instead of warning.
+for (const vision_in of ["unsupported", "supported"]) test(`fresh chat image gate judges the resolved default model (${vision_in})`, async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  preference = { profileId: "", effort: "" };
+  defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6-astra", resolved: true };
+  defaultVision = vision_in;
+  function Harness() {
+    findControl(app.ChatApp({ t: (key) => key, strings: {} as never, navigate: () => {}, create: async () => ({ id: "9" }) as never }));
+    return null;
+  }
+  const root = createRoot(document.getElementById("root")!);
+  try {
+    await React.act(async () => root.render(React.createElement(Harness)));
+    assert.equal(settings.model?.model, "gpt-6-astra", "the pill shows the server default");
+    const gate = (settings as unknown as { imageGate: { state: string; block: boolean; model: string | null } }).imageGate;
+    assert.deepEqual({ state: gate.state, block: gate.block, model: gate.model }, { state: vision_in, block: vision_in === "unsupported", model: "gpt-6-astra" });
+  } finally {
+    await React.act(async () => root.unmount());
+    defaultVision = undefined;
+  }
 });

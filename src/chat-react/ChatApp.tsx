@@ -98,7 +98,8 @@ export function ChatApp(props: ChatProps) {
   const resolved = preference.selection;
   const shownModel = selectedSettings.model ?? (resolved?.model && resolved.providerId ? { providerId: resolved.providerId, model: resolved.model } : null);
   // MUYU-365 V5: an executor switch is judged against (and keeps) the model the pill shows, never re-resolved silently.
-  const settings = { ...selectedSettings, model: shownModel, pick: (choice: Choice | null) => selectedSettings.pick(choice, shownModel) };
+  // The image gate judges the same shown model (a fresh chat sends to that default), not "null = 默认模型".
+  const settings = { ...selectedSettings, model: shownModel, imageGate: selectedSettings.gateFor(shownModel), pick: (choice: Choice | null) => selectedSettings.pick(choice, shownModel) };
   // design-1123 A: presets are the only control; protocol + level ride inside the preset (P2 phase 1 = C). A stored
   // legacy effort is no longer sent on its own — choosing a preset writes it back empty.
   const storedProfileId = preference.storedProfileId;
@@ -1234,5 +1235,5 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   return { independentTools: wired?.key === conversationId ? wired?.independentTools : undefined, groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend),
     compatibleWith: (choice: Choice, id: string) => choice.kind !== "chat" || allowedFor(choice.model, id), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
-    imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
+    gateFor: (m: ModelChoice | null) => imageGate(m, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }
