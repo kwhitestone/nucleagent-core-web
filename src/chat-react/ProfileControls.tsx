@@ -6,9 +6,17 @@ import type { Translate } from "./ChatApp";
 /**
  * design-1123 A: the preset radios the 「思考」 pill opens (exp104 S1/S3 kept: choosing saves at once, saving disables the
  * group with a spinner, a failed save says what the server kept). Each preset names the thinking level.
- * A disabled preset is not listed unless it is the current one (kept, never silently swapped). `stale` = the current
- * preset's protocol/level no longer fits the model: said on top, the turn goes out with 默认（继承） protocol/level.
+ * MUYU-365 thinking3: a chat catalog always lists the three tiers 关闭思考 / 快速（低） / 深度思考（高） in that order, each
+ * with its real mapped level; a tier Core does not enable stays listed, disabled, with Core's reason. Core has no `off`
+ * row yet, so 关闭思考 is listed disabled saying so (默认 is never shown as 关闭). Other disabled rows are listed only when
+ * current (kept, never silently swapped). `stale` = the current preset's protocol/level no longer fits the model.
  */
+const TIERS = ["off", "quick", "thinking"];
+/** Tier label with the row's real level, e.g. 深度思考（中） when Core maps it to medium; other ids keep Core's name. */
+export const tierName = (row: ProfileRow, t: Translate) => {
+  const level = row.params?.thinkingLevel || row.params?.reasoningEffort;
+  return TIERS.includes(row.id) ? t(`chatReact.tier_${row.id}`) + (level && level !== "off" ? `（${t(`chatReact.effort${cap(level)}`)}）` : "") : row.displayName || row.id;
+};
 export default function ProfileControls({ t, rows, selected, saving, rolledBack, error, stale, staleReason, onChange, onRetry }: {
   t: Translate; rows: ProfileRow[]; selected: string; saving: boolean; rolledBack: boolean; error: boolean; stale?: string; staleReason?: string;
   onChange(profileId: string): void; onRetry(): void;
@@ -19,7 +27,10 @@ export default function ProfileControls({ t, rows, selected, saving, rolledBack,
   };
   // MUYU-365 GAP G-3: a disabled row says Core's own reason (model_profile.go `reason`), else 暂未开放.
   const why = (row: ProfileRow) => row.reason || t("chatReact.optionUnavailable");
-  const listed = rows.filter((row) => row.id !== "default" && (row.enabled || row.id === selected));
+  const chat = rows.some((row) => TIERS.includes(row.id));
+  const off = rows.find((row) => row.id === "off") ?? { id: "off", enabled: false, reason: t("chatReact.tierOffMissing") } as ProfileRow;
+  const listed = [...(chat ? [off] : []), ...rows.filter((row) => row.id !== "default" && row.id !== "off" && (row.enabled || row.id === selected || TIERS.includes(row.id)))]
+    .sort((a, b) => TIERS.indexOf(a.id) + 9 * +!TIERS.includes(a.id) - TIERS.indexOf(b.id) - 9 * +!TIERS.includes(b.id));
   const fallback = rows.find(row => row.id === "default") ?? { id: "", enabled: true } as ProfileRow;
   const checked = selected || fallback.id;
   return <div role="group" aria-label={t("chatReact.profile")} aria-busy={saving} className="mc-preset">
@@ -32,9 +43,9 @@ export default function ProfileControls({ t, rows, selected, saving, rolledBack,
       <button key={row.id} type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item"
         aria-checked={checked === row.id} disabled={saving || !row.enabled} title={row.enabled ? undefined : why(row)}
         onClick={() => { if (row.id !== checked) onChange(row.id); }}>
-        <span className="mc-menu-text">{row.id ? row.displayName || row.id : t("chatReact.selectionDefault")}{row.enabled ? "" : `（${why(row)}）`}</span>
+        <span className="mc-menu-text">{row.id ? tierName(row, t) : t("chatReact.selectionDefault")}{row.enabled ? "" : `（${why(row)}）`}</span>
         {checked === row.id && <CheckMark size={14} />}
-        {row.id && row.id !== "default" && <span className="mc-menu-sub" data-testid="mc-preset-detail">{detail(row)}</span>}
+        {row.id && !TIERS.includes(row.id) && <span className="mc-menu-sub" data-testid="mc-preset-detail">{detail(row)}</span>}
       </button>)}
     {rolledBack && <p className="mc-menu-label mc-error" role="alert">{t("chatReact.profileRolledBack")}</p>}
     <p className="mc-menu-label">{t("chatReact.profileNote")}</p>

@@ -47,7 +47,7 @@ const page = (props: { rows: unknown[]; selected?: string; onChange?(id: string)
 });
 let Profile: typeof import("../src/chat-react/ProfileControls.tsx").default;
 
-test("design-1123 A: disabled presets are not listed; the default item stays usable and re-choosing it saves nothing", async () => {
+test("MUYU-365 thinking3 (was design-1123 A): disabled tiers stay listed and disabled with Core's reason; non-tier disabled rows are not; the default item stays usable and re-choosing it saves nothing", async () => {
   const container = document.getElementById("root")!;
   const root = createRoot(container);
   const rows = [
@@ -58,9 +58,11 @@ test("design-1123 A: disabled presets are not listed; the default item stays usa
   try {
     await React.act(async () => root.render(React.createElement(app.ModelControls, { t: (key) => key, defaultOpen: true, profile: page({ rows, onChange: (id) => selected.push(id) }) })));
     const radios = [...container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-profile-page] [role=menuitemradio]")];
-    assert.equal(radios.length, 1, "only 默认（继承）");
-    assert.equal(radios[0]!.disabled, false);
-    assert.doesNotMatch(container.innerHTML, /未验证|已验证参数|原生链|原生后端/);
+    assert.deepEqual(radios.map((r) => [r.querySelector(".mc-menu-text")!.textContent, r.disabled]), [
+      ["chatReact.selectionDefault", false],
+      ["chatReact.tier_off（chatReact.tierOffMissing）", true],
+      ["chatReact.tier_quick（当前模型/原生后端尚无已验证参数支持）", true],
+    ], "long-context (not a tier, not selected) stays unlisted");
     await React.act(async () => radios[0]!.click());
     assert.deepEqual(selected, []);
   } finally { await React.act(async () => root.unmount()); }
@@ -82,16 +84,17 @@ test("profiles are the radio items of the single Controls menu, with their own g
     const radios = [...container.querySelectorAll<HTMLButtonElement>("[role=menu] [role=menuitemradio]")];
     assert.deepEqual(radios.map((radio) => [radio.querySelector(".mc-menu-text")!.textContent, radio.getAttribute("aria-checked"), radio.disabled, radio.className, radio.tabIndex]), [
       ["chatReact.selectionDefault", "false", false, "mc-menu-item", -1],
-      ["快速", "true", false, "mc-menu-item", -1],
-      ["思考", "false", false, "mc-menu-item", -1],
+      ["chatReact.tier_off（chatReact.tierOffMissing）", "false", true, "mc-menu-item", -1],
+      ["chatReact.tier_quick", "true", false, "mc-menu-item", -1],
+      ["chatReact.tier_thinking", "false", false, "mc-menu-item", -1],
     ]);
     assert.match(container.textContent!, /chatReact\.profileNote/);
     const group = radios[0]!.closest("[role=group]")!;
     assert.equal(group.getAttribute("aria-label"), "chatReact.profile");
-    assert.equal(document.activeElement, radios[1], "focus lands on the checked preset");
-    await React.act(async () => radios[1]!.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    assert.equal(document.activeElement, radios[2]);
-    await React.act(async () => radios[2]!.click());
+    assert.equal(document.activeElement, radios[2], "focus lands on the checked preset");
+    await React.act(async () => radios[2]!.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    assert.equal(document.activeElement, radios[3]);
+    await React.act(async () => radios[3]!.click());
     await React.act(async () => radios[0]!.click());
     assert.deepEqual(selected, ["thinking", ""]);
     assert.equal(container.querySelector<HTMLElement>("[role=menu]")!.hidden, false, "choosing does not close the panel");
