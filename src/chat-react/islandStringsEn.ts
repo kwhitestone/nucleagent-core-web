@@ -27,7 +27,6 @@ export const EN_STRINGS: IslandStrings = {
     mediaReselect: "This generation route is unavailable. Choose a model again.", musicUnavailable: "Create music · Music generation is unavailable here",
     mediaUnavailable: "Generation is not connected for this model.",
     mediaReadFailed: "Media could not be loaded or the link expired. Refresh to retry.",
-    mediaRefresh: "Refresh media status",
     media_queued: "Queued", media_submitting: "Submitting", media_running: "Generating", media_ingesting: "Saving media",
     reasoning: "Thinking process", processing: "Working", callRecord: "Call record",
     attachmentPending: "Attachment verification pending; download unavailable",

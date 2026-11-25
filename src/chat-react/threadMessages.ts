@@ -68,12 +68,8 @@ function stepPart(item: ConversationItem, endedAt: string | undefined): Part {
  * Never a message id. No step, or main-run rows naming different steps, gives none (usage stays UNKNOWN).
  */
 function turnIdOf(group: readonly ConversationItem[]): string | undefined {
-  const steps = new Set(group.flatMap((item) => {
-    const step = item.data?.runStepId;
-    const media = item.data?.media as { kind?: string; taskId?: number } | undefined;
-    const mediaStep = (media?.kind === "image" || media?.kind === "video") && Number.isSafeInteger(media.taskId) && media.taskId! > 0 && step === `media-${media.taskId}`;
-    return (item.data?.mainRun !== false || mediaStep) && typeof step === "string" && step ? [step] : [];
-  }));
+  // MUYU-409: media results (`media-<taskId>`) are billed on their own card (mediaUsage), never as the reply's turn.
+  const steps = new Set(group.flatMap((i) => i.data?.mainRun !== false && typeof i.data?.runStepId === "string" && i.data.runStepId ? [i.data.runStepId] : []));
   return steps.size === 1 ? [...steps][0] : undefined;
 }
 

@@ -65,6 +65,10 @@ test("real file-chip path previews verified images, reauthorizes refresh and rej
     const first = container.querySelector("img")?.src;
     assert.match(first ?? "", /^blob:/);
     assert.equal(container.querySelector("img")?.alt, file.name);
+    // MUYU-409: no standing refresh button; only a failed/expired read offers a retry.
+    assert.equal(container.querySelector(".mc-preview button"), null);
+    await React.act(async () => container.querySelector("img")!.dispatchEvent(new window.Event("error")));
+    assert.match(container.textContent!, /mediaReadFailed/);
     denied = true;
     await React.act(async () => (container.querySelector('.mc-preview button') as HTMLButtonElement).click());
     assert.equal(container.querySelector("img"), null);

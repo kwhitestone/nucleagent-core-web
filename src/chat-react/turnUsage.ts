@@ -61,3 +61,7 @@ export function turnUsage(scope: TurnScope, evidence: readonly SettlementEvidenc
   return note ? { ...view, note, age: note === "stale" && Number.isSafeInteger(age) && (age as number) >= 0 ? age as number : undefined,
     reason: typeof reason === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(reason) ? reason : undefined } : view;
 }
+
+/** MUYU-409: one async image/video card's own receipt (Core's `media-<taskId>` row), never a text turn's fee. */
+export const mediaUsage = (conversationId: string, taskId: number | undefined, evidence?: readonly SettlementEvidence[]) =>
+  turnUsage({ conversationId, turnId: `media-${taskId}` }, evidence);

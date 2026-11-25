@@ -36,6 +36,7 @@ export function StoredMediaPreview({ file, t }: { file: FileChip; t: Translate }
   return eligible && <span className="mc-preview">
     {source && (image ? <img className="mc-media" src={source} alt={file.name} onError={failed} />
       : <Playback className="mc-media" controls preload="metadata" src={source} aria-label={file.name} onError={failed} />)}
-    {(!audio || !source) && <button type="button" className="mc-pill" disabled={audio && revision > 0 && source !== null} onClick={() => setRevision(value => value + 1)}>{t(`chatReact.${source === null ? "mediaReadFailed" : audio ? "audioPreview" : "mediaRefresh"}`)}</button>}
+    {/* MUYU-409: no standing 刷新媒体状态; image/video only offer a retry after a failed or expired read. */}
+    {(audio ? !source : source === null) && <button type="button" className="mc-pill" disabled={audio && revision > 0 && source !== null} onClick={() => setRevision(value => value + 1)}>{t(`chatReact.${source === null ? "mediaReadFailed" : "audioPreview"}`)}</button>}
   </span>;
 }

@@ -25,7 +25,6 @@ export const ZH_STRINGS = {
     mediaReselect: "所选模型的生成路由已失效，请重新选择模型。", musicUnavailable: "制作音乐 · 当前环境尚未接入音乐生成",
     mediaUnavailable: "此模型尚未接通生成，暂不可发送。",
     mediaReadFailed: "媒体读取失败或链接已失效，请刷新重试。",
-    mediaRefresh: "刷新媒体状态",
     media_queued: "等待生成", media_submitting: "正在提交", media_running: "正在生成", media_ingesting: "正在保存媒体",
     reasoning: "思考过程", processing: "处理中", callRecord: "调用记录",
     attachmentPending: "附件待核验，暂不可下载",

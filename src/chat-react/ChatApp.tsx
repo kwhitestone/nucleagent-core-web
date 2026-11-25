@@ -53,7 +53,7 @@ import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCap
 import { withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
-import { LOADING_EVIDENCE, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
+import { LOADING_EVIDENCE, mediaUsage, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
 import { effectiveSelectionLabel, presetFields, readEffectiveSelection, sendWithSelection, staleReason, useModelCapability, type EffectiveSelection, type Fields } from "./modelSelection";
@@ -136,7 +136,8 @@ export function ChatApp(props: ChatProps) {
   const attachments = useMemo(() => storageAttachmentAdapter((file, message) => toast.error(`${file.name}: ${message}`)), []);
   const view = { locale, nowMs: useClock(!!core && core.state.status === "running") };
   const suggestions = useSuggestions(!conversationId, locale);
-  const settlementSteps = [...new Set(Object.values(core?.state.items ?? {}).flatMap((item) => item.data?.mainRun !== false && typeof item.data?.runStepId === 'string' ? [item.data.runStepId] : []))].sort().join(',');
+  const settlementSteps = settlementKeys(core?.state);
+  // MUYU-409: media keys are in `steps`, so a new media task re-reads and keeps re-reading until its receipt lands.
   const evidence = useSettlement(conversationId, props.settlementReader, core?.state.status, settlementSteps);
 
   const guard = <A extends unknown[], R>(send: (...args: A) => Promise<R>) => guardMediaSend(settings.direct ? null : settings.media, send, t("chatReact.mediaUnavailable"));
@@ -723,7 +724,7 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
   );
 }
 
-function Parts({ t }: { t: Translate }) {
+function Parts({ t, usage }: { t: Translate; usage?: { conversationId: string; evidence?: readonly SettlementEvidence[]; locale?: string } }) {
   const messageId = useAuiState((state) => state.message.id);
   return (
     <MessagePrimitive.GroupedParts groupBy={groupBy} indicator="empty">
@@ -749,7 +750,7 @@ function Parts({ t }: { t: Translate }) {
             }
             // The header is drawn by ProcessFold.
             if (part.name === "process") return <></>;
-            if (part.name === "media") return <MediaCard data={part.data as MediaPartData} t={t} />;
+            if (part.name === "media") return <MediaCard data={part.data as MediaPartData} t={t} locale={usage?.locale} usage={usage && mediaUsage(usage.conversationId, (part.data as MediaPartData).media.taskId, usage.evidence)} />;
             if (part.name === "files") {
               return <div className="mc-chips mc-chips--sent">{(part.data as unknown as FileChip[]).map((f) => <FileChipView key={f.id} file={f} t={t} />)}</div>;
             }
@@ -781,6 +782,8 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
     return call?.type === 'tool-call' ? call.toolName : '';
   });
   const isLast = useAuiState((s) => s.message.isLast);
+  // MUYU-409: an async image/video card shows its own receipt; a reply that is only media has no turn line of its own.
+  const mediaOnly = useAuiState((s) => !turnId && s.message.parts.some((part) => (part as { name?: string }).name === "media"));
   const isUser = role === "user";
   const time = formatMessageTime(createdAt?.toISOString());
   const author = isUser ? t("conversation.you") : t("home.greeting");
@@ -795,7 +798,7 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
       </div>}
       <div className="mc-bubble" aria-label={isUser ? author : undefined}>
         {!isUser && activity !== null && <p className="mc-process-current" role="status"><span className="mc-spinner" aria-hidden="true" /><span className="mc-shimmer">{activity || t('chatReact.processing')}</span></p>}
-        <Parts t={t} />
+        <Parts t={t} usage={conversationId ? { conversationId, evidence, locale } : undefined} />
         {isUser && <MessageAttachmentChips t={t} />}
       </div>
       <AuiIf condition={state => !state.thread.isRunning && state.message.runState !== "in-progress"}>
@@ -804,7 +807,7 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
           {isUser && stamp}
         </div>
       </AuiIf>
-      {!isUser && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence, activity !== null)} />}
+      {!isUser && !mediaOnly && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence, activity !== null)} />}
       {!isUser && selection && conversationId && turnId && <Effective t={t} conversationId={conversationId} stepId={turnId} />}
     </MessagePrimitive.Root>
   );
@@ -978,6 +981,11 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
     </div>
   );
 }
+
+/** MUYU-409: the receipts this conversation expects: main-run steps and each media result's `media-<taskId>` (its receipt follows it). */
+export const settlementKeys = (state?: { items: Record<string, { data?: Record<string, any> } | undefined> }) =>
+  [...new Set(Object.values(state?.items ?? {}).flatMap(({ data } = {}) => [data?.mainRun !== false && data?.runStepId, data?.media?.taskId > 0 && `media-${data!.media.taskId}`]
+    .filter((key) => typeof key === 'string')))].sort().join(',');
 
 /** Model + executor of this conversation (or of the next new one); PATCH on change like Conversation.vue. */
 const NO_EVIDENCE: readonly SettlementEvidence[] = [];

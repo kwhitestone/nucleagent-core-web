@@ -254,48 +254,58 @@ test("media download rejects denied or non-media responses without opening a tab
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test("history refresh handles unknown/cancelled, GET errors, unsafe URLs and expired image without spinning forever", async () => {
+test("history read handles unknown/cancelled, GET errors, unsafe URLs and expired image without spinning forever; no refresh button", async () => {
   const view = await fixture();
   let current = task(7, "running");
   response = () => current;
+  const remount = async () => { await view.render(null); await view.render(React.createElement(MediaCard, { data: mediaData(7), t })); };
   try {
     await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
     assert.match(view.container.textContent!, /chatReact.media_running/);
+    assert.doesNotMatch(view.container.textContent!, /mediaRefresh|刷新/, "MUYU-409: no 刷新媒体状态");
     for (const status of ["unknown", "cancelled", "failed"]) {
       current = task(7, status);
-      await view.click("chatReact.mediaRefresh");
+      await remount();
       assert.match(view.container.textContent!, new RegExp(`generate.status.${status}`));
       assert.equal(view.container.querySelector("img"), null);
     }
     response = () => { throw new Error("private service detail"); };
-    await view.click("chatReact.mediaRefresh");
+    await remount();
     assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
     assert.doesNotMatch(view.container.textContent!, /private service detail/);
     response = () => task(7, "succeeded", "javascript:alert(1)");
-    await view.click("chatReact.mediaRefresh");
+    await remount();
     assert.equal(view.container.querySelector("img"), null);
     response = () => task(7, "succeeded", "https://cdn.example/expired");
-    await view.click("chatReact.mediaRefresh");
+    await remount();
     await React.act(async () => view.container.querySelector("img")!.dispatchEvent(new window.Event("error")));
     assert.match(view.container.textContent!, /chatReact.mediaReadFailed/);
+    assert.equal(view.container.querySelectorAll("button").length, 0);
     assert.deepEqual(writes, []);
   } finally { await view.close(); }
 });
 
-test("pending history polls are bounded and unmount cancels further reads", async (context) => {
+test("pending history polls by itself with a growing, capped wait and a read cap; unmount cancels", async (context) => {
   const view = await fixture();
   response = () => task(7, "queued");
   context.mock.timers.enable({ apis: ["setTimeout"] });
+  const { MEDIA_POLL_READS } = await vite.ssrLoadModule("/src/chat-react/MediaCard.tsx");
+  const tick = async (ms: number) => { for (let left = ms; left > 0; left -= 1000) await React.act(async () => { context.mock.timers.tick(Math.min(1000, left)); await Promise.resolve(); }); };
   try {
     await view.render(React.createElement(MediaCard, { data: mediaData(7), t }));
     assert.match(view.container.textContent!, /chatReact.media_queued/);
-    for (let tick = 0; tick < 25; tick++) await React.act(async () => context.mock.timers.tick(3000));
-    assert.equal(reads.length, 20);
-    await view.click("chatReact.mediaRefresh");
-    assert.equal(reads.length, 21);
+    await tick(4499);
+    assert.equal(reads.length, 1);
+    await tick(1);
+    assert.equal(reads.length, 2, "first re-read after 4.5 s");
+    await tick(6750);
+    assert.equal(reads.length, 3, "the wait grows ×1.5");
+    await tick(3_600_000);
+    assert.equal(reads.length, MEDIA_POLL_READS, "bounded");
+    assert.equal(view.container.querySelectorAll("button").length, 0, "no refresh button");
     await view.render(null);
-    await React.act(async () => context.mock.timers.tick(3000));
-    assert.equal(reads.length, 21);
+    await tick(3_600_000);
+    assert.equal(reads.length, MEDIA_POLL_READS);
     assert.deepEqual(writes, []);
   } finally { await view.close(); context.mock.timers.reset(); }
 });
