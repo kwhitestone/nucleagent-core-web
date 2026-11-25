@@ -124,6 +124,9 @@ test("the island runtime renders, sends and reports capabilities on the stand-in
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/default-edit-composer.ts")));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/radix-slot.ts")));
   assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/tool-parts.ts")));
+  assert.ok(graph.some((id) => id.endsWith("src/vendor/assistant-ui-core/viewport-auto-scroll.ts")));
+  // (The barrel also reaches store/client through other exports; the island bundle carrying no original controller is checked
+  // on the production build, mtype-v2 evidence.)
   // (The full @assistant-ui/react barrel loaded here also pulls radix menu/collection, which import react-slot themselves;
   // the island's per-file primitives never do. The production bundle check is in the exp109 build evidence.)
   assert.ok(graph.some((id) => id.includes("@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")), "library was bundled through Vite");
@@ -304,4 +307,32 @@ test("tool-interaction / tool-response / generative-ui stand-ins (exp109): the i
   assert.throws(() => stub.createToolInteraction(), /not bundled/);
   assert.throws(() => stub.ToolResponse.toResponse(), /not bundled/);
   assert.throws(() => (stub.GenerativeUIRender as unknown as () => unknown)(), /not bundled/);
+});
+
+test("viewport auto-scroll stand-in (mtype-v2): the island turns every aui scroll behaviour off and ScrollViewport owns scrolling", async () => {
+  const dist = "node_modules/@assistant-ui/react/dist";
+  assert.equal(JSON.parse(read("node_modules/@assistant-ui/react/package.json")).version, "0.15.36");
+  assert.match(read("vite.config.ts"), /id === "@assistant-ui\/store\/client" && importer\?\.endsWith\("\/@assistant-ui\/react\/dist\/context\/stores\/ThreadViewport\.js"\)\n[^\n]*src\/vendor\/assistant-ui-core\/viewport-auto-scroll\.ts/);
+  // The store imports only the controller factory from store/client and exposes the controller to exactly two users.
+  const store = read(`${dist}/context/stores/ThreadViewport.js`);
+  assert.match(store, /^import \{ createThreadViewportAutoScroll \} from "@assistant-ui\/store\/client";$/m);
+  assert.match(store, /registerContentInset: autoScroll\.controller\.registerContentInset,/);
+  const hook = read(`${dist}/primitives/thread/useThreadViewportAutoScroll.js`);
+  assert.deepEqual([...hook.matchAll(/controller\.(\w+)/g)].map((m) => m[1]).sort(),
+    ["attach", "messagesPrepended", "runStarted", "scrollToBottom", "setHasMessages", "threadSwitched"]);
+  assert.match(hook, /autoScroll: autoScroll \?\? state\.turnAnchor !== "top",/);
+  // The island's only viewport passes all four switches off; it renders no aui scroll button or footer (inset users).
+  assert.match(read("src/chat-react/ScrollViewport.tsx"),
+    /<ThreadPrimitive\.Viewport ref=\{viewport\} className=\{className\} autoScroll=\{false\}\n\s+scrollToBottomOnInitialize=\{false\} scrollToBottomOnThreadSwitch=\{false\} scrollToBottomOnRunStart=\{false\}>/);
+  for (const file of ["src/chat-react/ChatApp.tsx", "src/chat-react/auiPrimitives.ts", "src/chat-react/mount.tsx", "src/chat-react/ScrollViewport.tsx"]) {
+    assert.doesNotMatch(read(file), /ScrollToBottom|ViewportFooter|ViewportSlack|isAtBottom|useThreadViewport/, file);
+  }
+  assert.equal((read("src/chat-react/ChatApp.tsx").match(/<ThreadPrimitive\.Viewport\b/g) ?? []).length, 0, "ScrollViewport is the only viewport");
+  const stub = await import("../src/vendor/assistant-ui-core/viewport-auto-scroll.ts");
+  const controller = stub.createThreadViewportAutoScroll();
+  const detach = controller.attach();
+  assert.equal(typeof detach, "function"); detach();
+  for (const call of [controller.setHasMessages, controller.runStarted, controller.threadSwitched, controller.messagesPrepended]) assert.equal(call(), undefined);
+  assert.equal(controller.isAtBottom, true);
+  for (const call of [controller.scrollToBottom, controller.registerContentInset, controller.setContentInset]) assert.throws(() => (call as () => unknown)(), /not bundled/);
 });

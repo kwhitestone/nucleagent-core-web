@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => {
         || (id === "../thread/topAnchor/topAnchorUtils.js" && importer?.endsWith("/@assistant-ui/react/dist/primitives/message/MessageRoot.js"))
         ? resolve(process.cwd(), "src/vendor/assistant-ui-core/top-anchor.ts") : null,
     }, {
+      // MUYU-365 mtype-v2: the island's viewport turns aui auto-scroll fully off; ScrollViewport.tsx owns scrolling (auiSessionStubs pins it).
+      name: "aui-viewport-auto-scroll-stand-in", enforce: "pre",
+      resolveId: (id, importer) => id === "@assistant-ui/store/client" && importer?.endsWith("/@assistant-ui/react/dist/context/stores/ThreadViewport.js")
+        ? resolve(process.cwd(), "src/vendor/assistant-ui-core/viewport-auto-scroll.ts") : null,
+    }, {
       // MUYU-365 exp109: the island adapter has no onEdit, so the external-store thread never opens aui's edit composer.
       name: "aui-edit-composer-stand-in", enforce: "pre",
       resolveId: (id, importer) => id === "./default-edit-composer-runtime-core.js" && importer?.endsWith("/@assistant-ui/core/dist/runtime/base/base-thread-runtime-core.js")
