@@ -93,7 +93,7 @@ before(async () => {
   const { registerModelCatalog } = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = registerModelCatalog({
     listProviders: async () => [{ id: 1, name: "provider", isActive: true, config: { models: ["chat-model"] } }],
-    listTypedModels: async (type: string) => ["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: [] }] : [],
+    listTypedModels: async (type: string) => ["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: type === "image" ? ["t2i"] : type === "video" ? ["t2v"] : [] }] : [],
     fetchVisibleModels: async () => [],
   });
 });
