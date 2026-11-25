@@ -189,7 +189,7 @@ for (const conversationId of [undefined, "9"]) test(`profile on: stored quick is
   try {
     await React.act(async () => root.render(React.createElement(Harness)));
     if (!conversationId) await React.act(async () => settings.pick({ kind: "chat", model: { providerId: 7, model: "gpt-6-astra" } }));
-    assert.equal(profilePanel?.name, "quick", "the 思考 pill shows the stored choice");
+    assert.equal(profilePanel?.name, "chatReact.tier_quick", "the 思考 pill shows the stored choice (MUYU-365 thinking3 tier wording)");
     await React.act(async () => { await adapter.onNew(message); });
     if (conversationId) {
       const turn = (globalThis as unknown as { preferenceGateFixture: { turn(): unknown } }).preferenceGateFixture.turn();

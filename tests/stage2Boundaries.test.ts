@@ -148,7 +148,7 @@ test("a preset without protocol/level goes out as profileId only (hidden or visi
       await ui.send();
       assert.deepEqual(Object.keys(creates[0]!).filter((k) => /effort|profile|modelParams|modelSelection/i.test(k)), ["profileId"]);
       assert.equal(creates[0]!.profileId, "quick");
-      assert.equal(composer.profile?.name, "快速");
+      assert.equal(composer.profile?.name, "chatReact.tier_quick（chatReact.effortLow）", "MUYU-365 thinking3: tier wording with the real level");
       assert.equal(composer.profile?.stale, false);
     } finally { await ui.unmount(); }
   }
@@ -179,7 +179,7 @@ test("a stale preset (unverified level / hidden declaration) sends only profileI
     const ui = await mount(context);
     try {
       assert.equal(composer.profile?.stale, true);
-      assert.equal(composer.profile?.name, "快速", "the choice stays");
+      assert.equal(composer.profile?.name, "chatReact.tier_quick", "the choice stays");
       await ui.send();
       assert.deepEqual(Object.keys(creates[0]!).filter((k) => /effort|profile|modelParams|modelSelection/i.test(k)), ["profileId"]);
     } finally { await ui.unmount(); }
