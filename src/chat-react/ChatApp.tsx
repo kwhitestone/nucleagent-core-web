@@ -2,7 +2,7 @@ import { CloudFiles } from "./CloudFiles";
 import { examples } from "./mediaExamples";
 import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { PROFILE_UI_ENABLED } from "./profileFeature";
-import ProfileControls from "./ProfileControls";
+import ProfileControls, { tierName } from "./ProfileControls";
 import ToolIO from "./ToolIO";
 import {
   AssistantRuntimeProvider, AuiIf, useAui, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
@@ -120,7 +120,7 @@ export function ChatApp(props: ChatProps) {
   const pending = preference.pending;
   const shownId = pending ? pending.profileId : storedProfileId;
   const shown = preference.catalog.find((row) => row.id === shownId && shownId);
-  const shownName = shown ? shown.displayName || shown.id : undefined;
+  const shownName = shown ? tierName(shown, t) : undefined;
   const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.length > 0 || preference.error) ? {
     name: shownName, stale,
     page: <ProfileControls t={t} rows={preference.catalog} selected={shownId} saving={!!pending} rolledBack={preference.rolledBack} error={preference.error && !pending}

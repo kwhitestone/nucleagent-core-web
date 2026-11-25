@@ -141,7 +141,7 @@ test("design-1123 A: the 思考 pill opens the preset radios directly (no root l
     assert.equal(view.page("effort"), null, "no effort page");
     assert.equal(view.all(".mc-add").length, 1, "still one Controls entry");
     assert.equal(view.items("profile").map((item) => `${item.querySelector(".mc-menu-text")!.textContent}${item.disabled ? "-" : "+"}`).join("|"),
-      "chatReact.selectionDefault+|思考+|快速+", "默认（继承） then enabled presets; a disabled one is not listed (rule C)");
+      "chatReact.selectionDefault+|chatReact.tier_off（chatReact.tierOffMissing）-|chatReact.tier_quick（chatReact.effortLow）+|chatReact.tier_thinking（chatReact.effortHigh）+", "MUYU-365 thinking3: 默认（继承） then the three tiers in order (关闭 disabled: Core has no off row); a non-tier disabled row is not listed");
     assert.equal(view.checked("profile"), "chatReact.selectionDefault");
     assert.match(view.page("profile")!.textContent!, /chatReact\.profileNote/);
     assert.equal(puts.length, 0, "browsing saves nothing");
@@ -156,22 +156,22 @@ test("S1/S2 select is save: group disabled with a spinner while saving, then the
   try {
     await view.openProfile();
     putGate = new Promise((resolve) => { release = resolve; });
-    await view.choose("思考");
+    await view.choose("chatReact.tier_thinking");
     assert.equal(puts.length, 1, "one PUT, no separate save button");
     assert.equal(JSON.stringify(puts[0]), JSON.stringify({ model: "gpt-6-astra", profileId: "thinking", effort: "" }));
     assert.equal(view.items("profile").every((item) => item.disabled), true, "S1: whole group disabled while saving");
     assert.equal(view.visible(view.q('[data-testid="mc-profile-saving"]')), true, "S1: spinner");
-    assert.equal(view.checked("profile"), "思考", "the check moves to the pending choice");
+    assert.equal(view.checked("profile"), "chatReact.tier_thinking（chatReact.effortHigh）", "the check moves to the pending choice");
     await React.act(async () => release());
     await settle();
     assert.equal(view.q('[data-testid="mc-profile-saving"]'), null);
-    assert.equal(view.checked("profile"), "思考", "S2: stays on the saved item");
-    assert.equal(view.items("profile")[1]!.disabled, false, "group enabled again");
+    assert.equal(view.checked("profile"), "chatReact.tier_thinking（chatReact.effortHigh）", "S2: stays on the saved item");
+    assert.equal(view.items("profile")[2]!.disabled, false, "group enabled again");
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null, "S2: no message");
-    assert.match(view.items("profile")[1]!.querySelector('[data-testid="mc-preset-detail"]')!.textContent!, /chatReact\.effort.*chatReact\.effortHigh/, "D4A: read-only line per preset");
+    assert.match(view.items("profile")[3]!.querySelector(".mc-menu-text")!.textContent!, /chatReact\.effortHigh/, "D4A → thinking3: the real level is part of the tier label");
     await view.key("Escape");
     await view.click(view.controls());
-    assert.match(view.q("[data-testid=mc-profile-value]")!.textContent!, /思考/);
+    assert.match(view.q("[data-testid=mc-profile-value]")!.textContent!, /chatReact\.tier_thinking/);
   } finally { await React.act(async () => release?.()); await view.close(); }
 });
 
@@ -182,14 +182,14 @@ test("S3 save failure rolls back to the original choice, says so, never retries,
   const view = await mount();
   try {
     await view.openProfile();
-    assert.equal(view.checked("profile"), "思考");
+    assert.equal(view.checked("profile"), "chatReact.tier_thinking（chatReact.effortHigh）");
     putFailure = Object.assign(new Error("Request failed with status code 500"), { status: 500 });
-    await view.choose("快速");
+    await view.choose("chatReact.tier_quick");
     assert.equal(puts.length, 1);
-    assert.equal(view.checked("profile"), "思考", "S3: check back on the original item");
+    assert.equal(view.checked("profile"), "chatReact.tier_thinking（chatReact.effortHigh）", "S3: check back on the original item");
     const alert = view.page("profile")!.querySelector("[role=alert]");
     assert.equal(alert?.textContent ?? "", "chatReact.profileRolledBack", "未保存，已恢复原选择");
-    assert.equal(view.items("profile")[1]!.disabled, false, "readback confirmed: choosable again");
+    assert.equal(view.items("profile")[2]!.disabled, false, "readback confirmed: choosable again");
     putFailure = null;
     await view.send("hi");
     assert.equal(view.created.length, 1, "send gate reopened after the readback");
@@ -230,7 +230,7 @@ test("design-1123 A: a stored legacy effort is not sent on its own; choosing a p
     assert.equal("reasoningEffort" in view.created[0]!, false, "no separate strength");
     assert.equal("modelParams" in view.created[0]!, false, "strength comes from the preset");
     await view.openProfile();
-    await view.choose("思考");
+    await view.choose("chatReact.tier_thinking");
     assert.equal(JSON.stringify(puts.at(-1)), JSON.stringify({ model: "gpt-6-astra", profileId: "thinking", effort: "" }));
   } finally { await view.close(); }
 });
@@ -261,7 +261,7 @@ test("S7 load failure: the page says 预设加载失败 with 重试, which loads
     profileFailures = 0;
     await view.click(retry);
     assert.equal(view.page("profile")!.querySelector("[role=alert]"), null);
-    assert.equal(view.items("profile").length, 3, "presets after retry (the disabled one is not listed)");
+    assert.equal(view.items("profile").length, 4, "presets after retry (默认 + three tiers; the non-tier disabled one is not listed)");
   } finally { await view.close(); }
 });
 
@@ -274,15 +274,15 @@ test("S8 switching model refetches that model's presets and shows its own rememb
   const view = await mount();
   try {
     await view.openProfile();
-    assert.equal(view.checked("profile"), "思考");
+    assert.equal(view.checked("profile"), "chatReact.tier_thinking（chatReact.effortHigh）");
     await view.key("Escape");
     profileReads = [];
     await view.click(view.q('[data-testid="mc-model"]'));
     await view.click(view.all('[data-testid="mc-model-menu"] [role=option]').find((item) => item.textContent!.includes("deepseek-v4-flash")) ?? null);
     assert.equal(profileReads.includes("deepseek-v4-flash"), true, "catalog re-read for the new model");
     await view.openProfile();
-    assert.equal(view.items("profile").length, 2, "that model's own catalog");
-    assert.equal(view.checked("profile"), "快速", "that model's own saved choice");
+    assert.equal(view.items("profile").length, 3, "that model's own catalog (默认 + 关闭 placeholder + its one tier)");
+    assert.equal(view.checked("profile"), "chatReact.tier_quick（chatReact.effortLow）", "that model's own saved choice");
   } finally { await view.close(); }
 });
 
@@ -293,12 +293,12 @@ test("MUYU-408 + refresh: on the plain default new page a preset is settable, sa
   try {
     // No explicit model pick: the default comes from /model-selection (408 01a1f150: 预设都不能设置 on this page).
     await view.openProfile();
-    assert.equal(view.items("profile")[1]!.disabled, false, "default page: presets are not greyed");
-    await view.choose("快速");
+    assert.equal(view.items("profile")[2]!.disabled, false, "default page: presets are not greyed");
+    await view.choose("chatReact.tier_quick");
     assert.equal(JSON.stringify(saved.get(DEFAULT)), JSON.stringify({ profileId: "quick", effort: "" }), "saved for the resolved default model");
     await view.remount();
     await view.openProfile();
-    assert.equal(view.checked("profile"), "快速", "selection survives a reload (server readback)");
+    assert.equal(view.checked("profile"), "chatReact.tier_quick（chatReact.effortLow）", "selection survives a reload (server readback)");
     await view.key("Escape");
     await view.send("hi");
     assert.equal(String(view.created[0]!.profileId), "quick", "the new conversation carries profileId");
