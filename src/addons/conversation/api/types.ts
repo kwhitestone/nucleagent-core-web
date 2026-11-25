@@ -119,7 +119,7 @@ export interface ExecutionBackendOption {
 }
 
 /** POST /conversation body. */
-export interface ToolInvocation { toolId: number; revision: string; arguments: Record<string, string | number | boolean> }
+export interface ToolInvocation { generation?: { kind: "image" | "video"; model: string; providerId: number }; toolId: number; revision: string; arguments: Record<string, string | number | boolean> }
 
 export interface CreateConversationRequest {
   toolInvocation?: ToolInvocation;

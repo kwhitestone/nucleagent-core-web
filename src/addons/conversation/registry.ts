@@ -67,10 +67,10 @@ export function paramsFromMeta(meta: Record<string, unknown> | null | undefined)
   return out;
 }
 
-/** Preselect the agent default when the list has it; otherwise today's behavior (first). */
+/** An explicit missing default needs a new selection. A fresh form may start at the first model. */
 export function pickModel(models: MediaModel[], preferred: string | undefined): { model: MediaModel | null; agentDefault: boolean } {
   const hit = preferred ? models.find((m) => m.model === preferred) : undefined;
-  return hit ? { model: hit, agentDefault: true } : { model: models[0] ?? null, agentDefault: false };
+  return hit ? { model: hit, agentDefault: true } : { model: preferred ? null : models[0] ?? null, agentDefault: false };
 }
 
 /** Flat `<kind>Model` strings from the public agent view (core definition_view.go); anything else is ignored. */

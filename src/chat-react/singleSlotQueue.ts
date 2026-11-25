@@ -138,6 +138,7 @@ export const fill = (text: string, values: Record<string, unknown>) => text.repl
 /** User text for a refused send (zh/en via t): media_busy names the kind's concurrency limit; never empty. */
 export function slotReason(failure: SlotFailure, t: Say, media?: { kind: "image" | "video"; limit: number }) {
   const { status, code } = failure;
+  if (media && ["model_type_mismatch", "model_not_allowed", "model_not_supported"].includes(code)) return t("chatReact.mediaReselect");
   if (code === "paused") return t("chatReact.queuePaused");
   if (status === 429 || code === "media_busy") return media ? fill(t(`chatReact.queueBusy_${media.kind}`), { n: media.limit }) : t("chatReact.queueBusy");
   if (status === 409) return t("chatReact.queueConflict");

@@ -22,6 +22,7 @@ export const ZH_STRINGS = {
     toolGrant: "工具", toolGrantsEnabled: "已启用工具：",
     workflowUnavailable: "音频工具暂不可用。",
     workflowUnknown: "提交未确认，请先核对会话记录；不会自动重发。",
+    mediaReselect: "所选模型的生成路由已失效，请重新选择模型。", musicUnavailable: "制作音乐 · 当前环境尚未接入音乐生成",
     mediaUnavailable: "此模型尚未接通生成，暂不可发送。",
     mediaReadFailed: "媒体读取失败或链接已失效，请刷新重试。",
     mediaRefresh: "刷新媒体状态",

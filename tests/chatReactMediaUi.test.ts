@@ -50,7 +50,7 @@ before(async () => {
   const { registerModelCatalog } = await vite.ssrLoadModule("/src/contracts/model-catalog.ts");
   disposeCatalog = registerModelCatalog({
     listProviders: async () => [{ id: 1, name: "provider", isActive: true, config: { models: ["chat-model"] } }],
-    listTypedModels: async (type: string) => typed?.[type] ?? (["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: [] }] : []),
+    listTypedModels: async (type: string) => typed?.[type] ?? (["chat", "image", "video"].includes(type) ? [{ providerId: 1, model: `${type}-model`, type, capabilities: type === "image" ? ["t2i"] : type === "video" ? ["t2v"] : [] }] : []),
     fetchVisibleModels: async () => [],
   });
   dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.href); };
@@ -372,7 +372,7 @@ test("direct media send key: enabled only with real text, a loaded job schema an
     await settle();
     assert.equal(created.length, 1);
     assert.deepEqual(created[0].toolIds, [9]);
-    assert.deepEqual(created[0].toolInvocation, { toolId: 9, revision: "4", arguments: { aspect_ratio: "16:9", input: "画一只猫" } });
+    assert.deepEqual(created[0].toolInvocation, { generation: {kind:"image",model:"image-model",providerId:1}, toolId: 9, revision: "4", arguments: { aspect_ratio: "16:9", input: "画一只猫" } });
     assert.equal(created[0].input, "画一只猫");
     assert.notEqual(created[0].model, "image-model", "the media model is bound by Core from the tool, never sent as the chat model");
     assert.deepEqual(navigated, ["/c/55"]);
@@ -505,8 +505,8 @@ const wiredResponse = (rows: unknown[]) => (url: string) => /\/catalog(\?|$)/.te
   : url.endsWith("/901/schema") ? { data: { model: "viduq3-pro", invocation: { toolId: 901, revision: "2" }, inputSchema: { type: "object", additionalProperties: false, required: ["image_url"], properties: { image_url: { type: "string" } } } } }
   : directResponse([])(url);
 const mediaTyped = {
-  image: ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"].map(model => ({ providerId: 1, model, type: "image", capabilities: [], available: true })),
-  video: ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"].map(model => ({ providerId: 1, model, type: "video", capabilities: [], available: true })),
+  image: ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"].map(model => ({ providerId: 1, model, type: "image", capabilities: ["t2i"], available: true })),
+  video: ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"].map(model => ({ providerId: 1, model, type: "video", capabilities: ["t2v"], available: true })),
 };
 
 test("media pills preselect the first model with a ready job tool; models without one stay pickable (Core media API)", async (context) => {
@@ -526,17 +526,18 @@ test("media pills preselect the first model with a ready job tool; models withou
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
     await settle();
     let mode = view.container.querySelector('[data-testid="mc-media-mode"]')!;
-    assert.match(mode.textContent!, /doubao-seedream-5-0-260128/);
+    assert.match(mode.textContent!, /doubao-seedream-4-0-250828/);
     assert.doesNotMatch(mode.textContent!, /mediaUnavailable/);
     await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-video"]')!.click());
     await settle();
     mode = view.container.querySelector('[data-testid="mc-media-mode"]')!;
-    assert.match(mode.textContent!, /jimeng_v30_1080p/);
+    assert.match(mode.textContent!, /MiniMax-H3/);
     assert.equal(sendKey(view).disabled, false, "the preselected model sends");
 
     const group = (kind: string) => [...view.container.querySelectorAll<HTMLElement>(`[data-testid="mc-model-menu"] [data-kind="${kind}"] [role=option]`)];
     const names = (kind: string) => group(kind).map(item => item.querySelector(".mc-menu-text")!.firstChild!.textContent);
-    assert.deepEqual(names("image"), ["doubao-seedream-4-0-250828", "doubao-seedream-5-0-260128"], "catalog order; nothing greyed");
+    assert.deepEqual(names("image"), [], "video mode excludes image rows before search");
+    assert.deepEqual(names("chat"), []);
     assert.deepEqual(names("video"), ["MiniMax-H3", "jimeng_v30_1080p", "viduq3-pro"]);
     for (const item of [...group("image"), ...group("video")]) assert.equal(item.getAttribute("aria-disabled"), null);
     assert.doesNotMatch(view.container.textContent!, /unavailable_unwired|unavailable_no_prompt/);

@@ -142,7 +142,9 @@ export function ChatApp(props: ChatProps) {
   const media = (direct: DirectMedia, input: string, files: readonly ConversationAttachment[] = []) => {
     const frames = mediaFrames(direct, files);
     if (frames.missing) { toast.warning(t("chatReact.mediaFrameHint")); throw new Error(t("chatReact.mediaFrameHint")); }
-    return { ...directMediaRequest(direct, { ...settings.params, ...frames.params }, input), files: files.filter((file) => !frames.used.includes(file.id)) };
+    const request = directMediaRequest(direct, { ...settings.params, ...frames.params }, input);
+    const { kind, model } = settings.media!;
+    return { ...request, toolInvocation: { ...request.toolInvocation, generation: { kind, model: model.model, providerId: Number(model.providerId) } }, files: files.filter((file) => !frames.used.includes(file.id)) };
   };
   // fix-media-365: a model without a usable job tool generates through Core's media API (text prompt + registry choices).
   const generate = async (input: string, files: readonly unknown[] = []) => {
@@ -206,7 +208,10 @@ export function ChatApp(props: ChatProps) {
           }, !settings.media);
         } catch (error) {
           const f = failureOf(error);
-          toast.error(f.status === 429 ? slotReason({ ...f, retry: "manual", attempt: 1 }, t, mediaLimit || undefined) : modelErrorMessage(error, t, t("home.createFailed")));
+          const failure = { ...f, retry: "manual" as const, attempt: 1 };
+          const mediaError = settings.media && ["model_type_mismatch", "model_not_allowed", "model_not_supported"].includes(f.code);
+          if (f.status === 429 || mediaError) toast.error(slotReason(failure, t, mediaLimit || undefined));
+          else toast.error(modelErrorMessage(error, t, t("home.createFailed")));
           throw error;
         }
       }),
@@ -359,7 +364,8 @@ function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
 function MediaPill({ kind, t, settings, running, close }: { kind: "image" | "video"; t: Translate; settings: Settings; running: boolean; close(): void }) {
   const on = settings.media?.kind === kind;
   const options = settings.groups.find(group => group.kind === kind)?.options;
-  if (!on && (!options?.some(option => !option.unavailable) || settings.mediaNone?.(kind))) return null;
+  const reason = !options?.some(option => !option.unavailable) ? settings.mediaNone?.(kind) ?? t("chatReact.mediaNone") : undefined;
+  if (!on && reason) return <button type="button" role="menuitem" className="mc-menu-item" disabled>{t(`chatReact.make_${kind}`)} · {reason}</button>;
   return <button type="button" role="menuitemradio" tabIndex={-1} className="mc-menu-item" aria-checked={on} aria-busy={on && settings.mediaPending || undefined}
     aria-disabled={settings.busy || running} disabled={settings.busy || running} data-testid={`mc-gen-${kind}`}
     onClick={() => { if (!on) settings.enter?.(kind); close(); }}>
@@ -500,6 +506,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
                 {(settings.groups.some(group => group.kind === "image" || group.kind === "video")) && <hr />}
                 <MediaPill kind="image" t={t} settings={settings} running={running} close={menu.close} />
                 <MediaPill kind="video" t={t} settings={settings} running={running} close={menu.close} />
+                {!MEDIA_KINDS.music.enabled && <button type="button" className="mc-menu-item" role="menuitem" disabled>{t("chatReact.musicUnavailable")}</button>}
               </>}
             </div>
           </div>
@@ -510,7 +517,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
             <button type="button" aria-label={t("chatReact.exitMode")} onClick={() => settings.enter?.(settings.media!.kind)}>×</button>
           </span>}
           <span className="mc-spacer" />
-          <ModelMenu t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
+          <ModelMenu mode={settings.media?.kind} t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
             backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} />
           {actions[0] !== "stop" && (
             <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
@@ -814,8 +821,9 @@ function Effective({ t, conversationId, stepId }: { t: Translate; conversationId
  * scrolls at 18rem (:1114). Executors are a segmented control on top; 最近使用 first, then chat families, image, video.
  * Rule C: visibleOptions() drops unavailable / incompatible rows; the current one stays, marked ⚠.
  */
-export function ModelMenu(props: { t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void; compatible?(choice: Choice): boolean }) {
-  const { t, groups } = props;
+export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void; compatible?(choice: Choice): boolean }) {
+  const { t } = props;
+  const groups = props.groups.filter(group => !props.mode || group.kind === props.mode || group.kind === "executor");
   const { open, setOpen, root, trigger, close: shut } = useMenu(props.defaultOpen);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -978,6 +986,8 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
 
   useEffect(() => {
     let live = true;
+    mediaRun.current++;
+    setPending(false);
     setMedia(null);
     const revision = selectionRevision.current;
     let policy = cachedChatStrategy(window.location.origin);
@@ -988,7 +998,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     setBusy(true);
     void Promise.all([
       listProviders().catch(() => [] as Provider[]),
-      listAllTypedModels({ includeUnavailable: true }).catch(() => null),
+      listAllTypedModels({ includeUnavailable: true, generationOnly: true }).catch(() => null),
       listExecutionBackends().catch(() => [] as ExecutionBackendOption[]),
       conversationId ? getConversation(conversationId).catch(() => null) : Promise.resolve(null),
     ]).then(([p, typed, b, conversation]) => {
@@ -1060,15 +1070,13 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
   const direct = !media || !found || mediaPending ? null : entry ? entry.bind ? null : entry : viaCore;
   useEffect(() => { setParams(direct ? mediaDefaults(direct) : {}); }, [direct && direct.toolId, media?.model.model, media?.kind]);
 
-  // Settles a media selection against the read: the preferred model if it can send (else, unless strict, the first
-  // of its kind that can), binding its job tool to this conversation first when needed. Nothing = leave and say why.
-  const settle = async (kind: "image" | "video", preferred: string, strict: boolean, run: number) => {
+  // Keep the exact provider/model selected while its tool binding is resolved.
+  const settle = async (kind: "image" | "video", option: Option, run: number) => {
     const read = await loadWired();
     const live = () => run === mediaRun.current;
-    if (!live()) return;
-    const options = groups.find((group) => group.kind === kind)?.options.filter((option) => !option.unavailable) ?? [];
-    const name = read[preferred] || strict ? preferred : options.find((option) => read[option.label])?.label ?? preferred;
-    let entry = read[name];
+    if (!live() || option.choice.kind === "executor") return;
+    const name = option.choice.model.model;
+    const entry = read[name];
     if (entry && entry.bind) {
       const current = wiring.current!;
       try {
@@ -1079,17 +1087,14 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
         const next = { ...await current.read, [name]: ready };
         current.read = Promise.resolve(next);
         if (wiring.current === current) setWired({ key: current.key, found: next });
-        entry = ready;
       } catch {
-        if (live()) { setPending(false); setMedia(null); toast.error(t("common.bindingsSaveFailed")); }
+        if (live()) { setPending(false); toast.error(t("common.bindingsSaveFailed")); }
         return;
       }
     }
     if (!live()) return;
     setPending(false);
-    const option = options.find((option) => option.label === name);
-    if (option) setMedia({ kind, model: (option.choice as { model: ModelChoice }).model });
-    else if (!strict) setMedia(null);
+    setMedia({ kind, model: option.choice.model });
   };
   const enter = (kind: "image" | "video") => {
     const run = ++mediaRun.current;
@@ -1098,7 +1103,7 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     if (!guess) return void toast.info(noneReason(kind) ?? t("chatReact.mediaNone"));
     setMedia({ kind, model: (guess.choice as { model: ModelChoice }).model });
     setPending(true);
-    void settle(kind, guess.label, false, run);
+    void settle(kind, guess, run);
   };
   // Why a kind has nothing to send: every listed model is upstream-unavailable, or none is listed.
   const noneReason = (kind: string) => {
@@ -1113,8 +1118,13 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
 
   async function pick(choice: Choice | null) {
     if (choice?.kind === "image" || choice?.kind === "video") {
-      const listed = groups.find((group) => group.kind === choice.kind)?.options.some((option) => option.value === choiceValue(choice));
-      if (listed && !busy) await settle(choice.kind, choice.model.model, true, ++mediaRun.current);
+      const listed = groups.find((group) => group.kind === choice.kind)?.options.find((option) => option.value === choiceValue(choice) && !option.unavailable);
+      if (!listed) return void toast.warning(t("chatReact.mediaReselect"));
+      if (!busy) {
+        setMedia({ kind: choice.kind, model: choice.model });
+        setPending(true);
+        await settle(choice.kind, listed, ++mediaRun.current);
+      }
       return;
     }
     mediaRun.current++;

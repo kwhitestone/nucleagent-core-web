@@ -17,6 +17,12 @@ export interface Group { kind: GroupKind; options: Option[] }
 export const choiceValue = (c: Choice): string =>
   c.kind === "executor" ? `executor:${c.backend}` : `${c.kind}:${c.model.providerId}:${c.model.model}`;
 
+/** Toolgate's explicit output declarations; input modalities and general tool access are independent. */
+export function generates(kind: "image" | "video" | "music", entry: Pick<TypedModel, "type" | "capabilities">): boolean {
+  const outputs = { image: ["t2i", "i2i"], video: ["t2v", "i2v"], music: ["music"] };
+  return entry.type === (kind === "music" ? "audio" : kind) && outputs[kind].some(cap => entry.capabilities?.includes(cap));
+}
+
 /** House names for Toolgate upstreams (TEST: 2 aihub-gateway, 3 everai-yunyi); others show their own name. */
 const UPSTREAM_NAMES: Record<string, string> = { "aihub-gateway": "AIHub", "everai-yunyi": "云一/everai" };
 
@@ -32,6 +38,7 @@ export function modelGroups(providers: Provider[], typed: Record<string, TypedMo
     options: (typed?.[kind] ?? []).flatMap(entry => {
       const provider = active.get(entry.providerId);
       if (!provider || entry.type !== kind || (kind === "chat" && !modelsOf(provider).includes(entry.model))) return [];
+      if (kind !== "chat" && !generates(kind, entry)) return [];
       const choice: Choice = { kind, model: { providerId: provider.id, model: entry.model } };
       const availability = availabilityOf(entry);
       return [{

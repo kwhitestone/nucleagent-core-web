@@ -454,7 +454,7 @@ test("model groups: chat/image/video from the typed catalog, executors from Core
   ] as never;
   const typed = {
     chat: [{ providerId: 1, model: "c1", type: "chat" }],
-    image: [{ providerId: 1, model: "i1", type: "image" }],
+    image: [{ providerId: 1, model: "i1", type: "image", capabilities: ["t2i"] }],
     video: [], audio: [], embedding: [], rerank: [], other: [],
   } as never;
   const groups = modelGroups(providers, typed, [{ id: "codex", displayName: "Codex", type: "a2a", streaming: true, default: true }]);

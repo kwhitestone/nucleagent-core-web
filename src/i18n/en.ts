@@ -813,6 +813,7 @@ export default {
     redirectingBody: "You're signed out — redirecting to the NucleAgent sign-in page.",
   },
   chatGen: {
+    reselect: "Choose a generation model again",
     kinds: { image: "Generate image", video: "Generate video", music: "Generate music" },
     param: { aspect: "Ratio", count: "Images", duration: "Duration", resolution: "Resolution" },
     noKindModels: "No models available",

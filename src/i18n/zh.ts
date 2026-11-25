@@ -813,6 +813,7 @@ export default {
     redirectingBody: "你尚未登录，正在跳转到 NucleAgent 登录页。",
   },
   chatGen: {
+    reselect: "请重新选择生成模型",
     kinds: { image: "生成图片", video: "生成视频", music: "生成音乐" },
     param: { aspect: "比例", count: "张数", duration: "时长", resolution: "清晰度" },
     noKindModels: "暂无可用模型",

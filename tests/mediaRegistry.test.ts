@@ -29,10 +29,10 @@ test("R2 defaults and request body per kind; image body unchanged", () => {
   assert.equal(reg.kindOf({ kind: "video" }), "video");
 });
 
-test("R3 model preselect: agent default when listed, else first (fallback never errors)", () => {
+test("R3 model preselect: keep a missing explicit selection empty", () => {
   const ms = [{ providerId: 1, model: "a", kind: "image", verified: true }, { providerId: 1, model: "b", kind: "image", verified: false }];
   assert.deepEqual(reg.pickModel(ms, "b"), { model: ms[1], agentDefault: true });
-  assert.deepEqual(reg.pickModel(ms, "gone"), { model: ms[0], agentDefault: false });
+  assert.deepEqual(reg.pickModel(ms, "gone"), { model: null, agentDefault: false });
   assert.deepEqual(reg.pickModel(ms, undefined), { model: ms[0], agentDefault: false });
   assert.deepEqual(reg.pickModel([], "b"), { model: null, agentDefault: false });
   // Public view: flat config.<kind>Model strings (core definition_view.go), never a defaults object.

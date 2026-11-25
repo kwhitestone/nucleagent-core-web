@@ -77,7 +77,7 @@ before(async () => {
 });
 after(async () => { disposeCatalog?.(); disposeRuntime?.(); await vite?.close(); });
 
-const media = (kind: string, ...models: string[]) => models.map(model => ({ providerId: 1, model, type: kind, capabilities: [], available: true }));
+const media = (kind: string, ...models: string[]) => models.map(model => ({ providerId: 1, model, type: kind, capabilities: kind === "image" ? ["t2i"] : kind === "video" ? ["t2v"] : [], available: true }));
 const setup = () => {
   reads = []; writes = [];
   typed = { chat: media("chat", "chat-model"), image: media("image", "doubao-seedream-5-0-260128"), video: media("video", "jimeng_v30_1080p") };
@@ -224,7 +224,7 @@ test("existing conversation: a cataloged but unbound job tool is bound to it, ne
   } finally { await view.close(); }
 });
 
-test("existing conversation: nothing sends while the bind is pending, and a failed bind leaves media mode", async (context) => {
+test("existing conversation: nothing sends while the bind is pending, and a failed bind keeps the chosen model blocked", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   setup(); response = base([]);
   let fail!: (error: Error) => void;
@@ -240,7 +240,8 @@ test("existing conversation: nothing sends while the bind is pending, and a fail
     assert.equal(pill(view.container, "video").getAttribute("aria-busy"), "true");
     await React.act(async () => fail(new Error("409")));
     await settle();
-    assert.equal(mode(view.container), null, "back to chat");
+    assert.match(mode(view.container)!.textContent!, /jimeng_v30_1080p/);
+    assert.equal(view.container.querySelector<HTMLButtonElement>('[data-testid="mc-send"]')!.disabled, true, "no fallback after failed binding");
     assert.equal(view.container.querySelector("textarea")!.value, "动起来", "draft kept");
     assert.equal(writes.length, 1, "no retry");
   } finally { await view.close(); }
@@ -268,7 +269,7 @@ test("nothing sendable: 暂无 only when no model is listed, and upstream outage
   setup();
   const plain = base(null);
   response = (url: string) => /\/catalog(\?|$)/.test(url) ? { data: [] } : plain(url);
-  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: [], available: false, unavailableReason: "upstream_offline" }];
+  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: ["t2v"], available: false, unavailableReason: "upstream_offline" }];
   const view = await mount(chat());
   try {
     await settle();
@@ -284,10 +285,10 @@ test("one upstream_offline row among unconnected models leaves the kind sendable
   setup();
   const plain = base(null);
   response = (url: string) => /\/catalog(\?|$)/.test(url) ? { data: [] } : plain(url);
-  typed.image = [{ providerId: 1, model: "nano-banana", type: "image", capabilities: [], available: false, unavailableReason: "upstream_offline" },
+  typed.image = [{ providerId: 1, model: "nano-banana", type: "image", capabilities: ["t2i"], available: false, unavailableReason: "upstream_offline" },
     ...media("image", "doubao-seedream-5-0-260128", "seedream-4")];
-  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: [], available: false, unavailableReason: "upstream_offline" },
-    { providerId: 1, model: "veo-3", type: "video", capabilities: [], available: false, unavailableReason: "capacity" }];
+  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: ["t2v"], available: false, unavailableReason: "upstream_offline" },
+    { providerId: 1, model: "veo-3", type: "video", capabilities: ["t2v"], available: false, unavailableReason: "capacity" }];
   const view = await mount(chat());
   try {
     await settle();
@@ -335,7 +336,7 @@ const itemName = (item: HTMLElement) => item.querySelector(".mc-menu-text")!.fir
 test("fix-media: only upstream-unavailable media rows are greyed; an unconnected model sends through Core media generations", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
   setup(); response = base(null);
-  typed.image = [...media("image", "doubao-seedream-5-0-260128", "gpt-image-2"), { providerId: 1, model: "nano-banana", type: "image", capabilities: [], available: false, unavailableReason: "upstream_offline" }];
+  typed.image = [...media("image", "doubao-seedream-5-0-260128", "gpt-image-2"), { providerId: 1, model: "nano-banana", type: "image", capabilities: ["t2i"], available: false, unavailableReason: "upstream_offline" }];
   typed.video = media("video", "jimeng_v30_1080p", "MiniMax-H3");
   post = () => ({ id: 31, status: "queued", ids: [31], conversationId: 66 });
   const navigated: string[] = [];
@@ -369,7 +370,7 @@ test("fix-media: a pill with no job tool for its kind still preselects the first
   const plain = base(null);
   response = (url: string) => /\/catalog(\?|$)/.test(url) ? { data: [] } : plain(url);
   typed.image = [];
-  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: [], available: false, unavailableReason: "upstream_offline" }, ...media("video", "MiniMax-H3")];
+  typed.video = [{ providerId: 1, model: "veo-3.1", type: "video", capabilities: ["t2v"], available: false, unavailableReason: "upstream_offline" }, ...media("video", "MiniMax-H3")];
   const view = await mount(chat());
   try {
     await settle();
@@ -379,7 +380,7 @@ test("fix-media: a pill with no job tool for its kind still preselects the first
     const panel = mode(view.container)!;
     assert.match(panel.textContent!, /MiniMax-H3/);
     assert.deepEqual([...panel.querySelectorAll("select")].map(select => select.value), ["16:9", "4", "480p"], "video keeps its required aspect/duration/resolution choices");
-    assert.equal(pill(view.container, "image"), null, "unavailable image capability hidden");
+    assert.match(view.container.querySelector('.mc-add [role="menuitem"][disabled]')?.textContent ?? "", /暂无|mediaNone/);
     assert.deepEqual(writes, []);
   } finally { await view.close(); }
 });

@@ -28,7 +28,9 @@ export const modelCatalog: ModelCatalog = {
   },
 
   async listTypedModels(type, query) {
-    const params = { type, pageSize: 100, ...(query?.includeUnavailable ? { includeUnavailable: 1 } : {}) };
+    const generation = type === "audio" ? "music" : type;
+    const media = query?.generationOnly && ["image", "video", "music"].includes(generation);
+    const params = { type, pageSize: 100, ...(media ? { generation } : {}), ...(query?.includeUnavailable ? { includeUnavailable: 1 } : {}) };
     for (let attempt = 0; ; attempt++) {
       const models: TypedModel[] = [];
       let cursor: string | undefined;

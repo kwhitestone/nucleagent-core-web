@@ -31,6 +31,6 @@ test("history states never turn unknown, cancelled, failed or missing signed out
 test("missing catalog types never infer chat/image/video from provider config or model names", () => {
   const providers = [{ id: 1, name: "P", isActive: true, config: { models: ["image-looking-name"] } }];
   assert.deepEqual(modelGroups(providers as never, null, []), []);
-  const typed = { image: [{ providerId: 1, model: "ordinary-name", type: "image", capabilities: [] }], chat: [], video: [] };
+  const typed = { image: [{ providerId: 1, model: "ordinary-name", type: "image", capabilities: ["t2i"] }], chat: [], video: [] };
   assert.deepEqual(modelGroups(providers as never, typed, []).map((group) => group.kind), ["image"]);
 });

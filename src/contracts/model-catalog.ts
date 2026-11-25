@@ -63,6 +63,7 @@ export interface TypedModel {
 export interface TypedModelQuery {
   /** Also list route-disabled models (`available:false`), so a selector can grey them out with the reason. */
   includeUnavailable?: boolean;
+  generationOnly?: boolean;
 }
 
 export interface ModelCatalog {

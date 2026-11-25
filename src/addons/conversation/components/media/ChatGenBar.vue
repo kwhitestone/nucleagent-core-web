@@ -14,7 +14,7 @@ const props = defineProps<{
   locked?: boolean;
   /** Restrict the entries (e.g. a carrier chat is image-only). */
   only?: GenKind;
-  /** Agent defaults (`config.defaults.<kind>Model`); missing/unlisted → first model, as before. */
+  /** Agent defaults (`config.defaults.<kind>Model`); a delisted preference requires an explicit choice. */
   preferred?: Partial<Record<GenKind, string>>;
 }>();
 const on = defineModel<boolean>("on", { required: true });
@@ -51,9 +51,10 @@ onMounted(async () => {
   models.value = Object.fromEntries(entries.value.map((k, i) => [k.kind, lists[i]]));
   loaded.value = true;
   if (!model.value || model.value.kind !== kind.value) choose();
+  else if (!list.value.some(m => m.providerId === model.value?.providerId && m.model === model.value.model)) model.value = null;
 });
 watch(kind, () => { if (loaded.value) choose(); });
-watch(() => props.preferred, () => { if (loaded.value && (!model.value || !agentDefault.value)) choose(); });
+watch(() => props.preferred, () => { if (loaded.value && (!model.value || agentDefault.value)) choose(); });
 watch(model, (m) => { agentDefault.value = !!m && m.model === props.preferred?.[kind.value]; });
 
 const optionText = (key: string, v: string): string => (key === "duration" ? t("chatGen.durationN", { n: v }) : v);

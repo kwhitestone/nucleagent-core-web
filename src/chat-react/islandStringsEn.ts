@@ -24,6 +24,7 @@ export const EN_STRINGS: IslandStrings = {
     toolGrant: "Tools", toolGrantsEnabled: "Enabled tools:",
     workflowUnavailable: "Audio tool unavailable.",
     workflowUnknown: "Submission unconfirmed. Check history first. No automatic retry.",
+    mediaReselect: "This generation route is unavailable. Choose a model again.", musicUnavailable: "Create music · Music generation is unavailable here",
     mediaUnavailable: "Generation is not connected for this model.",
     mediaReadFailed: "Media could not be loaded or the link expired. Refresh to retry.",
     mediaRefresh: "Refresh media status",
