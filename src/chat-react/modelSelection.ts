@@ -83,6 +83,16 @@ export function presetFields<T extends Legacy>(view: SelectionView, params: Reco
   return { fields: typeof legacy === "object" && legacy.profileId ? { profileId: legacy.profileId } : "" as const, stale: true };
 }
 
+/** MUYU-365 GAP G-2: why a stale preset is not usable — Core's own reason on the protocol, else on the level; none if usable or undeclared. */
+export function staleReason(view: SelectionView, params: Record<string, string> | undefined): string | undefined {
+  const protocol = params?.callProtocol;
+  if (!protocol || view.state !== "visible") return undefined;
+  const p = view.protocols.find((entry) => entry.name === protocol);
+  if (!p) return undefined;
+  if (!p.selectable) return p.reason;
+  return p.levels.find((entry) => entry.level === params.thinkingLevel && !entry.selectable)?.reason;
+}
+
 export type SelectionErrorAction =
   | { action: "default" } | { action: "refetch-retry" } | { action: "reset"; message: string }
   | { action: "show"; message: string; supported: string[]; refetch: boolean };

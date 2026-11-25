@@ -5,7 +5,7 @@ import { EFFORT_LEVELS, type EffortChoice } from "./requestEffort";
 
 type Preference = { profileId: string; effort: EffortChoice };
 /** One /model-profiles row (Core svc.ModelProfile); `params` is read-only display (D4A). */
-export type ProfileRow = { id: string; displayName?: string; enabled: boolean; efforts?: string[]; params?: Record<string, string> };
+export type ProfileRow = { id: string; displayName?: string; enabled: boolean; reason?: string; efforts?: string[]; params?: Record<string, string> };
 type Catalog = ProfileRow[];
 type Selection = { executionBackend: string; providerId?: number; model: string };
 const endpoint = "/api/v1/addons/conversation/model-preferences";

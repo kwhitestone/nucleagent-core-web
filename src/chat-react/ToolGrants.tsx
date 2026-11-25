@@ -99,6 +99,13 @@ export const offered = <T extends Partial<SessionBindings>>(saved: T) => ({ ...s
 // Confirmed unavailable: not shown at all. Any other non-ready state stays listed, not pickable.
 const hidden = (tool: ToolCatalogItem) => [tool.reason, tool.status].some(state => state === "held" || state === "manual_disabled");
 
+/** MUYU-365 GAP G-6: a listed non-ready tool's catalog reason (toolselect CatalogStatus) in plain words; Core's own text verbatim; 暂未开放 when absent. */
+export const toolReasonText = (reason: string | undefined, t: Translate) => {
+  if (!reason) return t("chatReact.optionUnavailable");
+  const key = `chatReact.toolReason_${reason}`, text = t(key);
+  return text === key ? reason : text;
+};
+
 export function useToolGrants(conversationId: string | undefined, t: Translate, locale: string) {
   const tools = usePagedList<ToolCatalogItem>(TOOL_CATALOG_PATH, conversationId);
   const skills = usePagedList<SkillRow>(SKILL_PATH, conversationId);
@@ -154,7 +161,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
       const by = row.skillIds?.filter(id => skillIds.includes(id)) ?? [];
       const off = toolUnavailable(row), locked = by.length > 0 && !off;
       return { id: row.id, label: label(row), on: locked || ids.includes(row.id), off: locked || off,
-        unbound: !row.skillIds?.length && !off, count: "", note: locked ? coveredNote(by) : off ? t("chatReact.optionUnavailable") : catalogText(row.description ?? "") };
+        unbound: !row.skillIds?.length && !off, count: "", note: locked ? coveredNote(by) : off ? toolReasonText(row.reason, t) : catalogText(row.description ?? "") };
     }) },
     skills: { ...skills, rows: (skills.rows ?? []).map(row => ({ id: row.id, label: label(row), on: skillIds.includes(row.id), off: false,
       unbound: false, count: countLabel(row), note: catalogText(row.config?.description ?? "") })) },

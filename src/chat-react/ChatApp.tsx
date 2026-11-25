@@ -56,7 +56,7 @@ import { TurnUsage } from "./TurnUsage";
 import { LOADING_EVIDENCE, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
-import { effectiveSelectionLabel, presetFields, readEffectiveSelection, sendWithSelection, useModelCapability, type EffectiveSelection, type Fields } from "./modelSelection";
+import { effectiveSelectionLabel, presetFields, readEffectiveSelection, sendWithSelection, staleReason, useModelCapability, type EffectiveSelection, type Fields } from "./modelSelection";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -124,7 +124,7 @@ export function ChatApp(props: ChatProps) {
   const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.length > 0 || preference.error) ? {
     name: shownName, stale,
     page: <ProfileControls t={t} rows={preference.catalog} selected={shownId} saving={!!pending} rolledBack={preference.rolledBack} error={preference.error && !pending}
-      stale={stale ? shownName : undefined} onChange={(profileId) => { void preference.save(profileId, ""); }} onRetry={preference.reload} />,
+      stale={stale ? shownName : undefined} staleReason={stale ? staleReason(capability.view, params) : undefined} onChange={(profileId) => { void preference.save(profileId, ""); }} onRetry={preference.reload} />,
   } : undefined;
   const turnNow = useRef(turn);
   turnNow.current = turn;
@@ -852,6 +852,8 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
   const executor = executors.find((o) => o.value === backendValue)?.label;
   const mismatch = !!current && !current.unavailable && (props.compatible ? !props.compatible(current.choice) : false);
   const stale = !!current && (!!current.unavailable || mismatch);
+  // MUYU-365 GAP G-1: the notice names Core's unavailableReason (llmproxy catalog_sync.go enum); unknown keeps the generic text.
+  const staleText = current?.unavailable ? t(`chatReact.modelStale_${current.unavailable}`) : t("chatReact.modelStale");
   // Listable in this mode, independent of the executor: what an executor's count and the empty state are about.
   const listable = models.flatMap((g) => visibleOptions(g.options, ""));
   const runsOn = (o: Option, backend: string) => !props.compatibleWith || props.compatibleWith(o.choice, backend);
@@ -932,7 +934,7 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
   return (
     <div className="mc-model mc-model-picker" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="listbox" aria-expanded={open} data-stale={stale || undefined}
-        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor, mismatch ? fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" }) : stale && t("chatReact.modelStale")].filter(Boolean).join(" · ")}
+        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor, mismatch ? fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" }) : stale && staleText].filter(Boolean).join(" · ")}
         title={[model, executor, current?.upstream && `${t("chatReact.upstream")}: ${current.upstream}`].filter(Boolean).join(" · ")} disabled={props.disabled}
         onClick={() => { props.onOpen?.(); if (open) close(); else setOpen(true); }}>
         {stale && <span aria-hidden="true">⚠</span>}<span className="mc-model-name"><span className="mc-model-head">{head}</span><span className="mc-model-tail">{tail}</span></span><ChevronMark size={12} />
@@ -942,7 +944,7 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
         <div className="mc-grab" aria-hidden="true" />
         {mismatch ? <p className="mc-notice" role="status" data-testid="mc-engine-mismatch">{fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" })}
           {back && t("chatReact.engineReselect")}{back && <button type="button" className="mc-link" data-testid="mc-engine-back" onClick={() => props.onPick(back.choice)}>{fill(t("chatReact.engineBack"), { executor: executorName(back) })}</button>}</p>
-          : stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
+          : stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{staleText}</p>}
         <div className="mc-search"><input ref={search} data-testid="mc-model-search" value={query} placeholder={t("chatReact.searchModel")} aria-label={t("chatReact.searchModel")}
           role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={flat.length ? `${listId}-${at}` : undefined} autoComplete="off"
           onChange={(e) => { setQuery(e.target.value); setLimit(32); setActive(0); }} /></div>
