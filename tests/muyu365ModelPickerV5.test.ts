@@ -226,3 +226,31 @@ test("V5 narrow (real-browser find): the tail follows the closest look-alike so 
   const narrow = css.slice(css.indexOf("@media (max-width: 520px)"));
   assert.match(narrow, /\.mc-hint\[data-testid="mc-engine-blocked"\] \{ display: block; \}/);
 });
+
+// MUYU-365 release COMPARE (protomedia-v6/proto vs product, real Chromium 1280/375, model-picker/release/COMPARE.md).
+test("V5 compare M1: the model menu is bounded to the viewport and scrolls, so the mismatch notice and 切回 stay reachable with the executor fold open", () => {
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  const rule = css.match(/\.mc-model-picker > \.mc-menu \{[^}]*\}/)![0];
+  assert.doesNotMatch(rule, /max-height: none/, "not unbounded (proto #panel max-height:min(500px,100dvh - 230px))");
+  assert.doesNotMatch(rule, /overflow: visible/);
+  assert.match(rule, /max-height: min\([^;]*dvh[^;]*\)/);
+  assert.match(rule, /overflow-y: auto/);
+});
+
+test("V5 compare M2: the search box is visibly separated from the list (proto bordered #search), so a scrolled first row is not cut flush under it", () => {
+  const css = readFileSync("src/chat-react/chat.css", "utf8");
+  assert.match(css, /\.mc-model-picker \.mc-search input \{[^}]*border: 1px solid var\(--border\)/);
+  assert.match(css, /\.mc-model-picker \.mc-search \{[^}]*margin: [^;]*/);
+});
+
+test("V5 compare M3: the mismatch notice tells the user to pick another model below, or 切回 (proto: 「请在下方选择其他模型，或」)", async () => {
+  const v = await render({ backend: "claude-code" });
+  try {
+    await v.open();
+    const notice = v.q("[data-testid=mc-engine-mismatch]")!;
+    assert.match(notice.textContent!, /chatReact\.engineMismatch.*chatReact\.engineReselect.*chatReact\.engineBack/);
+    const zh = readFileSync("src/chat-react/islandStringsZh.ts", "utf8");
+    assert.match(zh, /engineReselect: "请在下方选择其他模型，或"/);
+    assert.match(readFileSync("src/chat-react/islandStringsEn.ts", "utf8"), /engineReselect: "/);
+  } finally { await v.close(); }
+});
