@@ -20,7 +20,7 @@ function opened(revision = 7, model = "gpt-6-astra") {
   return { model_type: "chat", model, upstream_id: 2, environment: "", capability_revision: revision, operator_default: null, protocols: {
     "chat.completions": closed, "gemini.generateContent": closed, messages: closed,
     responses: { selectable: true, reason_code: "", reason: "", thinking_levels: { off: { status: "unverified", reason: "未验证" },
-      low: { status: "verified" }, medium: { status: "verified" }, high: { status: "verified" } } },
+      low: { status: "supported" }, medium: { status: "supported" }, high: { status: "supported" } } },
   } };
 }
 /** PROD shape (selectable=0) re-scoped to the fixture model. */

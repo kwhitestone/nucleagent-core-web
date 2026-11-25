@@ -16,7 +16,7 @@ const PROD = JSON.parse(readFileSync(new URL("./fixtures/model-capability-prod.j
 const LEVELS = ["off", "low", "medium", "high"] as const;
 type Cap = Record<string, any>;
 const level = (status: string, reason = "精确模型、上游、环境或原生执行链未验证") =>
-  status === "verified" ? { status, effective_semantics: "reasoning.effort" } : { status, reason_code: "capability_unverified", reason };
+  status === "supported" ? { status, effective_semantics: "reasoning.effort" } : { status, reason_code: "capability_unverified", reason };
 /** A declaration shaped like the PROD read-back, with one protocol switched on by Core (selectable after evidence + backend check). */
 function opened(model = "gpt-6-astra", revision = 7): Cap {
   const off = { native_backend: "", vendor_verified: true, upstream_verified: true, native_verified: false, selectable: false,
@@ -25,7 +25,7 @@ function opened(model = "gpt-6-astra", revision = 7): Cap {
   return { model_type: "chat", model, upstream_id: 2, environment: "", capability_revision: revision, operator_default: null, protocols: {
     "chat.completions": off,
     responses: { native_backend: "codex", vendor_verified: true, upstream_verified: true, native_verified: true, selectable: true, reason_code: "", reason: "",
-      official_default: null, thinking_levels: { off: level("unverified"), low: level("verified"), medium: level("verified"), high: level("verified") } },
+      official_default: null, thinking_levels: { off: level("unverified"), low: level("supported"), medium: level("supported"), high: level("supported") } },
     "gemini.generateContent": off, messages: off,
   } };
 }
@@ -106,7 +106,7 @@ test("unknown protocol names and levels are ignored, not offered", () => {
   const capabilityView = need("capabilityView");
   const cap = opened();
   cap.protocols["openai.realtime"] = { ...cap.protocols.responses };
-  cap.protocols.responses.thinking_levels.xhigh = level("verified");
+  cap.protocols.responses.thinking_levels.xhigh = level("supported");
   const view = capabilityView(cap, "codex");
   assert.deepEqual(view.protocols.map((p: any) => p.name), ["chat.completions", "responses", "gemini.generateContent", "messages"]);
   assert.deepEqual(view.protocols[1].levels.map((l: any) => l.level), ["off", "low", "medium", "high"]);

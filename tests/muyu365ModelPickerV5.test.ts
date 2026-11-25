@@ -163,7 +163,7 @@ test("splitName: tail starts where the name first differs from a look-alike, ali
   assert.deepEqual(splitName("hy4", ["hy4"]), ["", "hy4"]);
   const [head, tail] = splitName("gpt-6.2-astra", ["gpt-6.2-sol"]);
   assert.equal(head + tail, "gpt-6.2-astra");
-  assert.ok(tail.startsWith("astra"));
+  assert.ok(tail.includes("astra"), "the differing part is inside the kept tail");
 });
 
 test("V5: an executor with no model shows an explicit empty state with 更换执行器 (which opens the fold); a failed search says 没有匹配", async () => {

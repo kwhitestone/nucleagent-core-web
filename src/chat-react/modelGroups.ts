@@ -74,3 +74,29 @@ export function visibleOptions(options: readonly Option[], currentValue: string)
     return !hidden ? [option] : option.value === currentValue ? [{ ...option, stale: true as const }] : [];
   });
 }
+
+/**
+ * MUYU-365 V5 (protomedia-v5 split()): the button's middle ellipsis. The tail starts where `name` first differs from a
+ * look-alike sibling (shared prefix ≥ 8), aligned back to a `-`, so the part that tells two models apart is never cut.
+ * Without a look-alike the last 8 characters (aligned the same way) are kept.
+ */
+export function splitName(name: string, siblings: readonly string[]): [string, string] {
+  let cut = Math.max(0, name.length - 8);
+  for (const other of siblings) {
+    if (other === name) continue;
+    let i = 0;
+    while (i < name.length && name[i] === other[i]) i++;
+    if (i >= 8) cut = Math.min(cut, i);
+  }
+  cut = name.lastIndexOf("-", cut - 1) + 1 || cut;
+  return [name.slice(0, cut), name.slice(cut)];
+}
+
+/**
+ * MUYU-365 V5 rule 「不静默换模型」: an executor that cannot run the current model is still taken (locally, nothing saved,
+ * the model kept and flagged, send disabled). A model or default pick Core would refuse stays refused.
+ */
+export function pickPlan(choice: Choice | null, fits: boolean): "save" | "local" | "refuse" {
+  if (fits) return "save";
+  return choice?.kind === "executor" ? "local" : "refuse";
+}

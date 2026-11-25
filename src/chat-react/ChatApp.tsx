@@ -39,7 +39,7 @@ import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
 import { failureOf, fill, slotReason, useSingleSlotQueue, type SlotFailure } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
-import { choiceValue, modelGroups, visibleOptions, type Choice, type Group, type Option } from "./modelGroups";
+import { choiceValue, modelGroups, pickPlan, splitName, visibleOptions, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
 import {
   AssistantMark, FileMark, CheckMark, ChevronMark, CopyMark, CrossMark, ToolMark, ImageMark, PlusMark, SendMark, StopMark, VideoMark,
@@ -373,7 +373,7 @@ function MediaPill({ kind, t, settings, running, close }: { kind: "image" | "vid
   </button>;
 }
 
-export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { independentTools?: number; compatible?(choice: Choice): boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
+export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" | "backend" | "busy" | "pick"> & { independentTools?: number; compatible?(choice: Choice): boolean; compatibleWith?(choice: Choice, backend: string): boolean; allowed?: boolean; media?: { kind: "image" | "video"; model: ModelChoice } | null; imageGate?: ImageGate; modelHint?: string; direct?: DirectMedia | null; mediaReady?: boolean; mediaPending?: boolean; loadWired?(fresh?: boolean): Promise<Wired>; enter?(kind: "image" | "video"): void; mediaNone?(kind: string): string | undefined; params?: Record<string, string>; setParam?(name: string, value: string): void };
 
 /**
  * Composer on aui primitives: autosize Input (1–8 rows), AddAttachment, Send (aui disables it while
@@ -427,7 +427,13 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
   const visionBlocked = hasImage && !settings.media && !!settings.imageGate?.block;
   const imageText = hasImage && !settings.media && settings.imageGate ? imageHint(settings.imageGate, t) : undefined;
   const full = !!settings.media && (inFlight ?? 0) >= MEDIA_KINDS[settings.media.kind].busyLimit;
-  const blocked = settings.busy || visionBlocked || full || (!!settings.media && (running || !settings.direct
+  // MUYU-365 V5: a chat model the chosen executor cannot run is kept, never swapped; send is off until either changes.
+  const mismatch = !settings.media && settings.allowed === false;
+  const mismatchText = mismatch ? fill(t("chatReact.engineMismatch"), {
+    model: settings.model?.model ?? t("common.modelDefault"),
+    executor: settings.groups.find((g) => g.kind === "executor")?.options.find((o) => o.choice.kind === "executor" && o.choice.backend === settings.backend)?.label ?? settings.backend ?? "",
+  }) : undefined;
+  const blocked = settings.busy || visionBlocked || full || mismatch || (!!settings.media && (running || !settings.direct
     || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
@@ -450,6 +456,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
       <ComposerPrimitive.Root>
         <ComposerAttachmentChips t={t} />
         {grants && <ToolGrantChips grants={grants} t={t} skills={!settings.media} />}
+        {mismatchText && <p className="mc-hint" role="status" data-testid="mc-engine-blocked">{mismatchText}</p>}
         {imageText && <p className="mc-hint" role="status" data-testid="mc-image-hint" data-vision={settings.imageGate!.state}>{imageText}</p>}
         <ComposerPrimitive.Queue>
           {() => (
@@ -518,9 +525,9 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
           </span>}
           <span className="mc-spacer" />
           <ModelMenu mode={settings.media?.kind} t={t} groups={settings.groups} value={settings.media ? choiceValue(settings.media) : settings.model ? choiceValue({ kind: "chat", model: settings.model }) : ""}
-            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} />
+            backend={settings.backend} disabled={settings.busy || running} onPick={settings.pick} hasImage={hasImage} compatible={settings.compatible} compatibleWith={settings.compatibleWith} />
           {actions[0] !== "stop" && (
-            <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={sendLabel}><SendMark /></ComposerPrimitive.Send>
+            <ComposerPrimitive.Send className={running ? "mc-round" : "mc-send"} data-testid="mc-send" disabled={blocked} aria-label={sendLabel} title={mismatchText ?? sendLabel}><SendMark /></ComposerPrimitive.Send>
           )}
           {actions.includes("stop") && (
             <ComposerPrimitive.Cancel className="mc-send mc-send--stop" data-testid="mc-stop" aria-label={t("chatReact.stop")} title={t("chatReact.stop")}><StopMark /></ComposerPrimitive.Cancel>
@@ -816,43 +823,74 @@ function Effective({ t, conversationId, stepId }: { t: Translate; conversationId
 }
 
 /**
- * design-1123 B/C: one pill 「模型 · 执行器 ▾」 opening a searchable list, after OWUI c38885a Selector.svelte: the trigger
- * truncates the name (:937-938), the search box is a combobox that keeps focus with ↑↓ / Enter (:958-996), the list
- * scrolls at 18rem (:1114). Executors are a segmented control on top; 最近使用 first, then chat families, image, video.
- * Rule C: visibleOptions() drops unavailable / incompatible rows; the current one stays, marked ⚠.
+ * MUYU-365 V5 (protomedia-v5/proto, user-approved): the pill opens the current mode's model list with search focused,
+ * after OWUI c38885a Selector.svelte (combobox keeps focus with ↑↓ / Enter :958-996, list at 18rem :1114). The executor is
+ * a folded secondary setting at the bottom showing how many listable models each executor runs. An executor that cannot
+ * run the current model never swaps it: the model stays on the pill with ⚠, a notice names both, send is disabled
+ * (Composer), 切回 is offered. Names are complete in the list (wrapped) and middle-ellipsised on the pill (splitName);
+ * the provider is a small second line; the current row is checked and scrolled to on open.
+ * Rule C (design-1123): visibleOptions() drops unavailable / incompatible rows; the current one stays, marked ⚠.
  */
-export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void; compatible?(choice: Choice): boolean }) {
+export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; groups: Group[]; value: string; backend: string | null; disabled: boolean; onPick(choice: Choice | null): void; defaultOpen?: boolean; hasImage?: boolean; onOpen?(): void; compatible?(choice: Choice): boolean; compatibleWith?(choice: Choice, backend: string): boolean }) {
   const { t } = props;
   const groups = props.groups.filter(group => !props.mode || group.kind === props.mode || group.kind === "executor");
   const { open, setOpen, root, trigger, close: shut } = useMenu(props.defaultOpen);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [limit, setLimit] = useState(32);
+  const [engineOpen, setEngineOpen] = useState(false);
   const search = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const listId = useId();
   const backendValue = props.backend ? choiceValue({ kind: "executor", backend: props.backend }) : "";
-  const all = groups.filter((g) => g.kind !== "executor").flatMap((g) => g.options);
+  const models = groups.filter((g) => g.kind !== "executor");
+  const all = models.flatMap((g) => g.options);
   const current = all.find((o) => o.value === props.value);
   const executors = groups.find((g) => g.kind === "executor")?.options ?? [];
   const executor = executors.find((o) => o.value === backendValue)?.label;
-  const stale = !!current && (!!current.unavailable || (props.compatible ? !props.compatible(current.choice) : false));
-  const model = current?.label ?? t("common.modelDefault");
-  const close = () => { shut(); setQuery(""); };
-  useEffect(() => { if (open) { setActive(0); setLimit(32); search.current?.focus(); } }, [open]);
+  const mismatch = !!current && !current.unavailable && (props.compatible ? !props.compatible(current.choice) : false);
+  const stale = !!current && (!!current.unavailable || mismatch);
+  // Listable in this mode, independent of the executor: what an executor's count and the empty state are about.
+  const listable = models.flatMap((g) => visibleOptions(g.options, ""));
+  const runsOn = (o: Option, backend: string) => !props.compatibleWith || props.compatibleWith(o.choice, backend);
+  const fitsNow = (o: Option) => !props.compatible || props.compatible(o.choice);
+  const empty = !listable.some(fitsNow);
+  const back = mismatch ? executors.find((o) => o.choice.kind === "executor" && runsOn(current!, o.choice.backend)) : undefined;
+  const [head, tail] = current ? splitName(current.label, all.map((o) => o.label)) : ["", t(empty && !props.mode ? "chatReact.noModels" : "common.modelDefault")];
+  const model = current?.label ?? (empty && !props.mode ? t("chatReact.noModels") : t("common.modelDefault"));
+  const close = () => { shut(); setQuery(""); setEngineOpen(false); };
   const needle = query.trim().toLowerCase();
   const visible = (g: Group) => visibleOptions(g.options.map((o) => props.compatible && g.kind === "chat" && !props.compatible(o.choice) ? { ...o, incompatible: true as const } : o), props.value)
     .filter((o) => !needle || o.label.toLowerCase().includes(needle));
-  const sections: { key: string; kind: string; title: string; rows: (Option | null)[] }[] = [];
-  let remaining = Math.max(limit, active + 1);
-  let total = 0;
-  for (const group of groups) {
-    if (group.kind === "executor") continue;
+  const ordered = groups.filter((g) => g.kind !== "executor").map((group) => {
     const options: (Option | null)[] = visible(group);
     if (group.kind === "chat" && !needle) {
       const ordinary = options.findIndex(option => !option?.pinned);
       options.splice(ordinary === -1 ? options.length : ordinary, 0, null);
     }
-    total += options.length;
+    return { group, options };
+  });
+  const sequence = ordered.flatMap((section) => section.options);
+  const total = sequence.length;
+  const selectedAt = sequence.findIndex((o) => (o ? o.value : "") === props.value);
+  useEffect(() => {
+    if (!open) return;
+    // Open on the current model: it is the active option and rendered (past the first page too), then scrolled to.
+    const at = Math.max(selectedAt, 0);
+    setActive(at); setLimit(Math.max(32, at + 8)); search.current?.focus();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Scrolled once per opening, after the row above is rendered.
+  const scrolledTo = useRef(false);
+  useEffect(() => {
+    if (!open) { scrolledTo.current = false; return; }
+    const target = selectedAt >= 0 ? document.getElementById(`${listId}-${selectedAt}`) : null;
+    if (scrolledTo.current || !target) return;
+    scrolledTo.current = true;
+    target.scrollIntoView?.({ block: "nearest" });
+  });
+  const sections: { key: string; kind: string; title: string; rows: (Option | null)[] }[] = [];
+  let remaining = Math.max(limit, active + 1);
+  for (const { group, options } of ordered) {
     const rows = options.slice(0, remaining);
     remaining -= rows.length;
     if (rows.length) sections.push({ key: group.kind, kind: group.kind, title: t(`model.types.${group.kind}`), rows });
@@ -877,44 +915,61 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
     const i = ++index;
     const value = o ? o.value : "";
     const blocked = blockedOf(o);
-    return <div key={`${i}:${value}`} id={`${listId}-${i}`} role="option" className="mc-menu-item" aria-selected={value === props.value} data-active={i === at || undefined}
+    const selected = value === props.value;
+    return <div key={`${i}:${value}`} id={`${listId}-${i}`} role="option" className="mc-menu-item" aria-selected={selected} data-active={i === at || undefined}
       aria-disabled={blocked ? true : undefined} title={blocked} onMouseMove={() => i !== at && setActive(i)} onClick={() => choose(o)}>
-      <span className="mc-menu-text">{o ? o.label : t("common.modelDefault")}{o?.hint && <span className="mc-menu-hint">{o.hint}</span>}</span>
+      <span className="mc-menu-check" aria-hidden="true">{selected && <CheckMark size={14} />}</span>
+      <span className="mc-menu-text"><span className="mc-menu-name">{o ? o.label : t("common.modelDefault")}</span>{o?.hint && <span className="mc-menu-provider">{o.hint}</span>}</span>
       {o?.pinned && <span className="mc-menu-tag" data-testid="mc-pinned">{t("chatReact.catalogPinned")}</span>}
       {o?.stale && <span className="mc-menu-tag mc-tag-warn">⚠</span>}
       {o?.vision === "supported" && <span className="mc-menu-tag" data-testid="mc-vision">{t("chatReact.badgeVision")}</span>}
       {o?.unprobed && <span className="mc-menu-tag" data-testid="mc-unprobed">{t("chatReact.availabilityUnprobed")}</span>}
-      {o?.upstream && <span className="mc-menu-tag" data-testid="mc-upstream">{o.upstream}</span>}
-      {value === props.value && <CheckMark size={14} />}
     </div>;
   };
-  const name = [model, executor].filter(Boolean).join(" · ");
+  const executorName = (o: Option) => o.label;
   return (
     <div className="mc-model mc-model-picker" ref={root} onKeyDown={onKeyDown}>
       <button ref={trigger} type="button" className="mc-pill mc-model-trigger" data-testid="mc-model" aria-haspopup="listbox" aria-expanded={open} data-stale={stale || undefined}
-        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor, stale && t("chatReact.modelStale")].filter(Boolean).join(" · ")}
-        title={[name, current?.upstream && `${t("chatReact.upstream")}: ${current.upstream}`].filter(Boolean).join(" · ")} disabled={props.disabled}
+        aria-label={[t("chatReact.pickerLabel"), model, current?.hint, current?.upstream, executor, mismatch ? fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" }) : stale && t("chatReact.modelStale")].filter(Boolean).join(" · ")}
+        title={[model, executor, current?.upstream && `${t("chatReact.upstream")}: ${current.upstream}`].filter(Boolean).join(" · ")} disabled={props.disabled}
         onClick={() => { props.onOpen?.(); if (open) close(); else setOpen(true); }}>
-        {stale && <span aria-hidden="true">⚠</span>}<span className="mc-model-name">{model}</span>{executor && <><span className="mc-model-sep" aria-hidden="true">·</span><span className="mc-model-exec">{executor}</span></>}<ChevronMark size={12} />
+        {stale && <span aria-hidden="true">⚠</span>}<span className="mc-model-name"><span className="mc-model-head">{head}</span><span className="mc-model-tail">{tail}</span></span><ChevronMark size={12} />
       </button>
       {open && <div className="mc-scrim" onClick={close} />}
       <div className="mc-menu" data-testid="mc-model-menu" hidden={!open} aria-label={t("chatReact.pickerLabel")}>
         <div className="mc-grab" aria-hidden="true" />
-        {stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
+        {mismatch ? <p className="mc-notice" role="status" data-testid="mc-engine-mismatch">{fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" })}
+          {back && <button type="button" className="mc-link" data-testid="mc-engine-back" onClick={() => props.onPick(back.choice)}>{fill(t("chatReact.engineBack"), { executor: executorName(back) })}</button>}</p>
+          : stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
         <div className="mc-search"><input ref={search} data-testid="mc-model-search" value={query} placeholder={t("chatReact.searchModel")} aria-label={t("chatReact.searchModel")}
           role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={flat.length ? `${listId}-${at}` : undefined} autoComplete="off"
           onChange={(e) => { setQuery(e.target.value); setLimit(32); setActive(0); }} /></div>
-        {executors.length > 1 && <div className="mc-segments" role="radiogroup" aria-label={t("chatReact.executor")} data-testid="mc-executors">
-          {executors.map((o) => <button key={o.value} type="button" role="radio" aria-checked={o.value === backendValue} onClick={() => { if (o.value !== backendValue) props.onPick(o.choice); }}>{o.label}</button>)}
-        </div>}
-        <div id={listId} role="listbox" aria-label={t("chatReact.pickerLabel")} className="mc-list" onScroll={event => {
-          const list = event.currentTarget;
-          if (list.scrollTop + list.clientHeight >= list.scrollHeight - 32 && flat.length < total) setLimit(flat.length + 32);
+        <div id={listId} ref={list} role="listbox" aria-label={t("chatReact.pickerLabel")} className="mc-list" onScroll={event => {
+          const box = event.currentTarget;
+          if (box.scrollTop + box.clientHeight >= box.scrollHeight - 32 && flat.length < total) setLimit(flat.length + 32);
         }} style={{ maxHeight: "18rem" }}>
+          {empty && !needle && !props.mode ? <div className="mc-menu-empty" data-testid="mc-model-empty">
+            <p className="mc-menu-label">{fill(t("chatReact.noModelsFor"), { executor: executor ?? "" })}</p>
+            {executors.length > 1 && <button type="button" className="mc-link" data-testid="mc-engine-open" onClick={() => setEngineOpen(true)}>{t("chatReact.engineOpen")}</button>}
+          </div> : null}
           {flat.length ? sections.map((s) => <div key={s.key} role="group" aria-label={s.title} data-kind={s.kind} className="mc-menu-group">
             {s.key !== "default" && <div className="mc-menu-label" aria-hidden="true">{s.title}</div>}{s.rows.map(row)}
-          </div>) : <p className="mc-menu-label">{t("chatReact.noResults")}</p>}
+          </div>) : needle || props.mode ? <p className="mc-menu-label">{t("chatReact.noResults")}</p> : null}
         </div>
+        {executors.length > 1 && !props.mode && <details className="mc-engine" data-testid="mc-engine" open={engineOpen} onToggle={(e) => setEngineOpen(e.currentTarget.open)}>
+          <summary>{t("chatReact.engineSummary")} · {executor ?? "—"}</summary>
+          <p className="mc-engine-note">{t("chatReact.engineNote")}</p>
+          {executors.map((o) => {
+            const id = o.choice.kind === "executor" ? o.choice.backend : "";
+            const n = listable.filter((m) => m.choice.kind === "chat" && runsOn(m, id)).length;
+            return <button key={o.value} type="button" className="mc-engine-option" data-testid="mc-engine-option" data-count={n} aria-pressed={o.value === backendValue}
+              onClick={() => { if (o.value !== backendValue) props.onPick(o.choice); }}>
+              <span className="mc-menu-check" aria-hidden="true">{o.value === backendValue && <CheckMark size={14} />}</span>
+              <span className="mc-menu-name">{executorName(o)}</span>
+              <span className="mc-menu-provider">{n ? fill(t("chatReact.engineCount"), { n }) : t("chatReact.engineNone")}</span>
+            </button>;
+          })}
+        </details>}
       </div>
     </div>
   );
@@ -1137,8 +1192,12 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     if (entry && availabilityOf(entry).state === "unavailable") return;
     const nextModel = choice === null ? null : choice.kind === "chat" ? choice.model : model;
     const nextBackend = choice?.kind === "executor" ? choice.backend : backend;
-    if (!allowedFor(nextModel, nextBackend)) { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
+    const plan = pickPlan(choice, allowedFor(nextModel, nextBackend));
+    if (plan === "refuse") { toast.warning(t("common.executionBackendSelectionInvalid")); return; }
     selectionRevision.current += 1;
+    // V5 「不静默换模型」: the executor is taken here only; the model stays (flagged, send off) and nothing is saved that
+    // Core would refuse. The next fitting model pick (or 切回) saves both.
+    if (plan === "local") { setBackend(nextBackend); return; }
     if (!conversationId || !nextBackend) { setModel(nextModel); setBackend(nextBackend); if (choice?.kind !== "executor") setMedia(null); return; }
     setBusy(true);
     try {
@@ -1159,7 +1218,8 @@ export function useSettings(conversationId: string | undefined, t: Translate) {
     ...group, options: group.options.map((option) => ({ ...option, hint: `${option.hint ?? ""} · ${measurementHint(strategy, (option.choice as { model: ModelChoice }).model)}` })),
   } : group);
   // design-1123 C: an executor-incompatible chat model is not listed (was: toast on pick).
-  return { independentTools: wired?.key === conversationId ? wired?.independentTools : undefined, groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
+  return { independentTools: wired?.key === conversationId ? wired?.independentTools : undefined, groups: labeledGroups, model, media, backend, busy, pick, compatible: (choice: Choice) => choice.kind !== "chat" || allowedFor(choice.model, backend),
+    compatibleWith: (choice: Choice, id: string) => choice.kind !== "chat" || allowedFor(choice.model, id), allowed: allowedFor(model, backend), direct, mediaReady: !!found, mediaPending, loadWired, enter, mediaNone: (kind: string) => noneReason(kind), params,
     setParam: (name: string, value: string) => setParams({ ...params, [name]: value }),
     imageGate: imageGate(model, models), modelHint: strategy && model ? measurementHint(strategy, model) : undefined };
 }

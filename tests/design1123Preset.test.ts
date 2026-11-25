@@ -6,7 +6,7 @@ import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 
 // design-1123 A: the input area keeps only presets; protocol + level ride inside the preset (phase 1 = P2 "C").
 const declaration = { model: "m", capability_revision: 7, protocols: {
-  responses: { selectable: true, thinking_levels: { off: { status: "verified" }, high: { status: "verified" }, low: { status: "unverified" } } },
+  responses: { selectable: true, thinking_levels: { off: { status: "supported" }, high: { status: "supported" }, low: { status: "unverified" } } },
   messages: { selectable: false, reason: "上游协议不支持" },
 } };
 let sel: typeof import("../src/chat-react/modelSelection.ts");

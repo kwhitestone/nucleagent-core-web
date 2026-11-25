@@ -38,7 +38,8 @@ export function capabilityView(capability: unknown, backend: string | null | und
     const levels = obj(raw.thinking_levels) ? raw.thinking_levels : {};
     return [{ name, selectable, ...note(selectable, raw), levels: LEVELS.map((level) => {
       const entry = obj(levels[level]) ? levels[level] as Obj : {};
-      const on = selectable && entry.status === "verified";
+      // Core's selectable level status is "supported" (llmproxy model_capability.go:201; the RED-time guess was "verified").
+      const on = selectable && entry.status === "supported";
       return { level, selectable: on, ...note(on, entry) };
     }) }];
   });

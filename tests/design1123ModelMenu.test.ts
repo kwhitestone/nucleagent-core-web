@@ -45,7 +45,7 @@ async function render(props: Record<string, unknown> = {}) {
   const q = <E extends Element = HTMLElement>(s: string) => container.querySelector<E & HTMLElement>(s);
   const trigger = q<HTMLButtonElement>("[data-testid=mc-model]")!;
   const options = () => [...container.querySelectorAll<HTMLElement>("[data-testid=mc-model-menu] [role=option]")];
-  const names = () => options().map((o) => o.querySelector(".mc-menu-text")!.firstChild!.textContent);
+  const names = () => options().map((o) => o.querySelector(".mc-menu-name")!.textContent);
   const key = async (value: string) => { await React.act(async () => document.activeElement!.dispatchEvent(new window.KeyboardEvent("keydown", { key: value, bubbles: true }))); };
   const type = async (text: string) => {
     const input = q<HTMLInputElement>("[data-testid=mc-model-search]")!;
@@ -55,11 +55,11 @@ async function render(props: Record<string, unknown> = {}) {
     open: () => React.act(async () => trigger.click()), close: () => React.act(async () => root.unmount()) };
 }
 
-test("pill shows 「模型 · 执行器」 with the full name in its title", async () => {
+test("pill shows the model (MUYU-365 V5: executor in title/label, not on the pill) with the full name in its title", async () => {
   const v = await render();
   try {
     assert.equal(v.q(".mc-model-name")!.textContent, "deepseek-v4");
-    assert.equal(v.q(".mc-model-exec")!.textContent, "Codex");
+    assert.equal(!!v.q(".mc-model-exec"), false);
     assert.match(v.trigger.title, /deepseek-v4 · Codex/);
   } finally { await v.close(); }
 });
@@ -99,7 +99,7 @@ test("search box keeps focus; typing filters; ↑↓ move the active option; Ent
     assert.match(v.q("[role=listbox]")!.getAttribute("style") ?? "" + getComputedStyle(v.q("[role=listbox]")!).maxHeight, /18rem/);
     await v.type("deep");
     assert.deepEqual(v.names(), ["deepseek-v4", "deepseek-v4-flash"]);
-    const active = () => document.getElementById(input.getAttribute("aria-activedescendant") ?? "")?.querySelector(".mc-menu-text")!.firstChild!.textContent;
+    const active = () => document.getElementById(input.getAttribute("aria-activedescendant") ?? "")?.querySelector(".mc-menu-name")!.textContent;
     assert.equal(active(), "deepseek-v4");
     await v.key("ArrowDown");
     assert.equal(active(), "deepseek-v4-flash");
@@ -121,17 +121,18 @@ test("search box keeps focus; typing filters; ↑↓ move the active option; Ent
   } finally { await v.close(); }
 });
 
-test("executor segmented control switches the executor without closing; a lone executor shows no control", async () => {
+test("executor setting (MUYU-365 V5 fold, was segments) switches the executor without closing; a lone executor shows no setting", async () => {
   const v = await render();
   try {
     await v.open();
-    const seg = [...v.container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-executors] [role=radio]")];
-    assert.deepEqual(seg.map((b) => [b.textContent, b.getAttribute("aria-checked")]), [["Codex", "true"], ["Claude Code", "false"]]);
+    assert.equal(!!v.q("[data-testid=mc-executors]"), false);
+    const seg = [...v.container.querySelectorAll<HTMLButtonElement>("[data-testid=mc-engine-option]")];
+    assert.deepEqual(seg.map((b) => [b.querySelector(".mc-menu-name")!.textContent, b.getAttribute("aria-pressed")]), [["Codex", "true"], ["Claude Code", "false"]]);
     await React.act(async () => seg[1]!.click());
     assert.deepEqual(v.picked, [GROUPS[2]!.options[1]!.choice]);
     assert.equal(v.q("[data-testid=mc-model-menu]")!.hidden, false);
     await v.rerender({ groups: [GROUPS[0], { kind: "executor", options: [GROUPS[2]!.options[0]] }] });
-    assert.equal(v.q("[data-testid=mc-executors]"), null);
+    assert.equal(!!v.q("[data-testid=mc-engine]"), false);
   } finally { await v.close(); }
 });
 
@@ -158,10 +159,10 @@ test("with an image attached, image-incapable models stay listed but blocked (MU
   } finally { await v.close(); }
 });
 
-test("layout: desktop pill ≤220px with ellipsis; ≤480px pill ≤150px, media pills icon-only, both popovers as bottom drawers", () => {
+test("layout: desktop pill ≤220px with a middle ellipsis (MUYU-365 V5); ≤480px pill ≤150px, media pills icon-only, both popovers as bottom drawers", () => {
   const css = readFileSync("src/chat-react/chat.css", "utf8");
   assert.match(css, /\.mc-model-trigger \{[^}]*max-width: 220px/);
-  assert.match(css, /\.mc-model-name \{[^}]*text-overflow: ellipsis/);
+  assert.match(css, /\.mc-model-head \{[^}]*text-overflow: ellipsis/);
   const narrow = css.slice(css.indexOf("@media (max-width: 480px)"));
   assert.ok(css.includes("@media (max-width: 480px)"));
   assert.match(narrow, /\.mc-model-trigger \{[^}]*max-width: 150px/);

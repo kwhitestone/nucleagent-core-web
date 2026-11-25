@@ -156,7 +156,7 @@ test("composer: running with an empty input shows only the stop square", () => {
   assert.doesNotMatch(html, /data-testid="mc-send"/);
 });
 
-test("model menu: chat families, image and video sections; executors as segments; 默认模型 first", () => {
+test("model menu: chat families, image and video sections; executors in the folded secondary setting (V5); 默认模型 first", () => {
   const model = { providerId: "p", model: "m1" };
   const groups = [
     { kind: "chat" as const, options: [{ value: "chat:p:m1", label: "m1", hint: "P", choice: { kind: "chat" as const, model } }, { value: "chat:p:m2", label: "m2", hint: "P", choice: { kind: "chat" as const, model: { providerId: "p", model: "m2" } } }] },
@@ -168,16 +168,18 @@ test("model menu: chat families, image and video sections; executors as segments
   const closed = renderToString(React.createElement(app.ModelMenu, props));
   assert.match(closed, /aria-expanded="false"/);
   assert.match(closed, /data-testid="mc-model-menu"[^>]*hidden=""/);
-  assert.match(closed, /mc-model-name">m1</, "trigger shows the model, not the provider");
-  assert.match(closed, /mc-model-exec">X</, "and the executor");
+  assert.doesNotMatch(closed, /mc-model-name">[^<]*P</, "trigger shows the model, not the provider");
+  assert.match(closed, /mc-model-tail">m1</, "trigger shows the model only (MUYU-365 V5)");
+  assert.match(closed, /aria-label="[^"]* · X"/, "the executor is in the label, not squeezed on the pill");
   const open = renderToString(React.createElement(app.ModelMenu, { ...props, defaultOpen: true }));
   assert.deepEqual([...open.matchAll(/role="group" aria-label="([^"]+)" data-kind="(\w+)"/g)].map((m) => `${m[2]}:${m[1]}`), ["chat:model.types.chat", "image:model.types.image", "video:model.types.video"]);
-  assert.match(open, /role="option"[^>]*aria-selected="false"[^>]*><span class="mc-menu-text">common.modelDefault</);
-  assert.match(open, /aria-selected="true"[^>]*><span class="mc-menu-text">m1<span class="mc-menu-hint">P<\/span>/);
-  assert.match(open, /role="radiogroup"[^]*aria-checked="true"[^>]*>X<[^]*aria-checked="false"[^>]*>Y</);
+  assert.match(open, /role="option"[^>]*aria-selected="false"[^>]*><span class="mc-menu-check" aria-hidden="true"><\/span><span class="mc-menu-text"><span class="mc-menu-name">common.modelDefault</);
+  assert.match(open, /aria-selected="true"[^>]*><span class="mc-menu-check" aria-hidden="true"><svg[^]*?<\/span><span class="mc-menu-text"><span class="mc-menu-name">m1<\/span><span class="mc-menu-provider">P<\/span>/);
+  assert.doesNotMatch(open, /role="radiogroup"/, "no executor segments");
+  assert.match(open, /data-testid="mc-engine"[^]*aria-pressed="true"[^]*mc-menu-name">X<[^]*aria-pressed="false"[^]*mc-menu-name">Y</);
   const unpinned = renderToString(React.createElement(app.ModelMenu, { ...props, value: "", defaultOpen: true }));
-  assert.match(unpinned, /aria-selected="true"[^>]*><span class="mc-menu-text">common.modelDefault<\/span><svg/, "默认模型 selected when nothing is pinned");
-  assert.match(unpinned, /mc-model-name">common.modelDefault</);
+  assert.match(unpinned, /aria-selected="true"[^>]*><span class="mc-menu-check" aria-hidden="true"><svg[^]*?<\/span><span class="mc-menu-text"><span class="mc-menu-name">common.modelDefault</, "默认模型 selected when nothing is pinned");
+  assert.match(unpinned, /mc-model-tail">common.modelDefault</);
   assert.match(readFileSync("src/chat-react/chat.css", "utf8"), /\.mc-list \{[^}]*overflow-y: auto;/s, "list scrolls");
 });
 
@@ -674,14 +676,14 @@ test("settlement reader: a pending turn is re-read after a growing wait until it
   }
 });
 
-test("model menu: upstream tag beside the model and on the trigger title, only when known", () => {
+test("model menu: upstream only on the trigger title/label (MUYU-365 V5 drops the per-row badge), only when known", () => {
   const chat = { kind: "chat" as const, options: [
     { value: "chat:1:a", label: "a", hint: "P", upstream: "AIHub", choice: { kind: "chat" as const, model: { providerId: 1, model: "a" } } },
     { value: "chat:1:d", label: "d", hint: "P", choice: { kind: "chat" as const, model: { providerId: 1, model: "d" } } },
   ] };
   const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:a", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
-  assert.match(open, /<span class="mc-menu-text">a<span class="mc-menu-hint">P<\/span><\/span><span class="mc-menu-tag" data-testid="mc-upstream">AIHub<\/span>/);
-  assert.equal(open.match(/data-testid="mc-upstream"/g)?.length, 1, "no tag when the catalog has no upstream");
+  assert.match(open, /<span class="mc-menu-text"><span class="mc-menu-name">a<\/span><span class="mc-menu-provider">P<\/span><\/span>/);
+  assert.doesNotMatch(open, /data-testid="mc-upstream"/, "no redundant per-row upstream badge");
   assert.match(open, /data-testid="mc-model"[^>]*title="a · chatReact.upstream: AIHub"/);
   assert.match(open, /aria-label="chatReact.pickerLabel · a · P · AIHub"/);
   assert.doesNotMatch(open, /mc-model-upstream/);
@@ -697,7 +699,7 @@ test("model menu (design-1123 C): unavailable models are not listed; vision is b
     opt("down", { vision: "supported", unavailable: "capacity" }),
   ] };
   const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true }));
-  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-text">${model}<.*?</div>`))?.[0] ?? "";
+  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-name">${model}<.*?</div>`))?.[0] ?? "";
   assert.match(row("see"), /data-testid="mc-vision"[^>]*>chatReact.badgeVision</);
   assert.doesNotMatch(row("blind"), /mc-vision/, "only a positive badge");
   assert.match(row("maybe"), /data-testid="mc-unprobed"[^>]*>chatReact.availabilityUnprobed</);
@@ -709,7 +711,7 @@ test("model menu (MUYU-418): with an image attached, models that cannot read ima
   const opt = (model: string, vision: string) => ({ value: `chat:1:${model}`, label: model, hint: "P", vision, choice: { kind: "chat" as const, model: { providerId: 1, model } } });
   const chat = { kind: "chat" as const, options: [opt("see", "supported"), opt("blind", "unsupported"), opt("maybe", "unverified")] };
   const open = renderToString(React.createElement(app.ModelMenu, { t, groups: [chat], value: "chat:1:see", backend: null, disabled: false, onPick: () => {}, defaultOpen: true, hasImage: true }));
-  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-text">${model}<.*?</div>`))?.[0] ?? "";
+  const row = (model: string) => open.match(new RegExp(`<div[^>]*role="option"[^>]*>(?:(?!</div>).)*?mc-menu-name">${model}<.*?</div>`))?.[0] ?? "";
   assert.match(row("blind"), /aria-disabled="true"/);
   assert.match(row("blind"), /title="chatReact.visionBlocked"/);
   assert.doesNotMatch(row("see"), /aria-disabled/);
