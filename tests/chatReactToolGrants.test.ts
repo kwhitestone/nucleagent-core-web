@@ -183,11 +183,11 @@ test("an existing conversation reads and writes its bindings; revoke keeps every
     assert.equal(puts.length, 1);
     assert.match(puts[0].url, /\/conversation\/7\/bindings$/);
     assert.deepEqual(puts[0].body, { toolIds: [38, 9, 37], revision: "1" }, "only toolIds + revision; skills untouched");
-    assert.deepEqual(view.chips(), ["飞书读取文档", "网页搜索", "图片"], "catalog order");
+    assert.deepEqual(view.chips(), ["网页搜索", "图片", "飞书读取文档"], "saved order, the new pick last (as skills)");
     const chip = [...view.container.querySelectorAll('[data-testid="mc-tool-grants"] .mc-chip')].find((c) => c.textContent === "网页搜索");
     await view.click(chip?.querySelector<HTMLElement>('[aria-label="common.disable"]'));
     assert.deepEqual(writes.filter((w) => w.method === "PUT")[1].body, { toolIds: [9, 37], revision: "2" }, "every other still valid id is kept");
-    assert.deepEqual(view.chips(), ["飞书读取文档", "图片"]);
+    assert.deepEqual(view.chips(), ["图片", "飞书读取文档"]);
   } finally { await view.close(); bindings = { skillIds: [3], toolIds: [38], editable: true, revision: "1", principal: "11" }; }
 });
 
@@ -205,12 +205,12 @@ test("a conversation whose bound tool is gone or paused saves only the valid set
     assert.deepEqual(puts[0].body, { toolIds: [38, 37], revision: "1" }, "stale ids dropped, the valid bound 38 kept");
     assert.doesNotMatch(document.body.textContent!, /common\.bindingsSaveFailed/);
     assert.match(document.body.textContent!, /chatReact\.staleRemoved/, "one plain-words note about the removed tools");
-    assert.deepEqual(view.chips(), ["飞书读取文档", "网页搜索"]);
+    assert.deepEqual(view.chips(), ["网页搜索", "飞书读取文档"]);
   } finally { await view.close(); }
   const again = await mount("7");
   try {
     assert.deepEqual(bindings.toolIds, [38, 37]);
-    assert.deepEqual(again.chips(), ["飞书读取文档", "网页搜索"], "the new pick survives a reload");
+    assert.deepEqual(again.chips(), ["网页搜索", "飞书读取文档"], "the new pick survives a reload (saved order)");
   } finally { await again.close(); bindings = { skillIds: [3], toolIds: [38], editable: true, revision: "1", principal: "11" }; }
 });
 
@@ -245,4 +245,37 @@ test("native STT keeps its own audio file picker; keyboard close restores focus;
     await settle();
     assert.deepEqual(view.chips(), []);
   } finally { await view.close(); }
+});
+
+// MUYU-365 PROD 1280 conversation 1108: saved tool 965 sits past catalog page 1; after a reload its chip was missing.
+test("a saved tool past the first catalog page still shows its enabled chip after reload; a failed name read says it in plain words", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  bindings = { skillIds: [], toolIds: [965], editable: true, revision: "1", principal: "11" };
+  const firstPage = Array.from({ length: 32 }, (_, i) => ({ id: 1000 + i, name: `其他${i}`, imported: true, status: "ready" }));
+  let failNames = false;
+  const pages = (url: string) => {
+    if (!/\/tool\/catalog\?/.test(url)) return base(url);
+    if (!/[?&]ids=/.test(url)) return { data: firstPage, hasMore: true, nextCursor: "c2", sortVersion: "1" };
+    if (failNames) throw new Error("offline");
+    return { data: [{ id: 965, name: "质量单位换算", imported: true, status: "ready" }], hasMore: false };
+  };
+  const view = await mount();
+  response = pages;
+  await view.render("7");
+  await settle();
+  try {
+    assert.deepEqual(view.chips(), ["质量单位换算"], "named by id, not by the first page");
+    assert.ok(!reads.some((url) => /cursorMode=true/.test(url) && /[?&]page=2/.test(url)), "the picker does not page to find the name");
+  } finally { await view.close(); }
+  failNames = true;
+  const again = await mount();
+  response = pages;
+  await again.render("7");
+  await settle();
+  try {
+    const chips = again.chips();
+    assert.equal(chips.length, 1, "the saved tool still has a chip");
+    assert.doesNotMatch(chips[0]!, /965|undefined|null/);
+    assert.match(chips[0]!, /^chat ?React\.tool ?Grant$/, "plain-words placeholder");
+  } finally { await again.close(); bindings = { skillIds: [3], toolIds: [38], editable: true, revision: "1", principal: "11" }; }
 });

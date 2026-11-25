@@ -113,7 +113,7 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
       setBound(saved);
       // Bound picks are named on their chips before (or without) the list being opened; ids it no longer offers are stale.
       for (const key of ["skillIds", "toolIds"] as const) if (saved[key].length) void readToolPage({ page: 1 }, "", key < "t" ? SKILL_PATH : TOOL_CATALOG_PATH, saved[key]).then(later((page: { items: ToolCatalogItem[]; next: unknown }) => {
-        if (key < "t") skills.setPicks(page.items);
+        (key < "t" ? skills : tools).setPicks(page.items as never);
         // Every save then sends only what is offered. shortcut: past one page (32) of bound ids none is dropped; read on if that is refused.
         gone[key] = saved[key].filter(id => !page.next && !page.items.some(row => row.id === id && !toolUnavailable(row)));
         setBound(now => ({ ...now }));
@@ -125,7 +125,6 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     return () => { generation.current++; window.removeEventListener(SESSION_CHANGE_EVENT, reset); window.removeEventListener(BINDINGS_EVENT, saved); };
   }, [conversationId]);
   const { toolIds: ids, skillIds } = offered(bound), editable = !bound.busy && (!conversationId || !!bound.editable);
-  useEffect(() => { if (ids.length) tools.load(); }, [ids.length > 0]);
   const label = (row: Row) => catalogText(toolLabel(row as ToolCatalogItem, locale));
   const save = (next: { skillIds?: number[]; toolIds?: number[] }) => {
     if (!editable) return;
@@ -153,16 +152,17 @@ export function useToolGrants(conversationId: string | undefined, t: Translate, 
     countLabel,
     tools: { ...tools, rows: (tools.rows ?? []).filter(row => !hidden(row) && !row.nativeCapability).map(row => {
       const by = row.skillIds?.filter(id => skillIds.includes(id)) ?? [];
-      const locked = by.length > 0 && !toolUnavailable(row);
-      return { id: row.id, label: label(row), on: locked || ids.includes(row.id), off: locked || toolUnavailable(row),
-        unbound: !row.skillIds?.length && !toolUnavailable(row), count: "", note: locked ? coveredNote(by) : toolUnavailable(row) ? t("chatReact.optionUnavailable") : catalogText(row.description ?? "") };
+      const off = toolUnavailable(row), locked = by.length > 0 && !off;
+      return { id: row.id, label: label(row), on: locked || ids.includes(row.id), off: locked || off,
+        unbound: !row.skillIds?.length && !off, count: "", note: locked ? coveredNote(by) : off ? t("chatReact.optionUnavailable") : catalogText(row.description ?? "") };
     }) },
     skills: { ...skills, rows: (skills.rows ?? []).map(row => ({ id: row.id, label: label(row), on: skillIds.includes(row.id), off: false,
       unbound: false, count: countLabel(row), note: catalogText(row.config?.description ?? "") })) },
     editable, skillIds, picked, coveredNote,
     /** Hand-picked tools still sent (a picked skill does not already bring them). */
     ids: effectiveToolIds(ids, tools.known, skillIds),
-    enabled: tools.known.filter(tool => ids.includes(tool.id) && !hidden(tool) && !coveredBySkills(tool, skillIds)).map(tool => ({ id: tool.id, label: label(tool) })),
+    // A saved tool whose name is not read (yet, or the read failed) still shows, in plain words.
+    enabled: ids.map(id => tools.known.find(tool => tool.id === id) ?? { id, name: t("chatReact.toolGrant") }).filter(tool => !hidden(tool) && !coveredBySkills(tool, skillIds)).map(tool => ({ id: tool.id, label: label(tool) })),
     toggle: (id: number) => {
       tools.remember(id);
       save({ toolIds: ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id] });
