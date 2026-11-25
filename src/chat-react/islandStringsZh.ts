@@ -30,7 +30,7 @@ export const ZH_STRINGS = {
     reasoning: "思考过程", processing: "处理中", callRecord: "调用记录",
     attachmentPending: "附件待核验，暂不可下载",
     catalogPinned: "优先", searchTools: "搜索工具",
-    stop: "停止", executor: "运行方式",  badgeVision: "识图", modelStale: "当前模型已不可用，请换一个（本会话仍保持原选择）", searchModel: "搜索模型", noResults: "没有匹配的模型", pickerLabel: "选择模型", engineSummary: "执行器（高级设置）", engineNote: "执行器决定哪些模型可用。切换执行器不会自动更换已选模型。", engineCount: "{n} 个模型可用", engineNone: "无可用模型", engineMismatch: "已选 {model} 不支持执行器 {executor}，发送已停用。", engineBack: "切回 {executor}", noModelsFor: "{executor} 暂无可用的模型", noModels: "无可用模型", engineOpen: "更换执行器",
+    stop: "停止", executor: "运行方式",  badgeVision: "识图", modelStale: "当前模型已不可用，请换一个（本会话仍保持原选择）", searchModel: "搜索模型", noResults: "没有匹配的模型", pickerLabel: "选择模型", engineSummary: "执行器（高级设置）", engineNote: "执行器决定哪些模型可用。切换执行器不会自动更换已选模型。", engineCount: "{n} 个模型可用", engineNone: "无可用模型", engineMismatch: "已选 {model} 不支持执行器 {executor}，发送已停用。", engineReselect: "请在下方选择其他模型，或", engineBack: "切回 {executor}", noModelsFor: "{executor} 暂无可用的模型", noModels: "无可用模型", engineOpen: "更换执行器",
     newPlaceholder: "描述你的任务", hint: "Enter 发送 · Shift + Enter 换行", queueSend: "加入待发送（当前回复结束后发出）",
     attach: "添加附件", loading: "正在加载对话…", process: "执行过程",
     queued: "待发送 1 条", queueBusy_video: "已有 {n} 个视频正在生成，请等其中一个完成后再发送（当前并发上限 {n}）", queueBusy_image: "已有 {n} 个图片任务正在生成，请等其中一个完成后再发送（当前并发上限 {n}）", queueBusy: "进行中的生成任务过多，请等当前任务完成后再发送", queueConflict: "上一轮回复仍在进行，结束后自动发送", queueNetwork: "网络异常，未确认是否已提交；请确认后再手动重试", queuePaused: "已停止，消息未发送", queueDropped: "发送被拒绝，已移除：{reason}", queueRetryIn: "{s} 秒后自动重试", queueRetry: "立即重试", mediaInFlight: "进行中 {n}/{m}", mediaInFlightHint: "已有 {n} 个任务正在生成（上限 {m}），请等其中一个完成后再发送", queuedRemove: "移除待发送消息", badUpdate: "消息格式异常，已跳过一条更新",

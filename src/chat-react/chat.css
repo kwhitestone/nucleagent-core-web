@@ -430,12 +430,19 @@
 .mc-model { position: relative; min-width: 0; }
 .mc-model-picker { position: static; }
 .mc-toolbar > .mc-controls { flex: none; }
-.mc-model-picker > .mc-menu { width: 20rem; max-width: calc(100vw - 1rem); max-height: none; overflow: visible; display: flex; flex-direction: column; }
+/* COMPARE M1 (protomedia-v6 #panel max-height:min(500px,100dvh - 230px), overflow:auto): bounded, so the mismatch notice
+   and 切回 stay on screen with the executor fold open; the list shrinks first, then the menu scrolls. */
+.mc-model-picker > .mc-menu { width: 20rem; max-width: calc(100vw - 1rem); max-height: min(500px, calc(100dvh - 230px)); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
 .mc-model-picker .mc-menu-item { min-height: 32px; }
 .mc-model-picker .mc-menu-item[data-active] { background: var(--bg-hover); }
 .mc-list { overflow-y: auto; min-height: 0; }
+.mc-model-picker .mc-list { flex-shrink: 0; }
 .mc-search { display: flex; align-items: center; height: 27px; margin: 2px 2px 4px 8px; }
 .mc-search input { width: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; }
+/* COMPARE M2 (proto bordered #search): a framed box with a gap, so a scrolled first row is not cut flush under the input. */
+.mc-model-picker .mc-search { flex: none; height: 34px; margin: 2px 2px 6px; }
+.mc-model-picker .mc-search input { height: 100%; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; }
+.mc-model-picker .mc-search input:focus-visible { border-color: var(--focus-ring-color); }
 .mc-model-picker .mc-menu-item { align-items: flex-start; }
 .mc-model-picker .mc-menu-item[aria-selected="true"] { background: var(--bg-brand-soft); }
 .mc-model-picker .mc-menu-item[aria-selected="true"][data-active] { background: var(--bg-hover); }

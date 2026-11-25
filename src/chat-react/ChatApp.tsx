@@ -941,7 +941,7 @@ export function ModelMenu(props: { mode?: "image" | "video"; t: Translate; group
       <div className="mc-menu" data-testid="mc-model-menu" hidden={!open} aria-label={t("chatReact.pickerLabel")}>
         <div className="mc-grab" aria-hidden="true" />
         {mismatch ? <p className="mc-notice" role="status" data-testid="mc-engine-mismatch">{fill(t("chatReact.engineMismatch"), { model, executor: executor ?? "" })}
-          {back && <button type="button" className="mc-link" data-testid="mc-engine-back" onClick={() => props.onPick(back.choice)}>{fill(t("chatReact.engineBack"), { executor: executorName(back) })}</button>}</p>
+          {back && t("chatReact.engineReselect")}{back && <button type="button" className="mc-link" data-testid="mc-engine-back" onClick={() => props.onPick(back.choice)}>{fill(t("chatReact.engineBack"), { executor: executorName(back) })}</button>}</p>
           : stale && <p className="mc-notice" role="status" data-testid="mc-model-stale">{t("chatReact.modelStale")}</p>}
         <div className="mc-search"><input ref={search} data-testid="mc-model-search" value={query} placeholder={t("chatReact.searchModel")} aria-label={t("chatReact.searchModel")}
           role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={listId} aria-activedescendant={flat.length ? `${listId}-${at}` : undefined} autoComplete="off"

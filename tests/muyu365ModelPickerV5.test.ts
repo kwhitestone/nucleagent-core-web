@@ -235,6 +235,7 @@ test("V5 compare M1: the model menu is bounded to the viewport and scrolls, so t
   assert.doesNotMatch(rule, /overflow: visible/);
   assert.match(rule, /max-height: min\([^;]*dvh[^;]*\)/);
   assert.match(rule, /overflow-y: auto/);
+  assert.match(css, /\.mc-model-picker \.mc-list \{[^}]*flex-shrink: 0/, "the list keeps its height (proto #rows 236px); the menu scrolls instead of squeezing it");
 });
 
 test("V5 compare M2: the search box is visibly separated from the list (proto bordered #search), so a scrolled first row is not cut flush under it", () => {
