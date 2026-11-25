@@ -30,11 +30,10 @@ export class VoiceSessionController {
     return last?.role === "assistant" && (last.status?.type === "running" || last.status?.type === "requires-action");
   }
   getVoiceCommitBarrier() { return undefined; }
-  connectVoice() {
-    throw new Error(this.host.adapter() ? "Voice is not bundled in this build" : "Voice adapter not configured");
-  }
-  async appendToVoiceSession() { throw new Error("Cannot send a text message while a voice session is connected"); }
+  // The island passes no voice adapter, so the original's not-configured answer is the only one reachable.
+  connectVoice() { throw new Error("Voice adapter not configured"); }
+  async appendToVoiceSession() { this.muteVoice(); }
   disconnectVoice() { this.host.markVoiceMessagesDirty(); this.host.notify(); }
   muteVoice() { throw new Error("No active voice session"); }
-  unmuteVoice() { throw new Error("No active voice session"); }
+  unmuteVoice() { this.muteVoice(); }
 }

@@ -18,7 +18,7 @@ export const ZH_STRINGS = {
     visionBlocked: "该模型不支持图片输入，请换支持图片的模型", visionBlockedHint: "不支持图片输入，无法发送图片。", visionUnverifiedHint: "的图片输入未经验证，可能无法识图。",
     visionSwitchTo: "请在模型菜单换成支持图片的模型：{models}。", visionNoAlternative: "暂无已验证支持图片的可用模型。",
     workflow: "音频工具", workflowChoose: "请选择", workflowRun: "执行",
-    tagCount: "{n} 工具", items: "{n} 个", independent: "只看独立工具和已选项", toolsPaused: "所带工具暂不可用", picked: "已选", emptyList: "暂无可选项", directAction: "直接生成", skills: "技能", hiddenTools: "另有 {n} 个暂不可用", skillsAllowed: "允许模型按需使用 {n} 个技能", bringsTools: "带 {n} 个工具", noTools: "不带工具", bySkills: "由 {n} 个技能提供", listEnd: "暂时没有更多了", loadFailed: "加载失败，点此重试", noMatch: "没有匹配的结果", searchSkills: "搜索技能", remove: "移除",
+    tagCount: "{n} 工具", items: "{n} 个", independent: "只看独立工具和已选项", staleRemoved: "有 {n} 个已失效的技能或工具已自动移除", toolsPaused: "所带工具暂不可用", picked: "已选", emptyList: "暂无可选项", directAction: "直接生成", skills: "技能", hiddenTools: "另有 {n} 个暂不可用", skillsAllowed: "允许模型按需使用 {n} 个技能", bringsTools: "带 {n} 个工具", noTools: "不带工具", bySkills: "由 {n} 个技能提供", listEnd: "暂时没有更多了", loadFailed: "加载失败，点此重试", noMatch: "没有匹配的结果", searchSkills: "搜索技能", remove: "移除",
     toolGrant: "工具", toolGrantsEnabled: "已启用工具：",
     workflowUnavailable: "音频工具暂不可用。",
     workflowUnknown: "提交未确认，请先核对会话记录；不会自动重发。",

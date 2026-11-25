@@ -7,5 +7,5 @@
  * shortcut: drop the plugin before the island passes onEdit (tests/auiSessionStubs.test.ts pins this).
  */
 export class DefaultEditComposerRuntimeCore {
-  constructor() { throw new Error("The aui edit composer is not bundled in the chat island"); }
+  constructor() { throw new Error("edit composer not bundled"); }
 }

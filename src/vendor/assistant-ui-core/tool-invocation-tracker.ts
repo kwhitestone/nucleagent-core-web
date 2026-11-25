@@ -10,6 +10,6 @@ export const NO_TOOL_EXECUTIONS = Promise.resolve();
 
 export class ToolInvocationTracker {
   constructor() {
-    throw new Error("Client-side tool invocations are not bundled in the chat island");
+    throw new Error("tool invocations not bundled");
   }
 }

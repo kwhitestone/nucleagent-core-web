@@ -6,6 +6,6 @@
  * shortcut: drop the plugin before the island passes a history adapter (tests/auiSessionStubs.test.ts pins this).
  */
 export class ExternalStoreHistoryCopy {
-  attach(): never { throw new Error("History copy is not bundled in the chat island"); }
-  recordInteraction = async (): Promise<never> => { throw new Error("History copy is not bundled in the chat island"); };
+  attach(): never { throw new Error("history copy not bundled"); }
+  recordInteraction = async (): Promise<never> => this.attach();
 }

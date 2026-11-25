@@ -5,7 +5,7 @@
  * MUYU-365 exp109: frees island bytes under the 180 KiB budget.
  * shortcut: drop the plugin before the island passes turnAnchor="top" (tests/auiSessionStubs.test.ts pins this).
  */
-const unreachable = (): never => { throw new Error("Top-anchor turns are not bundled in the chat island"); };
+const unreachable = (): never => { throw new Error("top anchor not bundled"); };
 /** Called on every viewport render with `enabled === false`; the original only mounts the reserve when enabled. */
 export const useTopAnchorReserve = (enabled: boolean): void => { if (enabled) unreachable(); };
 export const getActiveTopAnchorAnchorId = unreachable;

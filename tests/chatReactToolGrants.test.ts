@@ -53,6 +53,8 @@ before(async () => {
     get: async (url: string) => { reads.push(url); return { data: response(url) }; },
     put: async (url: string, body: { toolIds: number[] }) => {
       writes.push({ method: "PUT", url, body });
+      // Core refuses any id that is gone or not selectable (svc/tool_binding.go validateToolIDs), never loosened.
+      if (body.toolIds.some((id) => !catalog.some((tool) => tool.id === id && tool.status === "ready"))) throw Object.assign(new Error("invalid tool: 工具不存在或不可选"), { status: 400 });
       bindings = { ...bindings, toolIds: body.toolIds, revision: String(Number(bindings.revision) + 1) };
       return { data: { data: bindings } };
     },
@@ -170,23 +172,46 @@ test("a new chat sends the enabled set as toolIds with the user's words only; no
 
 test("an existing conversation reads and writes its bindings; revoke keeps every other bound id", async (context) => {
   context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
-  bindings = { skillIds: [3], toolIds: [38, 501], editable: true, revision: "1", principal: "11" };
+  bindings = { skillIds: [3], toolIds: [38, 9], editable: true, revision: "1", principal: "11" };
   const view = await mount("7");
   try {
-    assert.deepEqual(view.chips(), ["网页搜索"], "bound tools show as enabled (unknown ids are kept but not shown)");
+    assert.deepEqual(view.chips(), ["网页搜索", "图片"]);
     await view.openTools();
     assert.equal(view.grant("网页搜索")!.getAttribute("aria-pressed"), "true");
     await view.click(view.grant("飞书读取文档"));
     const puts = writes.filter((w) => w.method === "PUT");
     assert.equal(puts.length, 1);
     assert.match(puts[0].url, /\/conversation\/7\/bindings$/);
-    assert.deepEqual(puts[0].body, { toolIds: [38, 501, 37], revision: "1" }, "only toolIds + revision; skills untouched");
-    assert.deepEqual(view.chips(), ["飞书读取文档", "网页搜索"], "catalog order");
+    assert.deepEqual(puts[0].body, { toolIds: [38, 9, 37], revision: "1" }, "only toolIds + revision; skills untouched");
+    assert.deepEqual(view.chips(), ["飞书读取文档", "网页搜索", "图片"], "catalog order");
     const chip = [...view.container.querySelectorAll('[data-testid="mc-tool-grants"] .mc-chip')].find((c) => c.textContent === "网页搜索");
     await view.click(chip?.querySelector<HTMLElement>('[aria-label="common.disable"]'));
-    assert.deepEqual(writes.filter((w) => w.method === "PUT")[1].body, { toolIds: [501, 37], revision: "2" });
-    assert.deepEqual(view.chips(), ["飞书读取文档"]);
+    assert.deepEqual(writes.filter((w) => w.method === "PUT")[1].body, { toolIds: [9, 37], revision: "2" }, "every other still valid id is kept");
+    assert.deepEqual(view.chips(), ["飞书读取文档", "图片"]);
   } finally { await view.close(); bindings = { skillIds: [3], toolIds: [38], editable: true, revision: "1", principal: "11" }; }
+});
+
+// MUYU-365 TEST 1280 conversation 1530: its bound tool 790 became unpickable; the save resent it and Core said 400.
+test("a conversation whose bound tool is gone or paused saves only the valid set, says how many were removed, and keeps it on reload", async (context) => {
+  context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  bindings = { skillIds: [], toolIds: [38, 39, 501], editable: true, revision: "1", principal: "11" };
+  const view = await mount("7");
+  try {
+    assert.deepEqual(view.chips(), ["网页搜索"], "paused (39) and missing (501) tools are not shown");
+    await view.openTools();
+    await view.click(view.grant("飞书读取文档"));
+    const puts = writes.filter((w) => w.method === "PUT");
+    assert.equal(puts.length, 1);
+    assert.deepEqual(puts[0].body, { toolIds: [38, 37], revision: "1" }, "stale ids dropped, the valid bound 38 kept");
+    assert.doesNotMatch(document.body.textContent!, /common\.bindingsSaveFailed/);
+    assert.match(document.body.textContent!, /chatReact\.staleRemoved/, "one plain-words note about the removed tools");
+    assert.deepEqual(view.chips(), ["飞书读取文档", "网页搜索"]);
+  } finally { await view.close(); }
+  const again = await mount("7");
+  try {
+    assert.deepEqual(bindings.toolIds, [38, 37]);
+    assert.deepEqual(again.chips(), ["飞书读取文档", "网页搜索"], "the new pick survives a reload");
+  } finally { await again.close(); bindings = { skillIds: [3], toolIds: [38], editable: true, revision: "1", principal: "11" }; }
 });
 
 test("a non-editable conversation shows its tools read-only and never writes", async (context) => {

@@ -37,7 +37,7 @@ import { openSealedLinkOnClick } from "@/addons/conversation/task-conversation/s
 import { copyRawBody, formatMessageTime } from "@/addons/conversation/components/conversation/messageCopy";
 import { toast } from "@/composables/useToast";
 import { externalStore, sendAppend, type ChatController } from "./externalStore";
-import { failureOf, slotReason, useSingleSlotQueue, type SlotFailure } from "./singleSlotQueue";
+import { failureOf, fill, slotReason, useSingleSlotQueue, type SlotFailure } from "./singleSlotQueue";
 import { isRunning, type MediaPartData, type ProcessPartData, type ToolResult } from "./threadMessages";
 import { choiceValue, modelGroups, visibleOptions, type Choice, type Group, type Option } from "./modelGroups";
 import { composerActions } from "./composerState";
@@ -276,7 +276,6 @@ function useSuggestions(active: boolean, locale: string) {
   return list;
 }
 
-const fillIn = (text: string, values: Record<string, unknown>) => text.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ""));
 
 /** fix-video-swallow: the queued row always says why it waits — reason, auto-retry countdown, 立即重试. */
 function QueueReason({ t, queue }: { t: Translate; queue: { failure: SlotFailure | null; reason: string | null; retry(): void } }) {
@@ -284,7 +283,7 @@ function QueueReason({ t, queue }: { t: Translate; queue: { failure: SlotFailure
   const now = useClock(!!at);
   const left = at ? Math.max(0, Math.ceil((at - now) / 1000)) : 0;
   return <>
-    <span className="mc-queued-reason" role="alert" data-testid="mc-queued-reason">{queue.reason}{at ? ` · ${fillIn(t("chatReact.queueRetryIn"), { s: left })}` : ""}</span>
+    <span className="mc-queued-reason" role="alert" data-testid="mc-queued-reason">{queue.reason}{at ? ` · ${fill(t("chatReact.queueRetryIn"), { s: left })}` : ""}</span>
     {queue.failure?.status !== 409 && <button type="button" className="mc-pill" data-testid="mc-queued-retry" onClick={queue.retry}>{t("chatReact.queueRetry")}</button>}
   </>;
 }
@@ -459,7 +458,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
         <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         {settings.media && <div className="mc-media-panel" role="status" data-testid="mc-media-mode" aria-busy={settings.mediaPending || undefined}>
           <span className="mc-sr-only">{settings.media.model.model}</span>
-          {full && <p className="mc-hint" role="alert" data-testid="mc-inflight-full">{fillIn(t("chatReact.mediaInFlightHint"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</p>}
+          {full && <p className="mc-hint" role="alert" data-testid="mc-inflight-full">{fill(t("chatReact.mediaInFlightHint"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</p>}
           {settings.direct ? <DirectMediaFields direct={settings.direct} params={settings.params} setParam={settings.setParam} t={t} frame={!hasImage} /> : !settings.mediaPending && <p>{t("chatReact.mediaUnavailable")}</p>}
         </div>}
 
@@ -492,7 +491,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
                   const picked = kind === "skills" ? grants.skillIds.length : grants.ids.length;
                   return <button key={kind} type="button" role="menuitem" tabIndex={-1} className="mc-menu-item mc-catalog-entry" aria-label={name} onClick={() => openList(kind)}>
                     {kind === "skills" ? <AssistantMark /> : <ToolMark />}{name}
-                    <small className="mc-entry-tail">{picked > 0 && `${t("chatReact.picked")} ${picked} `}{count !== undefined && t("chatReact.items").replace("{n}", String(count))}</small>
+                    <small className="mc-entry-tail">{picked > 0 && `${t("chatReact.picked")} ${picked} `}{count !== undefined && fill(t("chatReact.items"), { n: count })}</small>
                   </button>;
                 })}
                 {profile && !settings.media && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" disabled={settings.busy} onClick={() => setSection("preset")}>
@@ -506,7 +505,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
           </div>
           {settings.media && <span className="mc-mode-chip">
             <button type="button" aria-haspopup="menu" onClick={openMenu}>{t(`chatReact.make_${settings.media.kind}`)}
-              {!!inFlight && <small data-testid={`mc-inflight-${settings.media.kind}`}>{fillIn(t("chatReact.mediaInFlight"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</small>}
+              {!!inFlight && <small data-testid={`mc-inflight-${settings.media.kind}`}>{fill(t("chatReact.mediaInFlight"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</small>}
             </button>
             <button type="button" aria-label={t("chatReact.exitMode")} onClick={() => settings.enter?.(settings.media!.kind)}>×</button>
           </span>}

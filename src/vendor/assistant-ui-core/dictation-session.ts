@@ -6,12 +6,10 @@
  */
 export class DictationSessionController {
   readonly dictation = undefined;
-  private readonly host: { getAdapter(): unknown };
-  constructor(host: { getAdapter(): unknown }) { this.host = host; }
+  // The island passes no dictation adapter, so the original's not-configured answer is the only one reachable.
+  constructor(_host: { getAdapter(): unknown }) {}
   rebase() {}
   cancel() {}
   stopDictation() {}
-  startDictation() {
-    throw new Error(this.host.getAdapter() ? "Dictation is not bundled in this build" : "Dictation adapter not configured");
-  }
+  startDictation() { throw new Error("Dictation adapter not configured"); }
 }

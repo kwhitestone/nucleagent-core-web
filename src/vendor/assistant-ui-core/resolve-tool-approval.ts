@@ -6,5 +6,5 @@
  * shortcut: drop the alias before the island renders tool approvals (tests/auiSessionStubs.test.ts pins this).
  */
 export function resolveToolApprovalResponse(): never {
-  throw new Error("Tool approvals are not bundled in the chat island");
+  throw new Error("tool approvals not bundled");
 }

@@ -43,8 +43,15 @@ const page = (rows: unknown[], url: string) => {
   const data = (rows as { id: number; name: string }[]).filter((row) => row.name.includes(search) && (!ids || ids.includes(row.id)));
   return { data, hasMore: false, sortVersion: "v1" };
 };
+// A long ranked tool catalog (pages of 32, `pages` long) where few rows are standalone tools.
+let toolPages = 0;
+const longCatalog = (url: string) => {
+  const n = Number(new URL(url, "https://x").searchParams.get("page"));
+  const data = Array.from({ length: 32 }, (_, i) => ({ id: n * 100 + i, name: `工具${n}-${i}`, status: "ready", skillIds: i < (n === 1 ? 1 : 3) ? [] : [1] }));
+  return { data, hasMore: n < toolPages, sortVersion: "v1" };
+};
 const response = (url: string) => /\/addons\/skill(\?|$)/.test(url) ? (() => { if (failSkills) throw new Error("down"); return page(skills, url); })()
-  : /\/tool\/catalog(\?|$)/.test(url) ? page(tools, url)
+  : /\/tool\/catalog(\?|$)/.test(url) ? toolPages && !url.includes("ids=") ? longCatalog(url) : page(tools, url)
   : { data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
     : url.endsWith("/bindings") ? bindings
     : url.endsWith("model-selection") ? { executionBackend: "codex", providerId: 1, model: "chat-model", resolved: true }
@@ -242,6 +249,53 @@ test("an existing conversation saves skills with its tools; the conflict answer 
     assert.ok(document.body.textContent!.includes("该工具已随所选技能提供，请取消其一"));
     assert.deepEqual(view.skillChips(), ["智能扩图", "图像创作"], "a refused save keeps the saved set");
   } finally { putError = null; await view.close(); bindings = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "11" }; }
+});
+
+// MUYU-365 TEST 1280: a stale bound skill was resent and refused, the same as a stale tool.
+test("a conversation whose bound skill was switched off saves only the skills still offered and says so", async (context) => {
+  mock(context);
+  bindings = { skillIds: [2, 99], toolIds: [], editable: true, revision: "1", principal: "11" };
+  const view = await mount("7");
+  try {
+    assert.deepEqual(view.skillChips(), ["智能扩图"]);
+    await view.openSkills();
+    await view.click(view.row("图像创作"));
+    assert.deepEqual(writes.filter((w) => w.method === "PUT")[0].body, { skillIds: [2, 1], revision: "1" });
+    assert.match(document.body.textContent!, /有 1 个已失效的技能或工具已自动移除/);
+  } finally { await view.close(); bindings = { skillIds: [], toolIds: [], editable: true, revision: "1", principal: "11" }; }
+});
+
+test("standalone-only tools keep loading until the list fills its box; scrolling and 加载更多 both read the next page", async (context) => {
+  mock(context);
+  toolPages = 5;
+  const proto = window.HTMLElement.prototype;
+  const box = (el: HTMLElement) => el.classList.contains("mc-grants");
+  Object.defineProperty(proto, "clientHeight", { configurable: true, get() { return box(this) ? 200 : 0; } });
+  Object.defineProperty(proto, "scrollHeight", { configurable: true, get() { return box(this) ? this.children.length * 40 : 0; } });
+  const view = await mount();
+  const pagesRead = () => reads.filter((url) => /\/tool\/catalog\?.*pageSize=32/.test(url) && !url.includes("ids=")).map((url) => Number(new URL(url, "https://x").searchParams.get("page")));
+  const shown = () => view.container.querySelectorAll(".mc-grants [aria-pressed]").length;
+  try {
+    await view.click(view.q<HTMLButtonElement>(`[aria-label="${ZH_STRINGS.addTools}"]`));
+    await view.click([...view.container.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.getAttribute("aria-label") === ZH_STRINGS.toolGrant));
+    assert.equal(view.q<HTMLInputElement>(".mc-grant-scope input")!.checked, true, "standalone filter is on by default");
+    assert.deepEqual(pagesRead(), [1, 2, 3], "a first page of 1 row is not a full box: read on until it fills");
+    assert.equal(shown(), 7);
+    const list = view.q(".mc-grants")!;
+    list.scrollTop = 80;
+    await React.act(async () => list.dispatchEvent(new window.Event("scroll")));
+    await settle();
+    assert.deepEqual(pagesRead(), [1, 2, 3, 4], "scrolling to the end reads the next page");
+    await view.click([...view.container.querySelectorAll<HTMLButtonElement>(".mc-grant-foot button")].find((b) => b.textContent === "加载更多"));
+    assert.deepEqual(pagesRead(), [1, 2, 3, 4, 5]);
+    assert.equal(shown(), 13);
+    assert.ok(view.q(".mc-grant-foot")!.textContent!.includes("暂时没有更多了"));
+  } finally {
+    toolPages = 0;
+    delete (proto as { clientHeight?: number }).clientHeight;
+    delete (proto as { scrollHeight?: number }).scrollHeight;
+    await view.close();
+  }
 });
 
 test("load failure offers a retry in plain words; the end of the list says so", async (context) => {

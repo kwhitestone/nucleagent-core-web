@@ -132,7 +132,8 @@ export function useSingleSlotQueue(key: string | undefined, running: boolean, se
 }
 
 type Say = (key: string) => string;
-const fill = (text: string, values: Record<string, unknown>) => text.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ""));
+/** Fills `{name}` placeholders of an island string. */
+export const fill = (text: string, values: Record<string, unknown>) => text.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ""));
 
 /** User text for a refused send (zh/en via t): media_busy names the kind's concurrency limit; never empty. */
 export function slotReason(failure: SlotFailure, t: Say, media?: { kind: "image" | "video"; limit: number }) {

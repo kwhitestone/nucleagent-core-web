@@ -10,7 +10,7 @@
  * shortcut: drop the plugin before the island records interactions, adds tool results or renders generative UI
  * (tests/auiSessionStubs.test.ts pins this).
  */
-const unreachable = (): never => { throw new Error("Tool interactions, tool results and generative UI are not bundled in the chat island"); };
+const unreachable = (): never => { throw new Error("tool interactions not bundled"); };
 /** Same as the original for the only value the island can pass (undefined); anything else is unreachable. */
 export function readToolInteractionLog(value: unknown): undefined {
   if (value !== undefined) unreachable();

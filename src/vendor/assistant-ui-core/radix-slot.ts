@@ -7,8 +7,7 @@
  * shortcut: drop the plugin before the island passes asChild/render to an aui primitive (tests/auiSessionStubs.test.ts pins this).
  */
 export function createSlot(ownerName: string) {
-  const SlotStandIn = (): never => { throw new Error(`${ownerName}: asChild/render slots are not bundled in the chat island`); };
-  SlotStandIn.displayName = `${ownerName}.Slot`;
+  const SlotStandIn = (): never => { throw new Error(`${ownerName} not bundled`); };
   return SlotStandIn;
 }
 export const Slot = createSlot("Slot");

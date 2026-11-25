@@ -9,6 +9,6 @@
 export function gateInteractableComposerMetadata(meta: Record<string, unknown> | undefined, _messages: readonly unknown[]): Record<string, unknown> | undefined {
   if (!meta) return undefined;
   const { interactables, ...rest } = meta;
-  if (interactables !== undefined) throw new Error("Interactables are not bundled in the chat island");
+  if (interactables !== undefined) throw new Error("interactables not bundled");
   return Object.keys(rest).length ? rest : undefined;
 }
