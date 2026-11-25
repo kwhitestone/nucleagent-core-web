@@ -13,7 +13,7 @@ import type { SettlementReader } from "../../../chat-react/turnUsage.ts";
  */
 export const readSettlement: SettlementReader = async (conversationId, signal) => {
   const { data } = (await getPlatformRuntime().http.get<{ data: any }>(`/api/v1/addons/conversation/${encodeURIComponent(conversationId)}/settlement`, { signal })).data;
-  return data.turns.map((turn: any) => {
+  return [...data.turns, ...(data.mediaTasks ?? [])].map((turn: any) => {
     // exp106: turn.points (Core v0.1.74) is a whole-number string only on settled turns, else null/absent.
     if (data.unit !== "credits" || (turn.state === "settled" ? !/^\d+$/.test(turn.credits) || turn.points != null && !(typeof turn.points === "string" && /^(0|[1-9]\d*)$/.test(turn.points)) : turn.credits !== null || turn.points != null)) throw new Error("settlement");
     // exp116: Core v0.1.80 rate status rides along raw on every row (turnUsage checks it; a bad value is null there, never a throw).

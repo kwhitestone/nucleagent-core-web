@@ -9,6 +9,25 @@ const settled = (over: Partial<SettlementEvidence> = {}): SettlementEvidence => 
   ...scope, state: "settled", points: "0", upstreams: ["aihub-gateway"], revision: 1, ...over,
 });
 
+test("media receipts retain authoritative settled, pending and UNKNOWN states independently of chat turns", async () => {
+  const row = (taskId: number, state: string, credits: string | null) => ({ taskId, stepId: `media-${taskId}`, state, credits, upstreams: [], revision: 7 });
+  let mediaTasks: unknown = [row(33, "settled", "0"), row(34, "settled", "12"), row(35, "unknown", null), row(36, "pending", null)];
+  const off = registerPlatformRuntime({ http: { get: async () => ({ data: { data: { unit: "credits", turns: [], mediaTasks } } }) } } as never);
+  try {
+    const read = () => readSettlement("1135", new AbortController().signal);
+    const evidence = settlementRows(await read());
+    assert.deepEqual([33, 34, 35, 36, 37].map(taskId => turnUsage({ conversationId: "1135", turnId: `media-${taskId}` }, evidence)), [
+      { state: "settled", points: "0" }, { state: "settled", points: "12" }, { state: "unknown", points: "—" },
+      { state: "pending", points: "—" }, { state: "unknown", points: "—" },
+    ]);
+    assert.equal(turnUsage({ conversationId: "other", turnId: "media-33" }, evidence).state, "unknown");
+    mediaTasks = [row(35, "unknown", "0")];
+    await assert.rejects(read(), /settlement/);
+    mediaTasks = {};
+    await assert.rejects(read());
+  } finally { off(); }
+});
+
 test("only authoritative settled decimal strings show true zero or positive points", () => {
   assert.deepEqual(turnUsage(scope, [settled()]), { state: "settled", points: "0" });
   assert.equal(turnUsage(scope, [settled({ points: "1.25" })]).points, "1.25");
