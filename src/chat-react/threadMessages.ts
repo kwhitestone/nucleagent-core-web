@@ -29,6 +29,9 @@ export interface ProcessPartData {
   timing: string;
   status: ConversationItem["status"];
   ttft?: TtftReadout;
+  /** MUYU-365 p0c40 v2: this turn's thinking tier (Core metadata.thinkingLevel) and whether no thinking text came back. */
+  tier?: string;
+  quiet?: boolean;
 }
 
 /** A media generation message (image/video task) and whether it failed. */
@@ -82,13 +85,18 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
     (item.lane === "process" || item.lane === "tool" || item.lane === "progress") &&
     (item.lane === "process" || item.title || item.content));
   let run = process.filter(item => item.kind === 'tool_call' || typeof item.data?.toolCallId === 'string');
-  if (!run.length && ttft && ordered.some(item => item.lane === 'process' && item.data?.modelThinking !== true)) {
-    parts.push({ type: 'data-process', data: { summary: '', timing, status: processGroupStatus(ordered), ttft } });
+  const tier = group.find((item) => item.data?.thinkingLevel)?.data?.thinkingLevel as string | undefined;
+  // Only the first fold carries the tier line.
+  let head = tier ? { tier, quiet: !group.some((item) => item.data?.modelThinking === true && item.content) } : {};
+  if (!run.length && (tier || ttft && ordered.some(item => item.lane === 'process' && item.data?.modelThinking !== true))) {
+    parts.push({ type: 'data-process', data: { summary: '', timing, status: processGroupStatus(ordered), ...(ttft ? { ttft } : {}), ...head } });
+    head = {};
   }
   // A step ends when the next one starts; the last one when the next non-process item arrives (Vue's rule).
   const flush = (groupEnd?: string) => {
     if (!run.length) return;
-    const data: ProcessPartData = { summary: locale === "zh-CN" ? `${run.length} 次调用` : `${run.length} ${run.length === 1 ? "call" : "calls"}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}) };
+    const data: ProcessPartData = { summary: locale === "zh-CN" ? `${run.length} 次调用` : `${run.length} ${run.length === 1 ? "call" : "calls"}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}), ...head };
+    head = {};
     parts.push({ type: "data-process", id: run[0].id, data }, ...run.map(step => stepPart(step, process[process.indexOf(step) + 1]?.timestamp ?? groupEnd)));
     run = [];
   };

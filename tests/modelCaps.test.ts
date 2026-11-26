@@ -49,7 +49,7 @@ test("upload hint text is deterministic per field: none for supported, block+swi
   const none = imageHint({ state: "unsupported", block: true, model: "blind", alternatives: [] }, zh)!;
   assert.match(none, /暂无已验证支持图片的可用模型/);
   const unverified = imageHint({ state: "unverified", block: false, model: "unknown", alternatives: ["seen"] }, zh)!;
-  assert.match(unverified, /未经验证/);
+  assert.match(unverified, /该模型暂未验证识图（unknown）/);
   assert.match(unverified, /seen/);
   for (const text of [blocked, none, unverified]) {
     assert.doesNotMatch(text, /能力未知|视觉延迟|实测通过不等于/, "the old ambiguous prompt is gone");

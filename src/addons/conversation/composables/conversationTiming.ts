@@ -21,6 +21,8 @@ export function messageTimingData(message: Message): Record<string, unknown> {
       (["agent", "system"].includes(message.senderType) && message.msgType === "error")
     ),
     ...(meta?.thinkingStatus === true ? { thinkingStatus: true } : {}),
+    // MUYU-365 p0c40 v2: the tier Core sent this turn with (418 SUPPLEMENT-4); anything else = unknown, no line.
+    ...(["low", "medium", "high"].includes(meta?.thinkingLevel as string) ? { thinkingLevel: meta!.thinkingLevel } : {}),
     ...(message.senderName?.endsWith(".thinking") && meta?.thinkingStatus !== true &&
       ["summary", "full"].includes(String(meta?.thinkingVisibility)) && message.content?.trim()
       ? { modelThinking: true } : {}),

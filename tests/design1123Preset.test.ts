@@ -55,9 +55,9 @@ before(async () => {
 after(async () => { await vite?.close(); });
 
 const ROWS = [
-  { id: "think", displayName: "思考", enabled: true, params: { thinkingLevel: "medium" } },
-  { id: "deep", displayName: "深度思考", enabled: true, params: { callProtocol: "responses", thinkingLevel: "high" } },
-  { id: "gone", displayName: "停用", enabled: false },
+  { id: "off", displayName: "关闭思考", enabled: false, reason: "无显式关闭参数" },
+  { id: "quick", displayName: "快速", enabled: true, params: { thinkingLevel: "medium" } },
+  { id: "thinking", displayName: "深度思考", enabled: true, params: { callProtocol: "responses", thinkingLevel: "high" } },
 ];
 async function render(props: { selected?: string; name?: string; stale?: string; rows?: unknown[] }) {
   const container = document.getElementById("root")!;
@@ -80,24 +80,15 @@ test("the 思考 pill opens the preset radios directly: no root rows, no protoco
     assert.equal(view.container.querySelector("[data-testid^=mc-ctl-]"), null);
     assert.equal(view.container.querySelector("[data-testid=mc-effort-page],[data-testid=mc-protocol-page],[data-testid=mc-level-page]"), null);
     const radios = [...menu.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]")];
-    assert.deepEqual(radios.map((r) => r.querySelector(".mc-menu-text")!.textContent), ["chatReact.selectionDefault", "思考", "深度思考"], "a disabled preset is not listed");
-    assert.equal(document.activeElement, radios[0], "focus lands on the checked radio");
-    await React.act(async () => radios[2]!.click());
-    assert.deepEqual(view.picked, ["deep"]);
-  } finally { await React.act(async () => view.root.unmount()); }
-});
-
-test("each preset describes the thinking level in ordinary words", async () => {
-  const view = await render({});
-  try {
-    await view.open();
-    const details = [...view.container.querySelectorAll("[data-testid=mc-preset-detail]")].map((d) => d.textContent);
-    assert.deepEqual(details, ["chatReact.effort chatReact.effortMedium", "chatReact.effort chatReact.effortHigh"]);
+    assert.deepEqual(radios.map((r) => r.querySelector(".mc-menu-text")!.textContent), ["chatReact.tier_quick（chatReact.effortMedium）", "chatReact.tier_thinking（chatReact.effortHigh）"], "MUYU-365 p0c40 v2: only the two tiers, no 默认/关闭");
+    assert.equal(radios.filter((r) => r.getAttribute("aria-checked") === "true").length, 0, "nothing chosen = nothing checked");
+    await React.act(async () => radios[1]!.click());
+    assert.deepEqual(view.picked, ["thinking"]);
   } finally { await React.act(async () => view.root.unmount()); }
 });
 
 test("pill shows the preset name; a stale preset gets ⚠ on the pill and a notice on top of the page", async () => {
-  const view = await render({ selected: "deep", name: "深度思考", stale: "深度思考" });
+  const view = await render({ selected: "thinking", name: "深度思考", stale: "深度思考" });
   try {
     assert.match(view.trigger.textContent!, /深度思考/);
     assert.ok(view.trigger.querySelector("[data-testid=mc-profile-stale]"));
@@ -108,11 +99,11 @@ test("pill shows the preset name; a stale preset gets ⚠ on the pill and a noti
   } finally { await React.act(async () => view.root.unmount()); }
 });
 
-test("a selected preset that became disabled stays listed (not silently swapped)", async () => {
-  const view = await render({ selected: "gone", name: "停用" });
+test("a selected preset that became disabled stays listed and checked (not silently swapped)", async () => {
+  const view = await render({ selected: "quick", name: "快速", rows: [{ ...ROWS[1], enabled: false, reason: "未核实" }, ROWS[2]] });
   try {
     await view.open();
-    const texts = [...view.container.querySelectorAll("[role=menuitemradio] .mc-menu-text")].map((x) => x.textContent);
-    assert.ok(texts.some((x) => x!.startsWith("停用")));
+    const quick = view.container.querySelector<HTMLButtonElement>("[role=menuitemradio]")!;
+    assert.deepEqual([quick.disabled, quick.getAttribute("aria-checked"), quick.querySelector("[data-testid=mc-preset-reason]")?.textContent], [true, "true", "未核实"]);
   } finally { await React.act(async () => view.root.unmount()); }
 });

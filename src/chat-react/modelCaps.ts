@@ -47,5 +47,5 @@ export function imageHint(gate: ImageGate, t: (key: string) => string): string |
   if (gate.state === "supported") return undefined;
   const name = gate.model ?? t("common.modelDefault");
   const others = gate.alternatives.length ? fill(t("chatReact.visionSwitchTo"), { models: gate.alternatives.join("、") }) : t("chatReact.visionNoAlternative");
-  return `${name} ${t(gate.state === "unsupported" ? "chatReact.visionBlockedHint" : "chatReact.visionUnverifiedHint")}${others}`;
+  return gate.state === "unsupported" ? `${name} ${t("chatReact.visionBlockedHint")}${others}` : fill(t("chatReact.visionUnverifiedHint"), { name }) + others;
 }

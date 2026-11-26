@@ -51,57 +51,51 @@ async function render(rows: unknown[], selected = "") {
   return { container, root, picked, radios, texts, close: () => React.act(async () => root.unmount()) };
 }
 
-test("three tiers in fixed order with the user's wording; Core's 默认 row stays first under its own name and is not called 关闭", async () => {
+// MUYU-365 p0c40 v2 (user 2026-11-26): only 快速 / 深度思考; Core's 默认/关闭/长上下文 rows are not shown.
+test("only the two tiers in fixed order with the user's wording; Core's 默认 and other rows are not shown", async () => {
   const v = await render(core(true));
   try {
-    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂无关闭档）", "快速（低）", "深度思考（高）"]);
-    assert.deepEqual(v.radios().map((r) => r.disabled), [false, true, false, false]);
-    await React.act(async () => v.radios()[3]!.click());
+    assert.deepEqual(v.texts(), ["快速（低）", "深度思考（高）"]);
+    assert.deepEqual(v.radios().map((r) => r.disabled), [false, false]);
+    await React.act(async () => v.radios()[1]!.click());
     assert.deepEqual(v.picked, ["thinking"], "深度思考 saves Core's own id");
   } finally { await v.close(); }
 });
 
-test("disabled tiers stay listed with Core's reason (non-codex executors); none is pickable", async () => {
+test("disabled tiers stay listed with Core's reason on its own line (non-codex executors); none is pickable", async () => {
   const v = await render(core(false));
   try {
-    assert.deepEqual(v.texts(), ["默认", "关闭思考（服务端暂无关闭档）", "快速（低）（暂未开放）", "深度思考（高）（暂未开放）"]);
-    assert.deepEqual(v.radios().map((r) => r.disabled), [false, true, true, true]);
-    assert.equal(v.radios()[2]!.title, "暂未开放");
+    assert.deepEqual(v.texts(), ["快速（低）", "深度思考（高）"]);
+    assert.deepEqual(v.radios().map((r) => [r.disabled, r.querySelector("[data-testid=mc-preset-reason]")?.textContent, r.title]), [[true, "暂未开放", "暂未开放"], [true, "暂未开放", "暂未开放"]]);
   } finally { await v.close(); }
 });
 
 test("the label states the real mapped level: Core's 深度思考 at medium is shown as （中）, never （高）", async () => {
   const v = await render(core(true, "medium"));
-  try { assert.equal(v.texts()[3], "深度思考（中）"); } finally { await v.close(); }
+  try { assert.equal(v.texts()[1], "深度思考（中）"); } finally { await v.close(); }
 });
 
-test("a server-provided off row is used as is (enabled + its own reason)", async () => {
+test("a server-provided off row is not shown, even when enabled", async () => {
   const off = { id: "off", displayName: "关闭", enabled: true, params: { reasoningEffort: "off" } };
   const v = await render([off, ...core(true)]);
-  try {
-    assert.deepEqual(v.texts(), ["默认", "关闭思考", "快速（低）", "深度思考（高）"]);
-    assert.equal(v.radios()[1]!.disabled, false);
-    await React.act(async () => v.radios()[1]!.click());
-    assert.deepEqual(v.picked, ["off"]);
-  } finally { await v.close(); }
+  try { assert.deepEqual(v.texts(), ["快速（低）", "深度思考（高）"]); } finally { await v.close(); }
 });
 
-test("legacy saved long-context stays shown (kept, disabled), not silently remapped", async () => {
+test("legacy saved long-context is not shown and nothing is checked in its place", async () => {
   const v = await render(core(true), "long-context");
   try {
-    assert.ok(v.texts().includes("长上下文（暂未开放）"));
-    assert.equal(v.radios().find((r) => r.getAttribute("aria-checked") === "true")!.querySelector(".mc-menu-text")!.textContent, "长上下文（暂未开放）");
+    assert.deepEqual(v.texts(), ["快速（低）", "深度思考（高）"]);
+    assert.equal(v.radios().some((r) => r.getAttribute("aria-checked") === "true"), false);
   } finally { await v.close(); }
 });
 
-test("non-chat catalogs (默认生成) get no thinking tiers injected", async () => {
+test("non-chat catalogs (默认生成) get no thinking rows at all", async () => {
   const v = await render([{ id: "generate-default", displayName: "默认生成", enabled: true, params: {} }]);
-  try { assert.deepEqual(v.texts(), ["默认（继承）", "默认生成"]); } finally { await v.close(); }
+  try { assert.deepEqual(v.texts(), []); } finally { await v.close(); }
 });
 
 test("the pill names the saved tier with the same wording", async () => {
   const { tierName } = await vite.ssrLoadModule("/src/chat-react/ProfileControls.tsx");
   assert.equal(tierName(core(true)[1], t), "深度思考（高）");
   assert.equal(tierName(core(true)[0], t), "快速（低）");
-  assert.equal(tierName(core(true)[2], t), "长上下文");
 });

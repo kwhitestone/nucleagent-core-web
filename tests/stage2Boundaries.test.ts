@@ -232,6 +232,5 @@ test("settled shells + ¥ usage line is unchanged next to the new code", async (
     await React.act(async () => root.render(React.createElement(TurnUsage, { t: (k: string) => k, locale: "zh-CN",
       usage: { state: "settled", points: "300", shells: "3", cny: "0.0057", name: { "zh-CN": "贝壳" } } as never })));
     assert.equal(document.querySelector("[data-testid=mc-turn-usage]")!.textContent, "3 贝壳（≈¥0.0057）");
-    assert.equal(document.querySelector("[data-testid=mc-effective-selection]"), null);
   } finally { await React.act(async () => root.unmount()); }
 });

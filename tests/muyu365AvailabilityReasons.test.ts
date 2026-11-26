@@ -95,10 +95,8 @@ test("G-2: staleReason gives Core's reason for the failing level or protocol; no
 });
 
 const ROWS = [
-  { id: "deep", displayName: "深度思考", enabled: true, params: { callProtocol: "responses", thinkingLevel: "high" } },
-  { id: "long-context", displayName: "长上下文", enabled: false, reason: "暂未开放" },
-  { id: "img", displayName: "默认生成", enabled: false, reason: "上游当前不可用（网关模型状态为不可用），恢复后自动开放" },
-  { id: "bare", displayName: "无原因", enabled: false },
+  { id: "thinking", displayName: "深度思考", enabled: false, reason: "上游当前不可用（网关模型状态为不可用），恢复后自动开放", params: { callProtocol: "responses", thinkingLevel: "high" } },
+  { id: "quick", displayName: "快速", enabled: false },
 ];
 async function profile(props: Record<string, unknown>) {
   const container = document.getElementById("root")!;
@@ -108,25 +106,25 @@ async function profile(props: Record<string, unknown>) {
 }
 
 test("G-2: the preset stale notice keeps its warning and appends Core's reason", async () => {
-  const v = await profile({ selected: "deep", stale: "深度思考", staleReason: "原生参数映射尚未验证，不能静默降档" });
+  const v = await profile({ selected: "thinking", stale: "深度思考", staleReason: "原生参数映射尚未验证，不能静默降档" });
   try {
     const notice = v.container.querySelector("[data-testid=mc-preset-stale]")!.textContent!;
     assert.ok(notice.startsWith("「深度思考」暂时不能使用，本轮使用默认设置。"), notice);
     assert.ok(notice.includes("原生参数映射尚未验证，不能静默降档"), notice);
   } finally { await v.close(); }
-  const plain = await profile({ selected: "deep", stale: "深度思考" });
+  const plain = await profile({ selected: "thinking", stale: "深度思考" });
   try { assert.equal(plain.container.querySelector("[data-testid=mc-preset-stale]")!.textContent, "「深度思考」暂时不能使用，本轮使用默认设置。"); } finally { await plain.close(); }
 });
 
 // ---- G-3: a disabled preset row shows its own Core reason (model_profile.go:26) instead of a fixed 暂未开放 ----
 test("G-3: a kept disabled preset shows Core's reason; it stays disabled; no reason falls back to 暂未开放", async () => {
-  for (const [id, reason] of [["img", "上游当前不可用（网关模型状态为不可用），恢复后自动开放"], ["long-context", "暂未开放"], ["bare", "暂未开放"]]) {
+  for (const [id, reason] of [["thinking", "上游当前不可用（网关模型状态为不可用），恢复后自动开放"], ["quick", "暂未开放"]]) {
     const v = await profile({ selected: id });
     try {
-      const radio = [...v.container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]")].find((b) => b.textContent!.includes(ROWS.find((r) => r.id === id)!.displayName))!;
-      assert.ok(radio, `${id} listed because it is current`);
+      const radio = [...v.container.querySelectorAll<HTMLButtonElement>("[role=menuitemradio]")].find((b) => b.textContent!.includes(zh(`chatReact.tier_${id}`)))!;
+      assert.ok(radio, `${id} listed`);
       assert.equal(radio.disabled, true, "still not clickable");
-      assert.ok(radio.textContent!.includes(`（${reason}）`), radio.textContent!);
+      assert.equal(radio.querySelector("[data-testid=mc-preset-reason]")!.textContent, reason);
       assert.equal(radio.title, reason);
     } finally { await v.close(); }
   }

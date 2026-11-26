@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getPlatformRuntime, SESSION_CHANGE_EVENT } from "@/contracts/platform-runtime";
 import type { ProfileSelection } from "./modelProfile";
+import { TIERS } from "./ProfileControls";
 import { EFFORT_LEVELS, type EffortChoice } from "./requestEffort";
 
 type Preference = { profileId: string; effort: EffortChoice };
@@ -63,7 +64,8 @@ export function useModelPreference(scope: string, backend: string, providerId: n
   const current = state?.key === key && state.session === getPlatformRuntime().getSessionVersion() ? state : undefined;
   const live = () => !!current && current.key === renderedKey.current && current.turn === generation.current && current.session === getPlatformRuntime().getSessionVersion() && !current.signal.aborted;
   const ready = () => !!current?.ready && live() && confirmed.current && !writing.current;
-  const selected = current?.catalog.find((entry) => entry.enabled && entry.id === current.preference.profileId);
+  // MUYU-365 p0c40 v2: a saved off/default (no longer offered) sends no tier — the model's own default.
+  const selected = current?.catalog.find((entry) => entry.enabled && TIERS.includes(entry.id) && entry.id === current.preference.profileId);
   const profile: ProfileSelection | null = selected ? { scope, profileId: selected.id, efforts: selected.efforts } : null;
   const choice = EFFORT_LEVELS.includes(current?.preference.effort as typeof EFFORT_LEVELS[number]) ? current!.preference.effort : "";
   async function save(profileId: string, effort: EffortChoice) {

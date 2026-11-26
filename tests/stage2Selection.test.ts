@@ -166,29 +166,6 @@ test("supported_values are listed as Core named them, never translated or inferr
   assert.equal(supportedHint([], (k: string) => k), "");
 });
 
-// ── effective-selection ──────────────────────────────────────────────────────────────────────────────────────────────
-test("effective-selection is read-only display; null shows nothing and is not 'off'", () => {
-  const label = need("effectiveSelectionLabel");
-  const t = (k: string) => ({ "chatReact.effortHigh": "高", "chatReact.effortOff": "关闭" } as Record<string, string>)[k] ?? k;
-  assert.equal(label(null, t), "");
-  assert.equal(label(undefined, t), "");
-  assert.equal(label({ source: "per_turn", effective_protocol: "responses", effective_level: "high", effective_params: { reasoning: { effort: "high" } },
-    effective_semantics: "reasoning.effort", capability_revision: 7 }, t), "responses · 高");
-  assert.equal(label({ source: "operator_default", effective_protocol: "responses", effective_level: null, effective_params: {}, effective_semantics: "", capability_revision: 7 }, t), "responses");
-  assert.equal(label({ source: "legacy", effective_protocol: null, effective_level: null, effective_params: {}, effective_semantics: "", capability_revision: 0 }, t), "");
-  // Never claims completion or billing; never shows evidence or params.
-  const text = label({ source: "per_turn", effective_protocol: "responses", effective_level: "off", effective_params: { secret: "x" }, effective_semantics: "s", capability_revision: 1, evidence_ref: "ev-1" } as never, t);
-  assert.doesNotMatch(text, /ev-1|secret|已完成|已扣费|已生效/);
-});
-
-test("effective-selection reader uses the owned-conversation GET and returns data verbatim", async () => {
-  const readEffectiveSelection = need("readEffectiveSelection");
-  const calls: string[] = [];
-  const http = { get: async (url: string) => { calls.push(url); return { data: { code: 0, data: null } }; } };
-  assert.equal(await readEffectiveSelection(http, "12", "step-1"), null);
-  assert.deepEqual(calls, ["/api/v1/addons/conversation/12/steps/step-1/effective-selection"]);
-});
-
 // ── rendering ────────────────────────────────────────────────────────────────────────────────────────────────────────
 // design-1123 A: the input area has no 调用协议/思考档位 controls at all — protocol + level ride in the preset.
 test("rendering: Controls never shows protocol/level/effort rows, whatever the declaration", async () => {

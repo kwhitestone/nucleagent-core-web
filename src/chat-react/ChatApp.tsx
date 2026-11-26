@@ -2,7 +2,7 @@ import { CloudFiles } from "./CloudFiles";
 import { examples } from "./mediaExamples";
 import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { PROFILE_UI_ENABLED } from "./profileFeature";
-import ProfileControls, { tierName } from "./ProfileControls";
+import ProfileControls, { TIERS, tierName } from "./ProfileControls";
 import ToolIO from "./ToolIO";
 import {
   AssistantRuntimeProvider, AuiIf, useAui, useAuiState, useExternalStoreRuntime, type ExternalStoreAdapter, type ThreadMessageLike,
@@ -50,13 +50,13 @@ import { fetchHomeSuggestions, toSuggestions } from "./suggestions";
 import type { IslandStrings } from "./islandStringsZh";
 import { loadChatStrategy, cachedChatStrategy, initialChatModel, measurementHint, type ChatStrategy } from "./chatStrategy";
 import { availabilityOf, imageGate, imageHint, type ImageGate } from "./modelCaps";
-import { withRequestEffort, type EffortChoice } from "./requestEffort";
+import { cap, withRequestEffort, type EffortChoice } from "./requestEffort";
 import { ModelControls, useMenu } from "./ModelControls";
 import { TurnUsage } from "./TurnUsage";
 import { LOADING_EVIDENCE, mediaUsage, settlementRows, turnUsage, type SettlementEvidence, type SettlementReader } from "./turnUsage";
 import { profileRequest } from "./modelProfile";
 import { useModelPreference } from "./useModelPreference";
-import { effectiveSelectionLabel, presetFields, readEffectiveSelection, sendWithSelection, staleReason, useModelCapability, type EffectiveSelection, type Fields } from "./modelSelection";
+import { presetFields, sendWithSelection, staleReason, useModelCapability, type Fields } from "./modelSelection";
 export { ModelControls, TurnUsage };
 import "./chat.css";
 import { MessageActions, useMessageActions, type MessageActionsController } from './MessageActions';
@@ -105,7 +105,6 @@ export function ChatApp(props: ChatProps) {
   const storedProfileId = preference.storedProfileId;
   const profile = PROFILE_UI_ENABLED ? preference.profile : null;
   const capability = useModelCapability(settings.backend, settings.model?.providerId, settings.model?.model);
-  const selectable = capability.view.state === "visible";
   const params = profile ? preference.catalog.find((row) => row.id === profile.profileId)?.params : undefined;
   const legacy = profileRequest(profile, profileScope, "");
   const preset = presetFields(capability.view, params, legacy);
@@ -120,9 +119,9 @@ export function ChatApp(props: ChatProps) {
   // D6A/S1–S8: the 「思考」 pill exists only when this model has presets (or their load failed, S7).
   const pending = preference.pending;
   const shownId = pending ? pending.profileId : storedProfileId;
-  const shown = preference.catalog.find((row) => row.id === shownId && shownId);
+  const shown = preference.catalog.find((row) => row.id === shownId && TIERS.includes(row.id));
   const shownName = shown ? tierName(shown, t) : undefined;
-  const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.length > 0 || preference.error) ? {
+  const profilePanel = PROFILE_UI_ENABLED && (preference.catalog.some((row) => TIERS.includes(row.id)) || preference.error) ? {
     name: shownName, stale,
     page: <ProfileControls t={t} rows={preference.catalog} selected={shownId} saving={!!pending} rolledBack={preference.rolledBack} error={preference.error && !pending}
       stale={stale ? shownName : undefined} staleReason={stale ? staleReason(capability.view, params) : undefined} onChange={(profileId) => { void preference.save(profileId, ""); }} onRetry={preference.reload} />,
@@ -236,7 +235,7 @@ export function ChatApp(props: ChatProps) {
               ? <p className="mc-empty">{core ? t("conversation.empty") : t("chatReact.loading")}</p>
               : <Welcome t={t} />}
           </AuiIf>
-          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} selection={selectable} />}</ThreadPrimitive.Messages>
+          <ThreadPrimitive.Messages>{({ message }) => <MessageRow role={message.role} t={t} locale={locale} conversationId={conversationId} evidence={evidence} actions={messageActions} />}</ThreadPrimitive.Messages>
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
@@ -349,14 +348,15 @@ function CopyAction({ t }: { t: Translate }) {
   );
 }
 
-function AttachButton({ t, onClick }: { t: Translate; onClick(): void }) {
+/** MUYU-365 p0c40: the entry follows the current model's vision status (unverified may still send). */
+function AttachButton({ t, onClick, vision }: { t: Translate; onClick(): void; vision?: string }) {
   const count = useAuiState((s) => s.composer.attachments.length);
   const uploading = useAuiState((s) => s.composer.attachments.some((a) => a.status.type === "running"));
   const label = uploading ? t("common.attachmentUploading") : t("chatReact.attach");
   return (
     <ComposerPrimitive.AddAttachment className="mc-menu-item" role="menuitem" tabIndex={-1} onClick={onClick} data-testid="mc-attach" title={label} aria-label={label}
-      data-busy={uploading || undefined} disabled={count >= MAX_ATTACHMENTS}>
-      <FileMark kind="file" />{label}
+      data-busy={uploading || undefined} disabled={count >= MAX_ATTACHMENTS || vision === "unsupported"}>
+      <FileMark kind="file" />{label}{vision && vision !== "supported" && <span className="mc-menu-sub">{t(vision === "unsupported" ? "chatReact.visionBlocked" : "chatReact.visionUnverified")}</span>}
     </ComposerPrimitive.AddAttachment>
   );
 }
@@ -496,7 +496,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
               {section === "drive" && <CloudFiles t={t} close={menu.close} />}
               {section === "preset" && <div data-testid="mc-profile-page">{profile?.page}{controls}</div>}
               {(section === "home" || section === "files") && <>
-                <AttachButton t={t} onClick={menu.close} />
+                <AttachButton t={t} onClick={menu.close} vision={settings.media ? undefined : settings.imageGate?.state} />
                 {item("chatReact.drive", () => setSection("drive"))}
               </>}
               {section === "home" && <>
@@ -512,7 +512,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
                   </button>;
                 })}
                 {profile && !settings.media && <button type="button" role="menuitem" tabIndex={-1} className="mc-menu-item" disabled={settings.busy} onClick={() => setSection("preset")}>
-                  {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name || t("chatReact.effortDefault")}</span>{profile.stale && " ⚠"} ›
+                  {t("chatReact.profile")} <span data-testid="mc-profile-value">{profile.name}</span>{profile.stale && " ⚠"} ›
                 </button>}
                 {(settings.groups.some(group => group.kind === "image" || group.kind === "video")) && <hr />}
                 <MediaPill kind="image" t={t} settings={settings} running={running} close={menu.close} />
@@ -718,6 +718,7 @@ function ProcessFold({ indices, t, children }: { indices: readonly number[]; t: 
         <span className="mc-process-label">{t("chatReact.process")}</span>
         <span className="mc-process-summary">{head?.summary}</span>
       </summary>
+      {head?.tier && <p className="mc-process-ttft" data-testid="mc-process-tier">{fill(t("chatReact.thinkingTier"), { level: t(`chatReact.effort${cap(head.tier)}`) })}{head.quiet && ` · ${t("chatReact.noThought")}`}</p>}
       {ttft && <p className="mc-process-ttft" {...Object.fromEntries(Object.entries(head!.ttft!).map(([k, v]) => [`data-${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v]))}>{ttft.detail}</p>}
       <div className="mc-process-history" tabIndex={0} role="region" aria-label={t("chatReact.process")}>{children}</div>
     </details>
@@ -770,7 +771,7 @@ function Parts({ t, usage }: { t: Translate; usage?: { conversationId: string; e
  * The bar stays in the DOM and is shown by CSS on hover or keyboard focus (aui autohide only tracks the
  * pointer), and always on the last reply.
  */
-export function MessageRow({ role, t, locale, conversationId = "", evidence, actions, selection }: { role: string; t: Translate; locale?: string; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController; selection?: boolean }) {
+export function MessageRow({ role, t, locale, conversationId = "", evidence, actions }: { role: string; t: Translate; locale?: string; conversationId?: string; evidence?: readonly SettlementEvidence[]; actions?: MessageActionsController }) {
   const messageId = useAuiState((state) => state.message.id);
   const createdAt = useAuiState((s) => s.message.createdAt);
   // Core's step_id for this reply (threadMessages.ts); the message id is not a turn.
@@ -809,23 +810,8 @@ export function MessageRow({ role, t, locale, conversationId = "", evidence, act
         </div>
       </AuiIf>
       {!isUser && !mediaOnly && <TurnUsage t={t} locale={locale} usage={turnUsage({ conversationId, turnId }, evidence, activity !== null)} />}
-      {!isUser && selection && conversationId && turnId && <Effective t={t} conversationId={conversationId} stepId={turnId} />}
     </MessagePrimitive.Root>
   );
-}
-
-const effective = new Map<string, Promise<EffectiveSelection | null>>();
-/** exp113 (D-3): this turn's dispatched selection, read once per step and only where the stage-2 controls are shown. */
-function Effective({ t, conversationId, stepId }: { t: Translate; conversationId: string; stepId: string }) {
-  const [text, setText] = useState("");
-  useEffect(() => {
-    const key = `${conversationId}/${stepId}`;
-    let live = true;
-    if (!effective.has(key)) effective.set(key, readEffectiveSelection(getPlatformRuntime().http, conversationId, stepId).catch(() => { effective.delete(key); return null; }));
-    void effective.get(key)!.then((data) => { if (live) setText(effectiveSelectionLabel(data, t)); });
-    return () => { live = false; };
-  }, [conversationId, stepId, t]);
-  return text ? <span className="mc-usage" data-testid="mc-effective-selection">{text}</span> : null;
 }
 
 /**

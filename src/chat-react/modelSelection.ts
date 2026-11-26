@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, getPlatformRuntime } from "@/contracts/platform-runtime";
-import { cap } from "./requestEffort";
 import { fill } from "./singleSlotQueue";
 
 /**
@@ -113,20 +112,6 @@ export function classifySelectionError(error: unknown, attempt: number): Selecti
 /** Values exactly as Core named them, joined; "" when there are none. */
 export const supportedHint = (values: readonly string[], t: Translate) =>
   values.length ? fill(t("chatReact.selectionSupported"), { values: values.join("、") }) : "";
-
-export interface EffectiveSelection { source?: string; effective_protocol?: string | null; effective_level?: string | null }
-/** 「responses · 高」: what this turn was dispatched with. null (legacy) shows nothing — it is neither off nor verified. */
-export function effectiveSelectionLabel(data: EffectiveSelection | null | undefined, t: Translate) {
-  if (!data?.effective_protocol) return "";
-  const level = data.effective_level && (LEVELS as readonly string[]).includes(data.effective_level) ? t(`chatReact.effort${cap(data.effective_level)}`) : "";
-  return level ? `${data.effective_protocol} · ${level}` : data.effective_protocol;
-}
-
-/** Read-only, owned-conversation GET; `data` verbatim (null for a legacy step). */
-export async function readEffectiveSelection(http: { get(url: string): Promise<{ data: { data?: EffectiveSelection | null } }> }, conversationId: string, stepId: string) {
-  const response = await http.get(`/api/v1/addons/conversation/${encodeURIComponent(conversationId)}/steps/${encodeURIComponent(stepId)}/effective-selection`);
-  return response.data?.data ?? null;
-}
 
 export type Fields = Legacy | { modelSelection: ModelSelection };
 /**
