@@ -5,10 +5,11 @@ import { JSDOM } from "jsdom";
 import { initializeRuntimeFixture } from "./fixtures/runtimeConfig.ts";
 import type { ConversationItem } from "../src/addons/conversation/task-conversation/core/types.ts";
 
-// MUYU-365 p0c40 (user 2026-11-26, every model): (1) the picker shows exactly 关闭思考 / 快速（低） / 深度思考（高） per model ×
-// executor, a disabled row says Core's own reason and status in plain words (未验证 ≠ 不支持), no technical field reaches
-// the user; (2) the attach entry follows the catalog vision status; (3) a turn sent with a thinking tier that got no
-// thinking text says 该模型未返回思考内容, a 关闭思考 turn shows no thinking, and both hold after a reload.
+// MUYU-365 p0c40 v2 (user 2026-11-26 11:0x): (1) the picker lists only 快速（低） / 深度思考（高）; Core's off/default rows
+// and any page-made 默认 are not shown; a disabled row says Core's reason in plain words on its own line; a saved off/default
+// highlights nothing. (2) the attach entry follows the catalog vision status. (3) no 「responses · 低」 tag under a reply;
+// the turn's tier is one 思考强度 line inside 执行过程 from Core's metadata.thinkingLevel (missing = no line), and a turn
+// with a tier but no thinking text says 该模型未返回思考内容.
 let vite: ViteDevServer;
 let dom: JSDOM;
 let React: typeof import("react");
@@ -67,37 +68,35 @@ async function picker(rows: unknown[], selected = "") {
   return { container, radios, picked, names: radios.map((r) => r.querySelector(".mc-menu-text")!.textContent), close: () => React.act(async () => root.unmount()) };
 }
 
-test("RED p0c40-1: every executor gets exactly the three tiers in order, no extra 默认 row, Core's reason on its own line", async () => {
-  for (const rows of [codex, claudeCode, geminiCli]) {
+test("RED p0c40-1: every executor lists only 快速（低） / 深度思考（高), never 默认 or 关闭, Core's reason on its own line", async () => {
+  const withDefault = [{ id: "default", displayName: "默认", enabled: true }, ...codex];
+  for (const rows of [codex, claudeCode, geminiCli, withDefault]) {
     const v = await picker(rows);
     try {
-      assert.deepEqual(v.names, ["关闭思考", "快速（低）", "深度思考（高）"]);
-      assert.deepEqual(v.radios.map((r) => r.disabled), rows.map((row) => !row.enabled));
-      rows.forEach((row, i) => {
+      assert.deepEqual(v.names, ["快速（低）", "深度思考（高）"]);
+      const tiers = rows.filter((row) => row.id === "quick" || row.id === "thinking");
+      assert.deepEqual(v.radios.map((r) => r.disabled), tiers.map((row) => !row.enabled));
+      tiers.forEach((row, i) => {
         const why = v.radios[i]!.querySelector("[data-testid=mc-preset-reason]")?.textContent ?? "";
         if (row.enabled) assert.equal(why, "");
-        else assert.ok(why.includes(row.reason!), `row ${row.id} says Core's reason verbatim`);
+        else assert.equal(why, row.reason, `row ${row.id} says Core's reason verbatim`);
       });
+      assert.doesNotMatch(v.container.textContent!, /默认|关闭/);
+      assert.doesNotMatch(v.container.innerHTML, /nativeParam|reasoning\.effort|reasoningEffort|thinkingLevel|unverified|unsupported/);
     } finally { await v.close(); }
   }
 });
 
-test("RED p0c40-1: 未验证 and 不支持 read differently (from Core's status), and no technical field reaches the user", async () => {
-  const unverified = await picker(claudeCode);
-  const unverifiedText = unverified.radios[1]!.querySelector("[data-testid=mc-preset-reason]")!.textContent!;
-  const html = unverified.container.innerHTML;
-  await unverified.close();
-  const unsupported = await picker(geminiCli);
-  const unsupportedText = unsupported.radios[1]!.querySelector("[data-testid=mc-preset-reason]")!.textContent!;
-  await unsupported.close();
-  assert.match(unverifiedText, /^暂未验证/);
-  assert.match(unsupportedText, /^不支持/);
-  const enabled = await picker(codex);
-  try {
-    for (const text of [html, enabled.container.innerHTML]) assert.doesNotMatch(text, /nativeParam|reasoning\.effort|reasoningEffort|thinkingLevel|unverified|unsupported/);
-    await React.act(async () => enabled.radios[2]!.click());
-    assert.deepEqual(enabled.picked, ["thinking"], "choosing saves Core's own id");
-  } finally { await enabled.close(); }
+test("RED p0c40-1: a saved off/default highlights nothing and is not replaced; choosing saves Core's id", async () => {
+  for (const saved of ["off", "default", ""]) {
+    const v = await picker(codex, saved);
+    try {
+      assert.equal(v.radios.filter((r) => r.getAttribute("aria-checked") === "true").length, 0, saved);
+      assert.deepEqual(v.picked, []);
+      await React.act(async () => v.radios[1]!.click());
+      assert.deepEqual(v.picked, ["thinking"]);
+    } finally { await v.close(); }
+  }
 });
 
 const composerSettings = (state: string) => ({ groups: [], model: { providerId: 1, model: "m" }, backend: "codex", busy: false, pick: async () => {},
@@ -168,47 +167,38 @@ async function thread(items: ConversationItem[], id = "88") {
     const runtime = aui.useExternalStoreRuntime(externalStore(state, { send: async () => {}, stop: async () => {} }));
     return React.createElement(aui.AssistantRuntimeProvider, { runtime }, React.createElement(Viewport, null,
       React.createElement(aui.ThreadPrimitive.Messages, null, ({ message }: { message: { role: string } }) =>
-        React.createElement(app.MessageRow, { role: message.role, t: t as never, conversationId: id, evidence: [] }))));
+        React.createElement(app.MessageRow, { role: message.role, t: t as never, conversationId: id, evidence: [], selection: true } as never))));
   }
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await React.act(async () => root.render(React.createElement(App)));
-  const text = container.textContent ?? "";
+  const text = container.textContent ?? "", html = container.innerHTML;
+  const process = [...container.querySelectorAll(".mc-process:not(.mc-reasoning)")].map((el) => el.textContent).join("|");
   await React.act(async () => root.unmount());
   container.remove();
-  return { text, fold: text.includes(zh.reasoning) };
+  return { text, html, process, fold: text.includes(zh.reasoning) };
 }
 
-test("RED p0c40-3: the tier this browser sent is remembered per question (first user message after the newest one it had seen); deep without thinking text says so, off shows none; both hold after reload", async () => {
-  const { markTier } = await vite.ssrLoadModule("/src/chat-react/turnTier.ts");
+test("RED p0c40-3: Core's metadata.thinkingLevel reaches the row data (low/medium/high only); missing or junk = none", async () => {
+  const { messageTimingData } = await vite.ssrLoadModule("/src/addons/conversation/composables/conversationTiming.ts");
+  const msg = (metadata: unknown) => ({ senderType: "agent", senderName: "agent", msgType: "result", content: "x", metadata });
+  assert.equal(messageTimingData(msg({ thinkingLevel: "high" })).thinkingLevel, "high");
+  for (const junk of [undefined, "", "off", "default", "xhigh<script>", 3]) assert.equal(messageTimingData(msg({ thinkingLevel: junk })).thinkingLevel, undefined, String(junk));
+});
+
+test("RED p0c40-3: the tier is one 思考强度 line inside 执行过程; no tier no line; tier without thinking text says so; never a protocol tag", async () => {
   const user = item("msg-10", { role: "user", kind: "text", content: "1+1", timestamp: "2026-11-26T02:00:05Z", data: {} });
-  localStorage.clear();
-  // 深度思考 sent, upstream returned no thinking text (gemini summary:[]): a note, not a blank.
-  markTier("88", "thinking", 9);
-  for (let reload = 0; reload < 2; reload++) {
-    const view = await thread([user, item("msg-11")]);
-    assert.ok(view.text.includes("该模型未返回思考内容"), `reload ${reload}`);
-  }
-  // 深度思考 with text: the 思考过程 fold, no note, also after reload.
-  markTier("89", "thinking", 9);
-  for (let reload = 0; reload < 2; reload++) {
-    const view = await thread([user, thought, item("msg-11")], "89");
-    assert.equal(view.fold, true);
-    assert.equal(view.text.includes("该模型未返回思考内容"), false);
-  }
-  // 关闭思考: no thinking shown even if a row came back.
-  markTier("90", "off", 9);
-  for (let reload = 0; reload < 2; reload++) {
-    const view = await thread([user, thought, item("msg-11")], "90");
-    assert.equal(view.fold, false);
-    assert.equal(view.text.includes("该模型未返回思考内容"), false);
-  }
-  // No record (sent elsewhere, or before this version): nothing is claimed either way.
-  const unknown = await thread([user, item("msg-11")], "91");
-  assert.equal(unknown.text.includes("该模型未返回思考内容"), false);
-  // A send recorded after message 10 belongs to a later question, never to this one.
-  markTier("92", "thinking", 10);
-  const older = await thread([user, item("msg-11")], "92");
-  assert.equal(older.text.includes("该模型未返回思考内容"), false);
+  const tier = (level: string) => item("msg-11", { data: { runStepId: "step-9", mainRun: true, thinkingLevel: level } });
+  const low = await thread([user, thought, tier("low")]);
+  assert.ok(low.process.includes("思考强度：低"), low.process);
+  assert.equal(low.fold, true);
+  assert.equal(low.text.includes("该模型未返回思考内容"), false);
+  const high = await thread([user, tier("high")]);
+  assert.ok(high.process.includes("思考强度：高"), high.process);
+  assert.ok(high.process.includes("该模型未返回思考内容"));
+  const none = await thread([user, item("msg-11")]);
+  assert.equal(none.text.includes("思考强度"), false);
+  assert.equal(none.text.includes("该模型未返回思考内容"), false);
+  for (const view of [low, high, none]) assert.doesNotMatch(view.html, /responses|mc-effective-selection/);
 });
