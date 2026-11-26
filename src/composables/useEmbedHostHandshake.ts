@@ -26,6 +26,10 @@ import { emitSessionChange } from "../contracts/platform-runtime.ts";
 import { configValue } from "../runtimeConfig.ts";
 
 const MAX_CONVERSATION_ID = 200;
+const MAX_START_INPUT = 2000;
+
+export type EmbedStartRequest = { input: string; gen?: "image" | "video" };
+export type StartEmbedConversation = (request: EmbedStartRequest, signal: AbortSignal) => Promise<string>;
 // auth's portal handoff (UNI PR-7 → PR-5) and stock logout. The host's `ucToken`
 // field name is a cross-team contract and stays; auth receives it as `credential`.
 const CREDENTIAL_PATH = "/api/v1/addons/auth/portal/credential";
@@ -34,6 +38,7 @@ const REVOKE_PATH = "/api/v1/addons/auth/logout";
 type HostMessage =
   | { kind: "init"; conversationId: string }
   | { kind: "credential"; conversationId: string; ucToken: string }
+  | ({ kind: "start"; conversationId: string } & EmbedStartRequest)
   | { kind: "revoke"; conversationId: string };
 
 function conversationId(value: unknown): string | null {
@@ -48,11 +53,19 @@ export function embedHostMessage(data: unknown): HostMessage | null {
   if (data === null || typeof data !== "object") return null;
   const message = data as {
     type?: unknown;
-    payload?: { conversationId?: unknown; ucToken?: unknown };
+    payload?: { conversationId?: unknown; ucToken?: unknown; input?: unknown; gen?: unknown };
   };
   const id = conversationId(message.payload?.conversationId);
   if (!id) return null;
   switch (message.type) {
+    case "agentia:embed-start": {
+      const input = message.payload?.input;
+      const gen = message.payload?.gen;
+      if (!/^task-[A-Za-z0-9_-]+$/.test(id) || message.payload?.conversationId !== id) return null;
+      if (typeof input !== "string" || !input.trim() || [...input].length > MAX_START_INPUT) return null;
+      if (gen !== undefined && gen !== "image" && gen !== "video") return null;
+      return { kind: "start", conversationId: id, input, ...(gen ? { gen } : {}) };
+    }
     case "agentia:embed-init":
       return { kind: "init", conversationId: id };
     case "agentia:embed-credential": {
@@ -136,6 +149,7 @@ function revokeServerSession(token: string): void {
 /** 在 core 启动时调用一次（必须早于 iframe load，否则 init 会丢）。 */
 export function installEmbedHostHandshake(
   configured: string | undefined = configValue("VITE_EMBED_HOST_ORIGINS"),
+  startConversation?: StartEmbedConversation,
 ): () => void {
   if (typeof window === "undefined" || window.parent === window) return () => undefined;
   const allowed = allowedHostOrigins(configured);
@@ -143,6 +157,13 @@ export function installEmbedHostHandshake(
 
   // 握手确认过的会话。凭据与撤销只对它生效，防跨会话投递。
   let embedded: string | null = null;
+  let hostOrigin: string | null = null;
+  let authenticated = false;
+  let started = false;
+  let generation = 0;
+  let credentialAttempt = 0;
+  let disposed = false;
+  let startController: AbortController | undefined;
 
   const reply = (origin: string, type: string, payload: Record<string, unknown>) => {
     window.parent.postMessage({ type, payload }, origin);
@@ -153,16 +174,48 @@ export function installEmbedHostHandshake(
     const message = embedHostMessage(event.data);
     if (!message) return;
     if (message.kind === "init") {
+      if (embedded !== message.conversationId || hostOrigin !== event.origin) {
+        startController?.abort();
+        authenticated = false;
+        generation++;
+        credentialAttempt++;
+      }
       embedded = message.conversationId;
+      hostOrigin = event.origin;
       reply(event.origin, "nucleagent:ready", { conversationId: embedded });
       return;
     }
-    if (message.conversationId !== embedded) return;
+    if (message.conversationId !== embedded || event.origin !== hostOrigin) return;
+
+    if (message.kind === "start") {
+      if (!authenticated || started || !startConversation) return;
+      started = true;
+      startController = new AbortController();
+      const signal = startController.signal;
+      const currentGeneration = generation;
+      const id = message.conversationId;
+      const request = { input: message.input, ...(message.gen ? { gen: message.gen } : {}) };
+      void (async () => {
+        try {
+          const createdConversationId = await startConversation(request, signal);
+          if (disposed || currentGeneration !== generation) return;
+          if (typeof createdConversationId !== "string" || !/^[1-9][0-9]*$/.test(createdConversationId)) throw new Error("START_FAILED");
+          reply(event.origin, "nucleagent:conversation-created", { conversationId: id, createdConversationId });
+        } catch {
+          if (disposed || currentGeneration !== generation) return;
+          reply(event.origin, "nucleagent:start-failed", { conversationId: id, code: "START_FAILED" });
+        }
+      })();
+      return;
+    }
 
     if (message.kind === "credential") {
       const id = message.conversationId;
+      const attempt = ++credentialAttempt;
+      authenticated = false;
       // ucToken 只作为参数穿过：不赋给任何变量，换票返回后本闭包不再持有引用。
       void exchange(message.ucToken).then((accessToken) => {
+        if (disposed || attempt !== credentialAttempt) return;
         if (accessToken) {
           setAccessToken(accessToken);
           emitSessionChange(true);
@@ -171,17 +224,26 @@ export function installEmbedHostHandshake(
           conversationId: id,
           status: accessToken ? "ok" : "rejected",
         });
+        authenticated = Boolean(accessToken);
       });
       return;
     }
 
     // 撤销必须两侧都做：只清前端的话 JWT 在有效期内仍然可用。
     const token = getAccessToken();
+    authenticated = false;
+    startController?.abort();
+    generation++;
+    credentialAttempt++;
     clearAccessToken();
     emitSessionChange(false);
     revokeServerSession(token);
   };
 
   window.addEventListener("message", onMessage);
-  return () => window.removeEventListener("message", onMessage);
+  return () => {
+    disposed = true;
+    startController?.abort();
+    window.removeEventListener("message", onMessage);
+  };
 }

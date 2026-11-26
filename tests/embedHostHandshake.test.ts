@@ -69,6 +69,8 @@ function embedded(
     respond: (value: { ok: boolean; body?: unknown }) => void;
     sessionEvents: boolean[];
   }) => Promise<void>,
+  startConversation?: (request: { input: string; gen?: "image" | "video" }) => Promise<string>,
+  configured = HOST,
 ): Promise<void> {
   const sent: { type: string; payload: Record<string, unknown> }[] = [];
   const targets: string[] = [];
@@ -121,11 +123,11 @@ function embedded(
     },
   });
 
-  const uninstall = installEmbedHostHandshake(HOST);
+  const uninstall = installEmbedHostHandshake(configured, startConversation);
   const deliver = async (data: unknown, origin = HOST, source: unknown = parent) => {
     listener?.({ data, origin, source });
     // Let the exchange fetch and its continuation settle.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setImmediate(resolve));
   };
 
   return run({
@@ -260,3 +262,130 @@ test("a revoke for another conversation leaves the session alone", () =>
     assert.equal(token.getAccessToken(), "core-jwt");
     assert.equal(calls.length, 1);
   }));
+
+const start = { type: "agentia:embed-start", payload: { conversationId: "task-7", input: "hello" } };
+const taskInit = { type: "agentia:embed-init", payload: { conversationId: "task-7" } };
+const taskCredential = { type: "agentia:embed-credential", payload: { conversationId: "task-7", ucToken: "fixture-credential" } };
+
+test("start requires ack, matching init, trusted origin and parent", () => {
+  const requests: unknown[] = [];
+  return embedded(async ({ deliver, sent }) => {
+    await deliver(taskInit);
+    await deliver(start);
+    assert.equal(requests.length, 0);
+    await deliver(taskCredential);
+    await deliver({ ...start, payload: { ...start.payload, conversationId: "task-8" } });
+    await deliver(start, "https://untrusted.test");
+    await deliver(start, HOST, {});
+    assert.equal(requests.length, 0);
+    assert.equal(sent.length, 2);
+    await deliver(start);
+    assert.deepEqual(requests, [{ input: "hello" }]);
+    assert.deepEqual(sent.at(-1), { type: "nucleagent:conversation-created", payload: { conversationId: "task-7", createdConversationId: "42" } });
+  }, async (request) => { requests.push(request); return "42"; });
+});
+
+test("concurrent and repeated starts create once per frame, including repeated init", () => {
+  let creates = 0;
+  let complete!: (id: string) => void;
+  return embedded(async ({ deliver, sent }) => {
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await Promise.all([deliver(start), deliver(start)]);
+    assert.equal(creates, 1);
+    complete("42");
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await deliver(start);
+    assert.equal(creates, 1);
+    assert.equal(sent.filter((message) => message.type === "nucleagent:conversation-created").length, 1);
+  }, () => { creates++; return new Promise((resolve) => { complete = resolve; }); });
+});
+
+test("empty configuration ignores the whole protocol", () => {
+  let creates = 0;
+  return embedded(async ({ deliver, sent, calls }) => {
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await deliver(start);
+    assert.equal(creates, 0);
+    assert.deepEqual(sent, []);
+    assert.deepEqual(calls, []);
+  }, async () => { creates++; return "42"; }, "");
+});
+
+test("image start passes the generation kind", () => {
+  const requests: unknown[] = [];
+  return embedded(async ({ deliver }) => {
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await deliver({ ...start, payload: { ...start.payload, gen: "image" } });
+    assert.deepEqual(requests, [{ input: "hello", gen: "image" }]);
+  }, async (request) => { requests.push(request); return "43"; });
+});
+
+test("failed start replies with a fixed code without input or exception and cannot retry", () => {
+  let creates = 0;
+  return embedded(async ({ deliver, sent }) => {
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await deliver(start);
+    await deliver(start);
+    assert.equal(creates, 1);
+    assert.deepEqual(sent.at(-1), { type: "nucleagent:start-failed", payload: { conversationId: "task-7", code: "START_FAILED" } });
+    assert.doesNotMatch(JSON.stringify(sent), /hello|private-error|fixture-credential/);
+  }, async () => { creates++; throw new Error("private-error hello fixture-credential"); });
+});
+
+test("start validates task id, input and optional generation kind", () => {
+  for (const payload of [
+    { conversationId: "7", input: "hello" },
+    { conversationId: "task-7", input: "" },
+    { conversationId: "task-7", input: "   " },
+    { conversationId: "task-7", input: "x".repeat(2001) },
+    { conversationId: "task-7", input: 12 },
+    { conversationId: "task-7", input: "hello", gen: "audio" },
+  ]) assert.equal(embedHostMessage({ type: "agentia:embed-start", payload }), null);
+  assert.deepEqual(embedHostMessage(start), { kind: "start", conversationId: "task-7", input: "hello" });
+});
+
+test("rejected credentials and revocation do not authorize start", () => {
+  let creates = 0;
+  return embedded(async ({ deliver, respond }) => {
+    await deliver(taskInit);
+    respond({ ok: false });
+    await deliver(taskCredential);
+    await deliver(start);
+    respond({ ok: true, body: { accessToken: "fixture-session" } });
+    await deliver(taskCredential);
+    await deliver({ type: "agentia:embed-revoke", payload: { conversationId: "task-7" } });
+    await deliver(start);
+    assert.equal(creates, 0);
+  }, async () => { creates++; return "42"; });
+});
+
+test("revocation invalidates an in-flight credential exchange", () =>
+  embedded(async ({ deliver, sent }) => {
+    let finish!: (response: Response) => void;
+    globalThis.fetch = () => new Promise((resolve) => { finish = resolve; });
+    await deliver(taskInit);
+    await deliver(taskCredential);
+    await deliver({ type: "agentia:embed-revoke", payload: { conversationId: "task-7" } });
+    finish(new Response(JSON.stringify({ accessToken: "stale-session" })));
+    await deliver(start);
+    assert.equal(token.getAccessToken(), "");
+    assert.deepEqual(sent.map((message) => message.type), ["nucleagent:ready"]);
+  }, async () => { assert.fail("revoked session must not start"); }));
+
+test("standalone visits install no host listener even with configured origins", () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const standalone = { parent: null as unknown, addEventListener: () => assert.fail("standalone listener") };
+  standalone.parent = standalone;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: standalone });
+  try {
+    installEmbedHostHandshake(HOST, async () => { assert.fail("standalone creation"); })();
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "window", saved);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});

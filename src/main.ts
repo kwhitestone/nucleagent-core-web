@@ -21,7 +21,20 @@ const MOUNT_ID = "core-app";
 
 // 嵌入宿主在 iframe load 时就发 init，监听必须在模块求值阶段注册，
 // 不能等异步的 mount()／addon install 完成，否则首次 init 会丢。
-installEmbedHostHandshake();
+installEmbedHostHandshake(undefined, async (request, signal) => {
+  await startup;
+  const [{ startEmbedConversation }, { useConversationStore }, media] = await Promise.all([
+    import("./composables/startEmbedConversation"),
+    import("./addons/conversation/store/conversation"),
+    import("./addons/conversation/api/media"),
+  ]);
+  return startEmbedConversation({
+    create: (body) => useConversationStore().create(body),
+    models: media.listMediaModels,
+    generate: (body) => media.createGeneration(body as unknown as import("./addons/conversation/api/media").CreateGenerationBody),
+    push: (to) => router.push(to),
+  }, request, signal);
+});
 
 let app: VueApp | null = null;
 let host: HeadlessPluginHost | null = null;
