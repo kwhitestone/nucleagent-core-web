@@ -28,6 +28,8 @@ let defaultSelection = { executionBackend: "codex", providerId: 7, model: "gpt-6
 let preferenceQuery: unknown;
 const puts: { profileId: string; effort: string }[] = [];
 let defaultVision: string | undefined;
+let composerReady: boolean | undefined;
+let workflowDisabled: boolean | undefined;
 
 before(async () => {
   dom = new JSDOM("<div id='root'></div>", { url: "https://test.example/" });
@@ -89,6 +91,8 @@ function findControl(node: unknown): void {
   // design-1123 A: the Composer's only model control is the preset panel; choosing a preset is the preference write.
   if (props?.settings && props.placeholder !== undefined) {
     settings = props.settings;
+    composerReady = (props as unknown as { preferenceReady?: boolean }).preferenceReady;
+    workflowDisabled = (props as unknown as { workflow?: { props?: { disabled?: boolean } } }).workflow?.props?.disabled;
     profilePanel = (props as unknown as { profile?: typeof profilePanel }).profile;
     change = (value: string) => profilePanel!.page.props.onChange(value);
   }
@@ -124,9 +128,13 @@ for (const conversationId of [undefined, "9"]) test(`ChatApp ${conversationId ? 
     });
     assert.equal(creates + sends, 0);
     await React.act(async () => { releasePut(); });
+    assert.equal(composerReady, false, "the visible composer waits for preference readback");
+    if (!conversationId) assert.equal(workflowDisabled, true, "workflow cannot bypass preference readback");
     await React.act(async () => { await assert.rejects(adapter.onNew(message), /preferenceError/); });
     assert.equal(creates + sends, 0, "PUT success alone must not open create/send");
     await React.act(async () => { releaseGet(); });
+    assert.equal(composerReady, true);
+    if (!conversationId) assert.equal(workflowDisabled, false);
     await React.act(async () => { await adapter.onNew(message); });
     assert.equal(conversationId ? sends : creates, 1, "confirmed preference reopens the real ChatApp path");
     assert.equal(conversationId ? creates : sends, 0);

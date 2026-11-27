@@ -239,9 +239,9 @@ export function ChatApp(props: ChatProps) {
         </ScrollViewport>
           <div className="mc-footer">
             <ScrollToLatest className="mc-to-bottom" aria-label={t("chatReact.toBottom")} title={t("chatReact.toBottom")}>↓</ScrollToLatest>
-            <Composer t={t} settings={settings} grants={grants} inFlight={inFlight}
+            <Composer t={t} settings={settings} grants={grants} inFlight={inFlight} preferenceReady={preference.ready}
               queue={conversationId ? { failure: slot.failure, reason: slot.failure && slotReason(slot.failure, t, mediaLimit || undefined), retry: () => void slot.retryNow() } : undefined}
-              workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed} submit={async (toolInvocation, name) => {
+              workflow={!conversationId && <WorkflowForm t={t} disabled={settings.busy || !settings.allowed || (!settings.media && !preference.ready)} submit={async (toolInvocation, name) => {
                 await start({ input: `${t("chatReact.workflowRun")}: ${name}`, toolIds: [toolInvocation.toolId], toolInvocation });
               }} />}
               profile={profilePanel} controls={<>{preference.ready && !settings.model && <p role="status">{t("chatReact.defaultModelUnresolved")}</p>}{preference.error && <p role="alert">{t("chatReact.preferenceError")}</p>}</>}
@@ -384,7 +384,7 @@ export type Settings = Pick<ReturnType<typeof useSettings>, "groups" | "model" |
  * empty), Cancel as the stop square while running, and a queue button once there is text during a run.
  */
 /** `controls` is the only way to add to the Controls menu: it renders inside the ModelControls panel, never as a second entry. */
-export function Composer({ t, settings, placeholder, controls, workflow, grants, profile, queue, inFlight }: { queue?: { failure: SlotFailure | null; reason: string | null; retry(): void }; inFlight?: number; t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
+export function Composer({ t, settings, placeholder, controls, workflow, grants, profile, queue, inFlight, preferenceReady = true }: { queue?: { failure: SlotFailure | null; reason: string | null; retry(): void }; inFlight?: number; preferenceReady?: boolean; t: Translate; settings: Settings; placeholder: string; controls?: ReactNode; workflow?: ReactNode; grants?: ToolGrants; profile?: ComponentProps<typeof ModelControls>["profile"] }) {
   const [section, setSection] = useState<"home" | "files" | "drive" | "preset">("home");
   const menu = useMenu(false, section);
   const aui = useAui();
@@ -437,7 +437,8 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
     model: settings.model?.model ?? t("common.modelDefault"),
     executor: settings.groups.find((g) => g.kind === "executor")?.options.find((o) => o.choice.kind === "executor" && o.choice.backend === settings.backend)?.label ?? settings.backend ?? "",
   }) : undefined;
-  const blocked = settings.busy || visionBlocked || full || mismatch || (!!settings.media && (running || !settings.direct
+  const preferenceBlocked = !settings.media && !preferenceReady;
+  const blocked = preferenceBlocked || settings.busy || visionBlocked || full || mismatch || (!!settings.media && (running || !settings.direct
     || !directMediaReady(settings.direct, settings.params ?? {}, input)));
   return (
     <ComposerPrimitive.AttachmentDropzone className="mc-dropzone">
@@ -472,7 +473,7 @@ export function Composer({ t, settings, placeholder, controls, workflow, grants,
             </div>
           )}
         </ComposerPrimitive.Queue>
-        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={(settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
+        <ComposerPrimitive.Input className="mc-input" rows={1} minRows={1} maxRows={8} autoFocus submitMode={preferenceBlocked || (settings.media || visionBlocked) && blocked ? "none" : "enter"} placeholder={placeholder} aria-label={placeholder} />
         {settings.media && <div className="mc-media-panel" role="status" data-testid="mc-media-mode" aria-busy={settings.mediaPending || undefined}>
           <span className="mc-sr-only">{settings.media.model.model}</span>
           {full && <p className="mc-hint" role="alert" data-testid="mc-inflight-full">{fill(t("chatReact.mediaInFlightHint"), { n: inFlight, m: MEDIA_KINDS[settings.media.kind].busyLimit })}</p>}

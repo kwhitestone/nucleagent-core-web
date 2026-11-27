@@ -327,6 +327,9 @@ test("late task responses cannot overwrite a different history card; video is pl
 const imageSchema = { model: "image-model", invocation: { toolId: 9, revision: "4" }, inputSchema: { type: "object", additionalProperties: false, required: ["input", "aspect_ratio"],
   properties: { input: { type: "string" }, aspect_ratio: { type: "string", enum: ["1:1", "16:9"] } } } };
 const directResponse = (bound: number[]) => (url: string) => ({ data: url.endsWith("execution-backends") ? [{ id: "codex", default: true }]
+  : url.endsWith("model-selection") ? { executionBackend: "codex", providerId: 1, model: "chat-model", resolved: true }
+  : url.endsWith("model-preferences") ? { profileId: "", effort: "" }
+  : url.endsWith("model-profiles") ? []
   : /\/catalog(\?|$)/.test(url) ? [{ id: 9, name: "图片", imported: true, status: "ready", mediaModel: "image-model" }]
   : url.endsWith("/9/schema") ? imageSchema
   : url.endsWith("/bindings") ? { skillIds: [], toolIds: bound, editable: true, revision: "1", principal: "1" }
@@ -340,6 +343,67 @@ async function type(view: { container: HTMLElement }, text: string) {
   });
 }
 const settle = async () => { for (let turn = 0; turn < 4; turn++) await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+
+async function enter(view: { container: HTMLElement }) {
+  await React.act(async () => view.container.querySelector("textarea")!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true })));
+}
+
+for (const endpoint of ["model-preferences", "model-profiles"]) {
+  for (const method of ["mouse", "enter"]) test(`cold chat waits for ${endpoint}, preserves draft, then ${method} sends once`, async (context) => {
+    context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+    const view = await fixture();
+    let release!: (value: unknown) => void;
+    const pending = new Promise(resolve => { release = resolve; });
+    response = url => url.endsWith(endpoint) ? pending : directResponse([])(url);
+    const created: Record<string, unknown>[] = [];
+    try {
+      await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {},
+        create: async payload => { created.push(payload as unknown as Record<string, unknown>); return { id: "55" } as never; } }));
+      await settle();
+      await type(view, "keep this draft");
+      assert.ok(reads.some(url => url.endsWith(endpoint)));
+      assert.equal(sendKey(view).disabled, true, "pending preference blocks the visible send button");
+      await React.act(async () => sendKey(view).click());
+      await enter(view);
+      assert.deepEqual(created, []);
+      assert.deepEqual(writes, []);
+      assert.equal(view.container.querySelector("textarea")!.value, "keep this draft");
+      await React.act(async () => release(directResponse([])(endpoint)));
+      assert.equal(sendKey(view).disabled, false);
+      assert.deepEqual(created, [], "readiness does not queue or replay an earlier attempt");
+      if (method === "mouse") await React.act(async () => sendKey(view).click());
+      else await enter(view);
+      await settle();
+      assert.equal(created.length, 1);
+      assert.equal(created[0].input, "keep this draft");
+      assert.equal(created[0].model, "chat-model");
+      assert.equal(created[0].providerId, 1);
+      assert.equal(created[0].executionBackend, "codex");
+    } finally { await view.close(); }
+  });
+
+  test(`failed ${endpoint} keeps chat disabled but does not block media`, async (context) => {
+    context.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+    const view = await fixture();
+    response = url => { if (url.endsWith(endpoint)) throw new Error("preference unavailable"); return directResponse([])(url); };
+    const created: unknown[] = [];
+    try {
+      await view.render(React.createElement(app.ChatApp, { t, strings: {} as never, navigate: () => {},
+        create: async payload => { created.push(payload); return { id: "55" } as never; } }));
+      await settle();
+      await type(view, "keep this draft");
+      assert.equal(sendKey(view).disabled, true);
+      await enter(view);
+      assert.equal(view.container.querySelector("textarea")!.value, "keep this draft");
+      assert.deepEqual(created, []);
+      await React.act(async () => view.container.querySelector<HTMLButtonElement>('[data-testid="mc-gen-image"]')!.click());
+      await settle();
+      assert.equal(sendKey(view).disabled, false, "media has its own capability and parameter admission");
+      await React.act(async () => sendKey(view).click());
+      assert.equal(created.length, 1);
+    } finally { await view.close(); }
+  });
+}
 
 test("direct model form shows actual video typed fields and refuses uncontrolled required images", async () => {
   const view = await fixture();
