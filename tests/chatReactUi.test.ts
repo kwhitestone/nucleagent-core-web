@@ -208,6 +208,18 @@ test("media composer blocks send and queue, identifies selected model, hides uns
   }
 });
 
+test("skill decisions render escaped inside the process fold even without tool calls", () => {
+  const html = render(stateOf([
+    item("u1", { role: "user", content: "请求" }),
+    item("skill", { lane: "process", kind: "status", role: "system", userReadable: true, title: "技能选择", content: "下轮起使用技能：<script>unsafe</script>", data: { skillProcess: true, mainRun: false } }),
+    item("answer", { content: "正常回复" }),
+  ]), () => React.createElement(aui.ThreadPrimitive.Messages, null,
+    ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.match(html, /<details class="mc-process"[^>]*>.*技能选择.*下轮起使用技能：&lt;script&gt;unsafe&lt;\/script&gt;.*<\/details>/s);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /正常回复/);
+});
+
 test("process row: neutral calls retain original failure and exclude synthetic queue rows", () => {
   const at = (sec: number) => `2026-11-13T00:00:0${sec}Z`;
   const state = stateOf([

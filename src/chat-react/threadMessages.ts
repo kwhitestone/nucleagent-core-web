@@ -84,7 +84,7 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
   const process = ordered.filter((item) => item.data?.modelThinking !== true &&
     (item.lane === "process" || item.lane === "tool" || item.lane === "progress") &&
     (item.lane === "process" || item.title || item.content));
-  let run = process.filter(item => item.kind === 'tool_call' || typeof item.data?.toolCallId === 'string');
+  let run = process.filter(item => item.kind === 'tool_call' || typeof item.data?.toolCallId === 'string' || item.data?.skillProcess === true);
   const tier = group.find((item) => item.data?.thinkingLevel)?.data?.thinkingLevel as string | undefined;
   // Only the first fold carries the tier line.
   let head = tier ? { tier, quiet: !group.some((item) => item.data?.modelThinking === true && item.content) } : {};
@@ -95,7 +95,9 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
   // A step ends when the next one starts; the last one when the next non-process item arrives (Vue's rule).
   const flush = (groupEnd?: string) => {
     if (!run.length) return;
-    const data: ProcessPartData = { summary: locale === "zh-CN" ? `${run.length} 次调用` : `${run.length} ${run.length === 1 ? "call" : "calls"}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}), ...head };
+    const skills = run.some(item => item.data?.skillProcess === true);
+    const unit = skills ? locale === "zh-CN" ? "个步骤" : "step" : locale === "zh-CN" ? "次调用" : "call";
+    const data: ProcessPartData = { summary: `${run.length} ${unit}${locale !== "zh-CN" && run.length !== 1 ? "s" : ""}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}), ...head };
     head = {};
     parts.push({ type: "data-process", id: run[0].id, data }, ...run.map(step => stepPart(step, process[process.indexOf(step) + 1]?.timestamp ?? groupEnd)));
     run = [];

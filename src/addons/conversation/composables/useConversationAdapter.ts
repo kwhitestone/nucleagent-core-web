@@ -36,6 +36,7 @@ import { normalizeProcessToolDetails, normalizeProcessPlan } from "@/addons/conv
 import { messageTimingData, snapshotTiming } from "./conversationTiming";
 import { executionPhaseLabel } from "../task-conversation/vue/executionPhasePresentation";
 import { conversationNavigation } from "./conversationNavigation";
+import { skillProcess } from "./skillProcess";
 
 /**
  * 把 nucleagent 后端（REST + 全量 Message SSE）桥接到 task-conversation
@@ -178,6 +179,8 @@ function answeredClarifyIdsFor(conversationKey: string): Set<string> {
 }
 
 function mapStatus(msg: Message): ConversationItem["status"] {
+  const skill = skillProcess(msg);
+  if (skill) return skill.failed ? "failed" : "complete";
   const metadata = msg.metadata as Record<string, unknown> | undefined;
   if (isExecutionPhase(msg)) {
     switch (metadata?.phase_status) {
@@ -208,6 +211,8 @@ function mapStatus(msg: Message): ConversationItem["status"] {
 }
 
 function safeMessageContent(msg: Message, status: ConversationItem["status"]): string {
+  const skill = skillProcess(msg);
+  if (skill) return skill.content;
   // Lifecycle content is a transport fallback. The process row presents its
   // state through a localized title and its duration through the elapsed slot.
   if (isExecutionPhase(msg)) return "";
@@ -233,6 +238,8 @@ function safeMessageContent(msg: Message, status: ConversationItem["status"]): s
 }
 
 function processTitle(msg: Message, active: boolean): string {
+  const skill = skillProcess(msg);
+  if (skill) return skill.title;
   if (msg.senderName.endsWith(".thinking")) return thinkingTitle(active);
   if (isExecutionPhase(msg)) {
     return executionPhaseLabel(messageTimingData(msg), "zh-CN") ?? msg.senderName;
@@ -299,6 +306,7 @@ function conversationItemData(
   return {
     ...existing,
     ...messageTimingData(msg),
+    ...(skillProcess(msg) ? { skillProcess: true, mainRun: false } : {}),
     ...(msg.senderName.endsWith(".thinking") ? { thinking: true } : {}),
     // UI-IMPL-3: media generation messages render as gen cards.
     // errorCode only when present: an undefined value fails snapshot schema validation.
@@ -380,7 +388,7 @@ function shouldEmit(msg: Message): boolean {
     return (msg.content || "").trim() !== "" || metadata?.tool_status === "running";
   }
   // "✓ 0.3s" 之类的纯完成状态行没有信息量，折叠条目里只会堆噪音。
-  if (msg.msgType === "status") return isExecutionPhase(msg) || isSkillToolGap(msg);
+  if (msg.msgType === "status") return isExecutionPhase(msg) || isSkillToolGap(msg) || !!skillProcess(msg);
   return ["text", "result", "error", "tool_call", "streaming", "plan"].includes(msg.msgType);
 }
 

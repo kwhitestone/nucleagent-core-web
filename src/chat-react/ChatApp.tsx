@@ -748,7 +748,8 @@ function Parts({ t, usage }: { t: Translate; usage?: { conversationId: string; e
               return <ThinkingFold text={thought.text} label={t("chatReact.reasoning")} latest={t("chatReact.toBottom")} mark={<span className="mc-process-chevron"><ChevronMark size={16} /></span>} />;
             }
             if (part.name === "process-step") {
-              return null;
+              const step = part.data as { name: string; content: string; status: string };
+              return <Step state={stepState(step.status, { type: "complete" })} name={step.name}><p className="mc-step-detail">{step.content}</p></Step>;
             }
             // The header is drawn by ProcessFold.
             if (part.name === "process") return <></>;

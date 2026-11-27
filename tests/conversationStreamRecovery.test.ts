@@ -943,6 +943,32 @@ test("stream policy keeps a monotonic cursor and independent versions", () => {
 
 // MUYU-181 conv 711 review P1-1: core's skill-tool gap row is a status message
 // without execution_phase; it must be visible in history and live, as a failed process step.
+test("skill selection and intent survive history and SSE without becoming a billable reply", async () => {
+  const rows = [
+    message({ id: 7121, conversationId: 712, senderType: "system", senderName: "agent.skill_match", msgType: "status", content: "下轮起使用技能：图片生成", metadata: { step_id: "s712", outcome: "chosen", dispatch_mode: "parallel", effective_turn: "next", future_field: true } }),
+    message({ id: 7122, conversationId: 712, senderType: "system", senderName: "agent.skill_intent", msgType: "status", content: "internal diagnostic", metadata: { step_id: "s712", role: "gate", need: "tool", effective_turn: "next" } }),
+    message({ id: 7123, conversationId: 712, senderType: "system", senderName: "agent.skill_intent", msgType: "status", content: "probe diagnostic", metadata: { role: "probe", need: "none" } }),
+    message({ id: 7124, conversationId: 712, senderType: "system", senderName: "agent.skill_match", msgType: "status", content: "技能选择超时，本轮先直接回答", metadata: { outcome: "timeout" } }),
+  ];
+  http.defaults.adapter = async (config: any) => ({ config, data: messageEnvelope(config, rows), headers: {}, status: 200, statusText: "OK" });
+  globalThis.fetch = (async () => new Response(rows.map(row => `id: ${row.id + 10}\nevent: message-created\ndata: ${JSON.stringify({ ...row, id: row.id + 10 })}\n\n`).join(""), { status: 200, headers: { "Content-Type": "text/event-stream" } })) as typeof fetch;
+  const adapter = createConversationAdapter(() => "712");
+  const snapshot = await adapter.loadSnapshot({ conversationKey: "712", signal: new AbortController().signal });
+  assert.deepEqual(snapshot.items.map((item: any) => item.id), ["msg-7121", "msg-7122", "msg-7124"]);
+  assert.equal(snapshot.items[0].content, rows[0].content);
+  assert.match(snapshot.items[1].content, /后台选择技能.*下轮/);
+  assert.equal(snapshot.items[2].status, "failed");
+  for (const row of snapshot.items) {
+    assert.equal(row.lane, "process");
+    assert.equal(row.data?.skillProcess, true);
+    assert.equal(row.data?.mainRun, false);
+  }
+  const live = [];
+  for await (const event of adapter.subscribe({ conversationKey: "712", cursor: snapshot.cursor, signal: new AbortController().signal })) live.push(event);
+  assert.deepEqual(live.map((event: any) => event.item?.id), ["msg-7131", "msg-7132", "msg-7134"]);
+  assert.equal(live[0].item.content, rows[0].content);
+});
+
 test("skill tool gap status rows render in history snapshots and live subscriptions", async () => {
   const gap = (id: number) => message({ id, conversationId: 711, senderType: "system", senderName: "agent.skill_tool_gap", msgType: "status",
     content: "⚠️ 技能关联的 1 个工具本轮未挂载到执行会话：aihub-aict-7-0-de2ff9c4(aihub_unavailable)",
