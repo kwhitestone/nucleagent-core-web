@@ -14,6 +14,6 @@ const streamText = useStreamSmooth(
 </script>
 
 <template>
-  <MarkdownContent v-if="item.status === 'complete'" :content="item.content" />
+  <MarkdownContent v-if="item.status === 'complete'" :content="item.content" :assistant="item.role === 'assistant'" />
   <pre v-else class="atc-stream-text">{{ streamText }}</pre>
 </template>

@@ -74,6 +74,29 @@ test("model controls opens from an icon straight onto the preset radios and leav
   assert.match(stale, /aria-label="chatReact.profile · 深度 · ⚠"/);
 });
 
+test("assistant image replies hide only the observed orphan DSML closing trailer", async () => {
+  const { renderMarkdown } = await vite.ssrLoadModule("/src/addons/conversation/task-conversation/markdown.ts");
+  const trailer = "</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>";
+  const image = "![水彩插画](https://example.invalid/image.jpg)";
+  const content = `已生成图片。\n\n${image}${trailer}`;
+  assert.doesNotMatch(renderMarkdown(content, true), /DSML/);
+  assert.match(renderMarkdown(content, true), /已生成图片/);
+  assert.match(renderMarkdown(content), /DSML/);
+  for (const legitimate of [
+    `协议示例：\n\n${trailer}`,
+    `\`\`\`text\n${image}${trailer}\n\`\`\``,
+    `\`${image}${trailer.replaceAll("\n", " ")}\``,
+    `> ${image}${trailer.replaceAll("\n", "\n> ")}`,
+    `${image}${trailer}\n后续合法正文`,
+    `${image}</｜｜DSML｜｜ calls>`,
+    `${image}说明：${trailer}`,
+  ]) assert.equal(renderMarkdown(legitimate, true), renderMarkdown(legitimate));
+  const html = render(stateOf([item("answer-dsml", { content })]), () =>
+    React.createElement(aui.ThreadPrimitive.Messages, null,
+      ({ message }: { message: { role: string } }) => React.createElement(app.MessageRow, { role: message.role, t })));
+  assert.doesNotMatch(html, /DSML/);
+});
+
 test("every assistant response has an UNKNOWN usage area; user messages and raw token data cannot invent points", () => {
   const html = render(stateOf([
     item("user1", { role: "user", content: "one" }),

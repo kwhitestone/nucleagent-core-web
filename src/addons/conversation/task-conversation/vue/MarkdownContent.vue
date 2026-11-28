@@ -5,9 +5,10 @@ import { openSealedLinkOnClick } from "../sealedLink";
 
 const props = defineProps<{
   content: string;
+  assistant?: boolean;
 }>();
 
-const rendered = computed(() => renderMarkdown(props.content));
+const rendered = computed(() => renderMarkdown(props.content, props.assistant));
 </script>
 
 <template>

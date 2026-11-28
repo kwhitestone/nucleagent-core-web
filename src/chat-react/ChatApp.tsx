@@ -609,7 +609,8 @@ const MessageAttachmentChips = ({ t }: { t: Translate }) => (
  */
 function MarkdownText({ t }: { t: Translate }) {
   const { text, status } = useSmooth(useMessagePartText());
-  const html = useMemo(() => renderMarkdown(text), [text]);
+  const assistant = useAuiState(state => state.message.role === "assistant");
+  const html = useMemo(() => renderMarkdown(text, assistant), [text, assistant]);
   const root = useRef<HTMLDivElement>(null);
   // Copy buttons are our own nodes added after sanitizing (DOMPurify still forbids <button> in replies); one delegated click handler.
   useEffect(() => { if (root.current) addCodeCopyButtons(root.current, t("common.copy")); }, [html, t]);
