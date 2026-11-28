@@ -5,6 +5,8 @@ import type {
 } from "../core/types.ts";
 
 export interface ExecutionTiming {
+  firstProgressMs?: number;
+  skillPreparationMs?: number;
   totalMs?: number;
   waitingMs?: number;
   agentInitializationMs?: number;
@@ -29,6 +31,8 @@ export function executionTimingLabel(
 }
 
 interface Exchange {
+  firstProgressMs?: number;
+  skillPreparationMs?: number;
   user: ConversationItem;
   start: number;
   step?: string;
@@ -81,7 +85,9 @@ export function executionTimings(
       latestUser = item.id;
       continue;
     }
-    if (item.data?.mainRun === false) continue;
+    const skillProgressMs = typeof item.data?.skillProgressMs === "number" &&
+      Number.isFinite(item.data.skillProgressMs) && item.data.skillProgressMs >= 0 ? item.data.skillProgressMs : undefined;
+    if (item.data?.mainRun === false && skillProgressMs === undefined) continue;
     const step = typeof item.data?.runStepId === "string" ? item.data.runStepId : undefined;
     const stepKey = step ? `${item.turnId}:${step}` : undefined;
     const owner = (stepKey && stepOwners.get(stepKey)) || currentByTurn.get(item.turnId);
@@ -91,6 +97,14 @@ export function executionTimings(
     const at = timestamp(item.timestamp);
     if (at === undefined || at < exchange.start) continue;
     if (stepKey) stepOwners.set(stepKey, owner);
+    if (skillProgressMs !== undefined) {
+      const preparationMs = typeof item.data?.skillPreparationMs === "number" &&
+        Number.isFinite(item.data.skillPreparationMs) && item.data.skillPreparationMs >= 0 ? item.data.skillPreparationMs : undefined;
+      exchanges.set(owner, { ...exchange, step: exchange.step ?? step,
+        firstProgressMs: exchange.firstProgressMs ?? skillProgressMs,
+        skillPreparationMs: preparationMs ?? exchange.skillPreparationMs });
+      continue;
+    }
     if (item.data?.executionPhase === "execution_queue") {
       const phaseStatus = typeof item.data.phaseStatus === "string" ? item.data.phaseStatus : undefined;
       const duration = typeof item.data.phaseDurationMs === "number" &&
@@ -153,6 +167,8 @@ export function executionTimings(
     const liveQueueMs = queued && Number.isFinite(options.nowMs)
       ? Math.max(0, options.nowMs - exchange.queueStartedAt!) : undefined;
     return [id, {
+      firstProgressMs: exchange.firstProgressMs,
+      skillPreparationMs: exchange.skillPreparationMs,
       totalMs: until === undefined ? undefined : Math.max(0, until - exchange.start),
       // Final-only historical replies lost their first streaming timestamp;
       // do not mislabel the entire run as measured time-to-first-response.

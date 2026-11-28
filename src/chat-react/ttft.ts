@@ -2,6 +2,8 @@ import type { ExecutionTiming } from "../addons/conversation/task-conversation/v
 
 /** First-token readout for one run; every field absent = shown as "—", never 0. */
 export interface TtftReadout {
+  progressMs?: number;
+  preparationMs?: number;
   firstMs?: number;
   /** server: executor first_body_write + Core queue; client: Core message timestamps (approximate). */
   firstSource?: "server" | "client";
@@ -22,7 +24,8 @@ export function ttftReadout(serverTiming: unknown, timing: ExecutionTiming | und
   const version = typeof st.version === "number" && st.version >= 2 ? st.version : 0;
   const write = version && st.first_body_write_outcome === "written" ? ms(st.first_body_write_ms) : undefined;
   const out: TtftReadout = { queueMs: timing.queueMs, agentMs: timing.agentInitializationMs ?? (version ? ms(st.agent_ready_ms) : undefined) };
-  if (write !== undefined) Object.assign(out, { firstMs: write + (timing.queueMs ?? 0), firstSource: "server" });
+  if (timing.firstProgressMs !== undefined) Object.assign(out, { progressMs: timing.firstProgressMs, preparationMs: timing.skillPreparationMs });
+  if (write !== undefined) Object.assign(out, { firstMs: write + (timing.queueMs ?? 0) + (timing.skillPreparationMs ?? 0), firstSource: "server" });
   // Final-only history has no first streaming timestamp; a still-waiting run has no first token yet.
   else if (!version && timing.active && !timing.awaitingResponse && timing.waitingMs !== undefined) Object.assign(out, { firstMs: timing.waitingMs, firstSource: "client" });
   // v2 attachments_prepared includes skill downloads, so upload is only shown from v3 (skills_projected split out).
@@ -39,7 +42,9 @@ export function formatReadout(r: TtftReadout, t: Translate) {
   const sec = (v?: number) => (v === undefined ? "—" : `${(v / 1000).toFixed(1)}${s("sec")}`);
   const first = r.firstMs === undefined ? "—" : `${r.firstSource === "client" ? s("approx") : ""}${sec(r.firstMs)}`;
   const detail = [
+    ...(r.progressMs !== undefined ? [`${s("progress")} ${sec(r.progressMs)}`] : []),
     `${s("queue")} ${sec(r.queueMs)}`,
+    ...(r.preparationMs !== undefined ? [`${s("skillPreparation")} ${sec(r.preparationMs)}`] : []),
     ...(r.uploadMs !== undefined ? [`${s("upload")} ${sec(r.uploadMs)}`] : []),
     `${s("agentReady")} ${sec(r.agentMs)}`,
     `${s("firstToken")} ${first}${r.firstSource === "server" ? `（${s("serverMeasured")}）` : ""}`,

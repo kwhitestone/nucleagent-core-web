@@ -39,5 +39,5 @@ export const EN_STRINGS: IslandStrings = {
     dont_like_the_style: "Don't like the style", too_verbose: "Too verbose", not_factually_correct: "Not factually correct", didnt_fully_follow_instructions: "Didn't fully follow instructions", refused_when_it_shouldnt_have: "Refused when it shouldn't have", being_lazy: "Being lazy",
     toBottom: "Scroll to bottom", earlier: "Load earlier messages",
     query: "Query", sources: "Sources", mediaFailed: "Generation failed", greeting: "What can I help you finish today?",
-    firstToken: "First token", queue: "Queue", upload: "Upload", agentReady: "Agent ready", upstreamFirst: "Upstream first token", sec: "s", approx: "~", serverMeasured: "server-measured",
+    progress: "Progress", skillPreparation: "Skill preparation", firstToken: "First token", queue: "Queue", upload: "Upload", agentReady: "Agent ready", upstreamFirst: "Upstream first token", sec: "s", approx: "~", serverMeasured: "server-measured",
 };

@@ -180,7 +180,7 @@ function answeredClarifyIdsFor(conversationKey: string): Set<string> {
 
 function mapStatus(msg: Message): ConversationItem["status"] {
   const skill = skillProcess(msg);
-  if (skill) return skill.failed ? "failed" : "complete";
+  if (skill) return skill.running ? "streaming" : skill.cancelled ? "cancelled" : skill.failed ? "failed" : "complete";
   const metadata = msg.metadata as Record<string, unknown> | undefined;
   if (isExecutionPhase(msg)) {
     switch (metadata?.phase_status) {

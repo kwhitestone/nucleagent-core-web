@@ -62,6 +62,15 @@ const fixture = (status: ConversationItem['status'] = 'streaming') => [
   item('thought', { lane: 'process', status, content: '服务端授权的思考正文', data: { modelThinking: true } }),
   item('answer', { content: '入口与界面已经搭好，接下来补充游戏逻辑。', status }),
 ];
+test('active skill preparation is visible in the fold summary before model output', () => {
+  const { dom } = render([
+    item('user', { role: 'user', content: '画一只小猫' }),
+    item('skill', { lane: 'process', kind: 'status', role: 'system', status: 'streaming',
+      title: '技能准备', content: '正在检索适用技能', data: { skillProcess: true, mainRun: false } }),
+  ]);
+  assert.equal(dom.querySelector('.mc-process-summary')?.textContent, '正在检索适用技能');
+  assert.equal(dom.querySelector('.mc-thinking'), null);
+});
 test('one turn activity; actual calls only; existing answer never waits for first content', () => {
   const { html, dom } = render(fixture());
   if (process.env.CAPTURE_HTML) writeFileSync(process.env.CAPTURE_HTML, html);

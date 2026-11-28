@@ -11,11 +11,16 @@ export function messageTimingData(message: Message): Record<string, unknown> {
   const phaseDurationMs = typeof meta?.duration_ms === "number" &&
     Number.isFinite(meta.duration_ms) && meta.duration_ms >= 0
     ? meta.duration_ms : undefined;
-  const mainRun = message.senderType !== "agent" ||
-    message.senderName === "agent" || message.senderName === "agent.thinking";
+  const skillProgress = message.senderName === "agent.skill_progress" && message.msgType === "status";
+  const mainRun = !skillProgress && (message.senderType !== "agent" ||
+    message.senderName === "agent" || message.senderName === "agent.thinking");
   return {
     ...(typeof meta?.step_id === "string" ? { runStepId: meta.step_id } : {}),
     mainRun,
+    ...(skillProgress && typeof meta?.first_progress_ms === "number" && Number.isFinite(meta.first_progress_ms) && meta.first_progress_ms >= 0
+      ? { skillProgressMs: meta.first_progress_ms } : {}),
+    ...(skillProgress && phaseStatus !== "running" && phaseDurationMs !== undefined
+      ? { skillPreparationMs: phaseDurationMs } : {}),
     runTerminal: mainRun && (
       (message.senderType === "agent" && message.msgType === "result") ||
       (["agent", "system"].includes(message.senderType) && message.msgType === "error")

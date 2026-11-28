@@ -97,7 +97,8 @@ function partsOf(group: readonly ConversationItem[], timing: string, locale: Con
     if (!run.length) return;
     const skills = run.some(item => item.data?.skillProcess === true);
     const unit = skills ? locale === "zh-CN" ? "个步骤" : "step" : locale === "zh-CN" ? "次调用" : "call";
-    const data: ProcessPartData = { summary: `${run.length} ${unit}${locale !== "zh-CN" && run.length !== 1 ? "s" : ""}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}), ...head };
+    const currentSkill = run.filter(item => item.data?.skillProcess === true && active(item)).pop();
+    const data: ProcessPartData = { summary: currentSkill?.content || `${run.length} ${unit}${locale !== "zh-CN" && run.length !== 1 ? "s" : ""}`, timing, status: processGroupStatus(run), ...(ttft ? { ttft } : {}), ...head };
     head = {};
     parts.push({ type: "data-process", id: run[0].id, data }, ...run.map(step => stepPart(step, process[process.indexOf(step) + 1]?.timestamp ?? groupEnd)));
     run = [];
